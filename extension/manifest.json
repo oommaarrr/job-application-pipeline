@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Job Collector (Berlin)",
+  "version": "2.0.0",
+  "description": "Collects job cards from search pages you are already viewing and pushes them straight to the local ranking pipeline.",
+  "permissions": [
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://*.indeed.com/*",
+    "https://www.linkedin.com/*",
+    "https://www.stepstone.de/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Job Collector",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.indeed.com/jobs*",
+        "https://*.indeed.com/q-*",
+        "https://*.indeed.com/viewjob*",
+        "https://www.linkedin.com/jobs/*",
+        "https://www.stepstone.de/jobs/*",
+        "https://www.stepstone.de/work/*",
+        "https://www.stepstone.de/stellenangebote*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

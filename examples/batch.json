@@ -1,0 +1,54 @@
+{
+  "date": "2026-01-15",
+  "pool_size": 24,
+  "note": "Example batch. Replace with your own; batch_report.py renders whatever is here.",
+  "built": [
+    {
+      "rank": 1,
+      "company": "Northwind Systems",
+      "title": "Applied AI Engineer",
+      "location": "Berlin, Germany (Hybrid)",
+      "url": "https://example.com/jobs/applied-ai-engineer",
+      "why": "Closest match in the pool. They ask for LLM workflows with structured outputs, evaluation loops and production debugging, which are all things you own rather than have read about. Write two or three sentences here: what makes it the closest match, which of your projects carries it, and what is thin.",
+      "flags": ["domain is new", "no Kubernetes at production depth"],
+      "files": {
+        "CV": "Northwind/CV_Northwind.pdf",
+        "cover letter": "Northwind/CoverLetter_Northwind.pdf"
+      }
+    },
+    {
+      "rank": 2,
+      "company": "Halberd Labs",
+      "title": "Backend Engineer, Platform",
+      "location": "Remote (EU)",
+      "url": "https://example.com/jobs/backend-platform",
+      "why": "Strong on the API and integration half, thinner on the infrastructure half. The published integration node is the artifact that answers their first requirement.",
+      "flags": ["4+ years stated"],
+      "files": {
+        "CV": "Halberd/CV_Halberd.pdf",
+        "cover letter": "Halberd/CoverLetter_Halberd.pdf"
+      }
+    },
+    {
+      "rank": 3,
+      "company": "Cortile",
+      "title": "AI Integration Engineer",
+      "location": "Munich, Germany (On-site)",
+      "url": "https://example.com/jobs/ai-integration",
+      "why": "Their nice-to-have list reads like your daily tooling. The gap is their cloud provider, named openly in the letter rather than left to be discovered.",
+      "flags": ["different cloud provider", "on-site"],
+      "files": {
+        "CV": "Cortile/CV_Cortile.pdf",
+        "cover letter": "Cortile/CoverLetter_Cortile.pdf"
+      }
+    }
+  ],
+  "dropped": [
+    {"company": "Vantage Freight", "title": "Data Engineer",
+     "reason": "data engineering rather than the applied AI lane"},
+    {"company": "Brackenhill", "title": "Senior ML Engineer",
+     "reason": "senior title, 5+ years stated"},
+    {"company": "Solvent AG", "title": "KI-Entwickler (m/w/d)",
+     "reason": "language gate: requires C1 German, evidence sentence 'Verhandlungssichere Deutschkenntnisse (C1)'"}
+  ]
+}

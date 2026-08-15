@@ -1,0 +1,15 @@
+{
+  "sender": ["Your Name", "City, Country", "+00 000 0000000 | you@example.com", "github.com/yourhandle"],
+  "date": "15 January 2026",
+  "recipient": ["Company", "Team or named contact", "City"],
+  "subject": "Application for Role Title",
+  "salutation": "Dear Hiring Team,",
+  "paragraphs": [
+    "Open on the single line in their posting you answer best, and answer it with a specific thing you built. Not a summary of yourself.",
+    "The most relevant shipped system, with a number in it. Say what broke and what you did about it if the posting asks for debugging or reliability.",
+    "The second angle the posting cares about: evaluation, integration, security, whichever it is.",
+    "The honest gap, named plainly, plus what you would do about it. Then availability, location, and how to reach you."
+  ],
+  "closing": "Best regards,",
+  "signature": "Your Name"
+}

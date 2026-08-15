@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{--bg:#fbfaf8;--panel:#fff;--ink:#1c1b19;--muted:#6b6862;--line:#e4e2dd;
+        --accent:#2f6f4e;--accent-ink:#fff;--chip:#f2f1ee;--bad:#a33a30;
+        --warn:#8a6d1f;--shadow:0 1px 2px rgba(0,0,0,.05)}
+  @media (prefers-color-scheme:dark){:root{--bg:#191a1d;--panel:#212227;--ink:#ecebe6;
+        --muted:#9a978f;--line:#33333b;--accent:#6cc296;--accent-ink:#12241b;
+        --chip:#2a2a31;--bad:#e0776b;--warn:#d9b45c;--shadow:none}}
+  *{box-sizing:border-box}
+
+  /* Chrome sizes the popup to the <html> box, not <body>. Width set only on
+     body leaves <html> at its default and you get a popup several hundred
+     pixels wider than anything in it, with the content stranded in a column on
+     the left. Both elements have to be constrained. */
+  html,body{width:340px;margin:0}
+
+  body{padding:0;background:var(--bg);color:var(--ink);
+       font:13px/1.45 -apple-system,system-ui,"Segoe UI",sans-serif}
+
+  /* ---- header: identity, detected site, pipeline health, all on two rows ---- */
+  header{padding:11px 13px 9px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .top{display:flex;align-items:center;gap:7px}
+  h1{font-size:13.5px;margin:0;font-weight:650;letter-spacing:-.01em}
+  .bridge{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;
+          color:var(--muted);min-width:0}
+  .bridge span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--bad);flex:none}
+  .dot.up{background:var(--accent)}
+  .sub{color:var(--muted);font-size:11px;margin-top:3px;
+       overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  main{padding:11px 13px 13px;display:flex;flex-direction:column;gap:9px}
+
+  /* ---- stat tiles: the two numbers that matter, side by side ---- */
+  .stats{display:flex;gap:7px}
+  .stat{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+        padding:7px 9px;box-shadow:var(--shadow);min-width:0}
+  .stat b{display:block;font-size:19px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat span{display:block;font-size:10.5px;color:var(--muted);margin-top:1px;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---- buttons: one primary, the rest quiet, destructive clearly apart ---- */
+  button{width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--line);
+         background:var(--panel);color:var(--ink);font:inherit;font-size:12.5px;
+         font-weight:500;cursor:pointer;transition:border-color .12s,color .12s}
+  button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--accent);color:var(--accent-ink);
+                 border-color:var(--accent);font-weight:600;padding:9px 10px;font-size:13px}
+  button.primary:hover:not(:disabled){opacity:.88;color:var(--accent-ink)}
+  button.danger{color:var(--bad)}
+  button.danger:hover:not(:disabled){border-color:var(--bad);color:var(--bad)}
+  button.stop{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:600}
+  button.stop:hover:not(:disabled){opacity:.88;color:#fff}
+
+  /* ---- the collect group: primary action plus its two settings ---- */
+  .group{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+         padding:9px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:7px}
+  .opt{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);
+       cursor:pointer;user-select:none}
+  .opt input[type=checkbox]{margin:0;accent-color:var(--accent);cursor:pointer;flex:none}
+  .opt.pages{justify-content:space-between}
+  .opt.pages .n{display:flex;align-items:center;gap:5px}
+  input[type=number]{width:44px;padding:3px 5px;border-radius:6px;text-align:center;
+        border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;
+        font-size:12px}
+  input[type=number]:focus,input[type=text]:focus,select:focus{outline:none;
+        border-color:var(--accent)}
+
+  /* ---- live run status: a bar plus a line, where you are already looking ---- */
+  .run{display:none;flex-direction:column;gap:6px}
+  body.running .run{display:flex}
+  .track{height:4px;border-radius:999px;background:var(--chip);overflow:hidden}
+  .track i{display:block;height:100%;width:0;background:var(--accent);
+           transition:width .25s ease}
+  body.running.indeterminate .track i{width:35%;animation:slide 1.1s ease-in-out infinite}
+  @keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+
+  /* ---- current job ---- */
+  .job{font-size:11.5px;color:var(--muted);
+       overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .built{font-size:11px;color:var(--accent);font-weight:500;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---- disclosures, one consistent style everywhere ---- */
+  details{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+          padding:0 9px;box-shadow:var(--shadow)}
+  details[open]{padding-bottom:9px}
+  summary{font-size:11.5px;color:var(--muted);cursor:pointer;padding:8px 0;
+          list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+          display:flex;align-items:center;gap:5px}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"";width:0;height:0;flex:none;
+        border-left:4px solid var(--muted);border-top:3.5px solid transparent;
+        border-bottom:3.5px solid transparent;transition:transform .12s}
+  details[open] summary::before{transform:rotate(90deg)}
+  details>*+*{margin-top:6px}
+  .batch{margin:0;padding-left:16px;font-size:11px;color:var(--muted)}
+  .batch li{margin-bottom:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  input[type=text],select{width:100%;padding:5px 7px;border-radius:7px;
+        border:1px solid var(--line);background:var(--bg);color:var(--ink);
+        font:inherit;font-size:12px}
+  .row{display:flex;gap:6px}
+  .row>*{flex:1;min-width:0}
+
+  .sep{height:1px;background:var(--line);margin:1px 0}
+
+  #msg{font-size:11px;color:var(--muted);min-height:14px;word-break:break-word;
+       line-height:1.35}
+  #msg:empty{min-height:0}
+</style>
+</head>
+<body>
+  <header>
+    <div class="top">
+      <h1>Job Collector</h1>
+      <span class="bridge">
+        <span class="dot" id="dot"></span>
+        <span id="bridge">checking pipeline…</span>
+      </span>
+    </div>
+    <div class="sub" id="site">checking page…</div>
+  </header>
+
+  <main>
+    <div class="stats">
+      <div class="stat"><b id="stored">0</b><span>stored</span></div>
+      <div class="stat"><b id="visible">0</b><span>on this page</span></div>
+    </div>
+
+    <div class="group">
+      <button id="collect" class="primary">Collect this page</button>
+      <label class="opt">
+        <input type="checkbox" id="desc" checked>
+        also capture descriptions
+      </label>
+      <div class="sep"></div>
+      <label class="opt pages">
+        <span>auto-collect</span>
+        <span class="n"><input type="number" id="pages" value="3" min="1" max="15"> pages</span>
+      </label>
+      <button id="auto">Start auto-collect</button>
+      <button id="stop" class="stop" style="display:none">Stop</button>
+    </div>
+
+    <div class="run">
+      <div class="track"><i id="bar"></i></div>
+    </div>
+    <div id="msg"></div>
+
+    <div class="group">
+      <div class="job" id="currentJob">no job open</div>
+      <div class="built" id="builtFlag"></div>
+      <button id="applied">Mark this job applied</button>
+    </div>
+
+    <details id="batchBox">
+      <summary id="batchLine">no batch built yet</summary>
+      <ol class="batch" id="batchList"></ol>
+      <button id="openReport">Open the fit ranking</button>
+    </details>
+
+    <details id="searchBox">
+      <summary>Build a search URL</summary>
+      <input type="text" id="kw" placeholder="ai engineer" autocomplete="off">
+      <div class="row">
+        <input type="text" id="loc" placeholder="Berlin" autocomplete="off">
+        <select id="radius">
+          <option value="5">5 km</option>
+          <option value="10">10 km</option>
+          <option value="30" selected>30 km</option>
+          <option value="50">50 km</option>
+          <option value="100">100 km</option>
+          <option value="0">anywhere</option>
+        </select>
+      </div>
+      <div class="row">
+        <select id="siteSel">
+          <option value="stepstone">StepStone</option>
+          <option value="linkedin">LinkedIn</option>
+          <option value="indeed">Indeed</option>
+        </select>
+        <select id="posted">
+          <option value="">any date</option>
+          <option value="1">past 24h</option>
+          <option value="7">past week</option>
+          <option value="30">past month</option>
+        </select>
+      </div>
+      <label class="opt"><input type="checkbox" id="remote"> remote only</label>
+      <button id="go">Open this search</button>
+    </details>
+
+    <details>
+      <summary>Maintenance</summary>
+      <button id="resend">Resend everything to pipeline</button>
+      <button id="export">Export JSON (manual fallback)</button>
+      <button id="clear" class="danger">Erase all jobs and start fresh</button>
+    </details>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

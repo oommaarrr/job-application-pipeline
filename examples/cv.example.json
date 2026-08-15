@@ -1,0 +1,65 @@
+{
+  "name": "Your Name",
+  "tagline": "Mirror the job title here",
+  "contact": [
+    "City, Country | +00 000 0000000 | you@example.com",
+    "github.com/yourhandle | linkedin.com/in/yourhandle"
+  ],
+  "summary": "Three to five sentences. Lead with what the posting asks for first, not with your favourite project. Put a number in it. State availability at the end.",
+  "sections": [
+    {
+      "type": "experience",
+      "title": "Experience",
+      "items": [
+        {
+          "role": "Your Role",
+          "org": "Employer",
+          "meta": "City | Mon YEAR to Mon YEAR | scale, e.g. platform serving N customers",
+          "bullets": [
+            "<b>Project Name:</b> what you built, what it does, and the number that makes it real. The bold label must name an actual project. check_spread.py rejects topic labels like Reliability work, because that is how a fourth bullet about the same system sneaks on disguised as a new one.",
+            "<b>Another Project:</b> a second distinct project. At least three across the section, at most two bullets from any single one.",
+            "<b>A Third Project:</b> keep bullets around forty to fifty words. Nobody reaches the good number at the end of a ninety word bullet."
+          ]
+        },
+        {
+          "role": "Earlier Role",
+          "org": "Earlier Employer",
+          "meta": "City | Mon YEAR to Mon YEAR",
+          "bullets": [
+            "Plain bullets without a bold label are fine outside the lead role.",
+            "Quantify where you honestly can."
+          ]
+        }
+      ]
+    },
+    {
+      "type": "experience",
+      "title": "Selected Projects",
+      "items": [
+        {
+          "role": "Project or Thesis Title",
+          "org": "Where it lives, e.g. github.com/yourhandle/repo",
+          "meta": "Stack, one line | YEAR",
+          "bullets": ["Include a non-work project only when it carries something the job history does not."]
+        }
+      ]
+    },
+    {
+      "type": "experience",
+      "title": "Education",
+      "items": [
+        {"role": "M.Sc. Subject", "org": "University", "meta": "YEAR to YEAR", "bullets": []},
+        {"role": "B.Sc. Subject", "org": "University", "meta": "YEAR to YEAR, focus areas", "bullets": []}
+      ]
+    },
+    {
+      "type": "skills",
+      "title": "Technical Skills",
+      "items": [
+        ["Programming Languages", "the ones you would defend in an interview"],
+        ["Group Two", "use plain parseable headers: Databases, Cloud, Testing. Clever headers do not parse."],
+        ["Spoken Languages", "English fluent, German A2"]
+      ]
+    }
+  ]
+}
