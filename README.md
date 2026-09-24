@@ -1,14 +1,26 @@
 # Job Pipeline
 
-**Finds job postings, picks the ones that fit you, and writes a tailored CV and
-cover letter for each.** It runs on your own computer. A free local AI reads
-every posting and scores it against your profile, so the paid AI (Claude) only
-spends time writing applications for jobs worth applying to.
+**Finds jobs that fit you and writes a tailored CV and cover letter for each
+one, on your own computer.**
 
-Out of a typical day's 200+ postings, you end up reviewing a handful of
-ready-to-send applications.
+You collect postings with one click. A free AI on your laptop reads every one
+and keeps only the jobs that match you. Claude then writes a CV and a cover
+letter for each match, and you review and send them.
 
-![The dashboard after a run: the funnel, and what was built and why](docs/screenshots/dashboard.png)
+![Dashboard: every step, and how many jobs survived each filter](docs/screenshots/dashboard.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/ranking.png" alt="Fit ranking: every job scored against your profile, with the reason"></td>
+    <td width="50%"><img src="docs/screenshots/applications.png" alt="Applications: each job with its CV, cover letter and posting"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Fit ranking</b>: every job scored, with the reason</td>
+    <td align="center"><b>Applications</b>: CV, cover letter and posting for each</td>
+  </tr>
+</table>
+
+<sub>Screenshots show a made-up person and made-up companies.</sub>
 
 ---
 
@@ -113,8 +125,6 @@ still missing, with the command to fix it. When it disappears, you're ready.
 
 The extension's **Dashboard**, **Applications** and **Fit ranking** buttons open
 these pages from anywhere.
-
-![The Applications page: each job with its CV, cover letter and posting](docs/screenshots/applications.png)
 
 ---
 
