@@ -1,0 +1,233 @@
+/*
+ * Design tokens: the only file in web/ that contains a colour literal.
+ *
+ * Every page (dashboard, ranking, batch report) and the popup's copy of this
+ * block use nothing but these variables, so retheming is a one-file edit.
+ * No @import, no CDN, no webfont: the pipeline runs offline on a laptop.
+ *
+ * Colour roles
+ *   --bg / --bg2 / --card   page, sunken inset, raised surface
+ *   --line / --line-strong  hairlines, then input and hover borders
+ *   --ink / --dim           body text, secondary text (both >= 4.5:1 on
+ *                           card, bg and bg2 in both themes)
+ *   --accent                interactive colour, text-safe on card
+ *   --ok --warn --bad --info --teal --idle
+ *                           status foregrounds, text-safe on card AND on
+ *                           their own --*-bg tint (>= 4.5:1)
+ *   --*-bg                  status tints, for pills, rows and banners
+ *   --*-solid               status fills that carry white text
+ *
+ * Why foreground and tint instead of one colour: dashboard.js writes
+ * `background:var(--green)` on pills and `color:var(--green)` on text. A
+ * single value cannot be dark enough under white text and light enough on a
+ * dark card at the same time. app.css re-maps those inline fills to the
+ * tint + foreground pair; see "status surfaces" there.
+ */
+:root {
+  color-scheme: light;
+
+  /* ---- surfaces ---- */
+  --bg:          #f5f6f8;
+  --bg2:         #eef0f3;
+  --card:        #ffffff;
+  --line:        #e2e5ea;
+  --line-strong: #8c94a0;
+
+  /* ---- text ---- */
+  --ink:         #101318;
+  --dim:         #59616e;
+
+  /* ---- accent ---- */
+  --accent:        #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-ink:    #ffffff;
+  --accent-bg:     #eef0fe;
+  --focus:         #4f46e5;
+
+  /* ---- status: foreground (text-safe) ---- */
+  --ok:    #147436;
+  --warn:  #945400;
+  --bad:   #c02a1d;
+  --info:  #6b3fd4;
+  --teal:  #0c7268;
+  --idle:  #59616e;
+
+  /* ---- status: tint (backgrounds for pills, rows, banners) ---- */
+  --ok-bg:   #e6f4ea;
+  --warn-bg: #fbf0dc;
+  --bad-bg:  #fcebe9;
+  --info-bg: #f1ecfc;
+  --teal-bg: #e2f3f0;
+  --idle-bg: #eef0f3;
+
+  /* ---- status: solid (only under white text) ---- */
+  --ok-solid:  #147436;
+  --bad-solid: #c02a1d;
+  --on-color:  #ffffff;
+
+  /* ---- old names, kept because dashboard.js and ranking.js write them
+         into inline styles. They resolve to the text-safe foregrounds. ---- */
+  --blue:   var(--accent);
+  --green:  var(--ok);
+  --amber:  var(--warn);
+  --red:    var(--bad);
+  --purple: var(--info);
+  --gray:   var(--idle);
+  --accent-2: var(--accent);
+  --accent-3: var(--accent);
+  --ok-2:     var(--ok);
+
+  /* ---- code and logs: dark in both themes ---- */
+  --log-bg:  #0e1116;
+  --log-ink: #c9d1d9;
+  --log-dim: #8b949e;
+  --log-err: #ff8a80;
+
+  /* ---- scrims and shadows (colour lives here too) ---- */
+  --scrim:     rgba(245, 246, 248, .82);
+  --shadow-sm: 0 1px 1px rgba(16, 19, 24, .04);
+  --shadow:    0 1px 2px rgba(16, 19, 24, .05), 0 1px 3px rgba(16, 19, 24, .04);
+  --shadow-lg: 0 12px 32px -8px rgba(16, 19, 24, .28), 0 2px 6px rgba(16, 19, 24, .08);
+
+  /* ---- type ---- */
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --fs-2xs: 10.5px;  /* table heads, micro labels (uppercase, tracked) */
+  --fs-xs:  11.5px;  /* captions, chip text */
+  --fs-sm:  12.5px;  /* secondary text */
+  --fs-md:  14px;    /* body */
+  --fs-lg:  16px;    /* card numbers, emphasis */
+  --fs-xl:  20px;    /* stage headline */
+  --fs-2xl: 28px;    /* KPI numbers */
+  --fs-3xl: 36px;    /* hero number */
+  --lh-tight: 1.15;
+  --lh:       1.5;
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semi:    600;
+  --fw-bold:    700;
+  --track-caps: .07em;
+
+  /* ---- space: 4px grid ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+
+  /* ---- shape ---- */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius:      10px;
+  --radius-lg:   14px;
+  --radius-pill: 999px;
+  --control-h:   32px;   /* buttons, inputs */
+  --control-h-sm: 26px;
+
+  /* ---- motion ---- */
+  --ease:     cubic-bezier(.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur:      200ms;
+  --dur-slow: 500ms;
+}
+
+/*
+ * Dark theme.
+ *
+ * Two selectors on purpose: the media query follows the OS, and
+ * [data-theme] lets the header toggle override it. "auto" removes the
+ * attribute, so the media query decides again. Keep the two blocks equal.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg:          #0b0d10;
+    --bg2:         #111419;
+    --card:        #16191f;
+    --line:        #262b33;
+    --line-strong: #5f6875;
+    --ink:         #e7e9ed;
+    --dim:         #b3bbc7;
+    --accent:        #8f93fb;
+    --accent-strong: #aeb1fc;
+    --accent-ink:    #0b0d10;
+    --accent-bg:     #1e2040;
+    --focus:         #8f93fb;
+    --ok:    #53c47f;
+    --warn:  #e2a640;
+    --bad:   #f3806f;
+    --info:  #b59cfc;
+    --teal:  #43c2b2;
+    --idle:  #b3bbc7;
+    --ok-bg:   #12271a;
+    --warn-bg: #2b210e;
+    --bad-bg:  #321816;
+    --info-bg: #221c38;
+    --teal-bg: #0f2724;
+    --idle-bg: #1d2128;
+    --ok-solid:  #1b7a3a;
+    --bad-solid: #b3261e;
+    --log-bg:  #0a0c0f;
+    --scrim:     rgba(11, 13, 16, .8);
+    --shadow-sm: 0 1px 1px rgba(0, 0, 0, .3);
+    --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .02);
+    --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .4);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:          #0b0d10;
+  --bg2:         #111419;
+  --card:        #16191f;
+  --line:        #262b33;
+  --line-strong: #5f6875;
+  --ink:         #e7e9ed;
+  --dim:         #b3bbc7;
+  --accent:        #8f93fb;
+  --accent-strong: #aeb1fc;
+  --accent-ink:    #0b0d10;
+  --accent-bg:     #1e2040;
+  --focus:         #8f93fb;
+  --ok:    #53c47f;
+  --warn:  #e2a640;
+  --bad:   #f3806f;
+  --info:  #b59cfc;
+  --teal:  #43c2b2;
+  --idle:  #b3bbc7;
+  --ok-bg:   #12271a;
+  --warn-bg: #2b210e;
+  --bad-bg:  #321816;
+  --info-bg: #221c38;
+  --teal-bg: #0f2724;
+  --idle-bg: #1d2128;
+  --ok-solid:  #1b7a3a;
+  --bad-solid: #b3261e;
+  --log-bg:  #0a0c0f;
+  --scrim:     rgba(11, 13, 16, .8);
+  --shadow-sm: 0 1px 1px rgba(0, 0, 0, .3);
+  --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .02);
+  --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .4);
+}
+
+/* Reduced motion: every duration in the system goes to zero. Components
+   that loop (spinner, pulse) also switch their animation off in app.css. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur:      0ms;
+    --dur-slow: 0ms;
+  }
+}
+
+/* Dark mode draws light text on a dark ground. `antialiased` renders that with
+   visibly thinner strokes on macOS, which is what made dark mode look washed
+   out even though every colour passed contrast (24 Sep 2026). Let the OS use
+   its default, heavier rendering there; keep antialiased for light mode. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) body{-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}
+}
+:root[data-theme="dark"] body{-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}

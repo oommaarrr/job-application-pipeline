@@ -1,0 +1,84 @@
+/*
+ * Fit ranking. Tokens from tokens.css, shared components from app.css; only
+ * the filter bar, the fit strip and the row states live here.
+ */
+.i-back{--i:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M12 19l-7-7 7-7'/%3E%3C/svg%3E")}
+.model{font-size:var(--fs-xs);color:var(--dim);font-family:var(--mono)}
+.model:empty{display:none}
+
+/* ranking.js writes "224 scraped · 190 judged · <b>35 passed</b> · …" */
+.summary{margin:0 0 var(--sp-4);font-size:var(--fs-sm);color:var(--dim);text-wrap:pretty}
+.summary b{color:var(--ink);font-weight:var(--fw-semi)}
+
+.rank-panel{padding:0;overflow:hidden}
+.filters{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--line)}
+.search{position:relative;flex:1;min-width:220px;max-width:420px;display:flex;align-items:center}
+.search .ico{position:absolute;left:10px;color:var(--dim);pointer-events:none}
+#q{width:100%;padding-left:32px;background:var(--bg2)}
+#q:focus{background:var(--card)}
+.opt{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--ink);cursor:pointer;user-select:none}
+.shown{font-size:var(--fs-xs);color:var(--dim);min-width:7ch;text-align:right}
+.legend{display:flex;gap:var(--sp-3);font-size:var(--fs-xs);color:var(--dim)}
+.lg{display:inline-flex;align-items:center;gap:5px}
+.lg::before{content:"";width:8px;height:8px;border-radius:50%}
+.lg-sent::before{background:var(--ok)}
+.lg-passed::before{background:var(--teal);border-radius:1px;transform:rotate(45deg) scale(.85)}
+.lg-dropped::before{background:transparent;box-shadow:inset 0 0 0 1.5px var(--idle)}
+
+.rank-panel .table-scroll{margin:0;padding:0}
+#tbl th,#tbl td{padding:12px 14px}
+#tbl th{background:var(--bg2);position:sticky;top:0}
+#tbl td{vertical-align:top;white-space:normal}
+th[data-sort]{padding:0!important}
+.th-sort{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:4px;width:100%;padding:12px 14px;cursor:pointer;
+  font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit}
+.sc-h .th-sort{justify-content:flex-start}
+.th-sort:hover{color:var(--ink)}
+.th-sort:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.th-sort::after{content:"";width:0;height:0;border-left:3.5px solid transparent;border-right:3.5px solid transparent;
+  border-top:4px solid currentColor;opacity:.55}
+
+/*
+ * The fit strip.
+ *
+ * A good pool is a wall of 95-to-99s, so a fill bar reads as ten identical
+ * bars. ranking.js already scales the width to the range on screen; here that
+ * width places a DOT instead of ending a fill. Down the table the dots form a
+ * strip plot: ties stack in one column, and a 107 sits visibly apart.
+ */
+td.sc{width:176px;white-space:nowrap!important;text-align:left!important}
+td.sc .num{display:inline-block;width:3ch;text-align:right;font-size:var(--fs-lg);font-weight:var(--fw-semi);
+  font-variant-numeric:tabular-nums;vertical-align:middle;color:var(--ink)}
+.meter{display:inline-block;vertical-align:middle;position:relative;width:84px;height:12px;margin-left:12px;
+  background:linear-gradient(var(--line-strong),var(--line-strong)) 0 50%/100% 1px no-repeat}
+.meter>span{display:block;position:relative;height:100%;min-width:0;max-width:100%;
+  background:linear-gradient(var(--kind,var(--accent)),var(--kind,var(--accent))) 0 50%/100% 2px no-repeat}
+.meter>span::after{content:"";position:absolute;right:-5px;top:1px;width:10px;height:10px;border-radius:50%;
+  background:var(--kind,var(--accent));box-shadow:0 0 0 2px var(--card)}
+tr.sent{--kind:var(--ok)}
+tr.passed{--kind:var(--teal)}
+tr.dropped{--kind:var(--idle)}
+/* shape, not only hue: sent is a dot, passed a diamond, dropped a ring */
+tr.passed .meter>span::after{border-radius:1px;transform:rotate(45deg) scale(.85)}
+tr.dropped .meter>span::after{background:var(--card);box-shadow:inset 0 0 0 2px var(--idle)}
+
+td.role a{color:var(--ink);font-weight:var(--fw-semi);text-decoration:none}
+td.role a:hover{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.meta{color:var(--dim);font-size:var(--fs-xs);margin-top:3px}
+#tbl .why{color:var(--dim);font-size:var(--fs-xs);margin-top:6px;max-width:360px;line-height:1.5}
+.v{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:var(--radius-pill);
+  font-size:var(--fs-2xs);font-weight:var(--fw-semi);letter-spacing:var(--track-caps);text-transform:uppercase;white-space:nowrap}
+.v::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+tr.dropped td{color:var(--dim)}
+tr.dropped td.sc .num,tr.dropped td.role a{color:var(--dim);font-weight:var(--fw-medium)}
+tr.dropped .v::before{background:transparent;box-shadow:inset 0 0 0 1.5px currentColor}
+.empty{padding:var(--sp-8) var(--sp-4)!important;text-align:center;color:var(--dim)}
+
+@media (max-width:720px){
+  .legend{display:none}
+  td.sc{width:auto}
+  .meter{display:block;margin:6px 0 0;width:56px}
+  #tbl th,#tbl td{padding:10px}
+  .th-sort{padding:10px}
+}

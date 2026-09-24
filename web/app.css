@@ -1,0 +1,536 @@
+/*
+ * Shared components + dashboard.
+ *
+ * Every value comes from tokens.css; there is no colour literal in this file.
+ * The ranking page links this file too and adds only ranking.css on top.
+ *
+ * Contents
+ *   1  base          reset, focus ring, numerals, screen-reader text
+ *   2  icons         inline-SVG masks tinted with currentColor (offline-safe)
+ *   3  controls      .go buttons and their variants, inputs, switch
+ *   4  surfaces      .card, .card-head, pills, chips, bars, tables
+ *   5  status        re-maps the inline status fills written by the JS
+ *   6  top bar
+ *   7  hero          stage sentence, live bar, the four steps
+ *   8  setup, attention, first run
+ *   9  board         the phase-driven layout
+ *  10  funnel, ranking, build, scrape cards
+ *  11  offline, toast, footer
+ *  12  responsive, reduced motion
+ */
+
+/* ======================================================================= 1 */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+  font:var(--fw-regular) var(--fs-md)/var(--lh) var(--font);
+  font-variant-numeric:tabular-nums;          /* live numbers never jitter */
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{max-width:1160px;margin:0 auto;padding:0 var(--sp-6) var(--sp-8)}
+h1,h2,h3{margin:0;font-weight:var(--fw-semi);letter-spacing:-.01em}
+a{color:var(--accent)}
+code,pre{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--radius-xs)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.grow{flex:1}
+.hide{display:none!important}
+.muted{color:var(--dim);font-size:var(--fs-sm)}
+.num{font-variant-numeric:tabular-nums}
+.ok-note{color:var(--ok);font-weight:var(--fw-semi)}
+
+/* ======================================================================= 2
+ * Icons are single-colour SVG masks painted with currentColor, so they follow
+ * the text colour in both themes and never need their own colour value. */
+.ico{display:inline-block;flex:none;width:16px;height:16px;background:currentColor;
+  -webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+:root{
+  --i-check:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  --i-alert:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01'/%3E%3C/svg%3E");
+  --i-x:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E");
+  --i-doc:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E");
+  --i-list:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 6h16M4 12h11M4 18h6'/%3E%3C/svg%3E");
+  --i-plug:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3l18 18M9 2v4M15 2v4M7.5 7.5A2 2 0 0 0 6 9.4V12a6 6 0 0 0 9.4 4.9M18 12V8H11M12 18v4'/%3E%3C/svg%3E");
+  --i-wrench:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7l2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8'/%3E%3C/svg%3E");
+  --i-sun:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/%3E%3C/svg%3E");
+  --i-moon:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/%3E%3C/svg%3E");
+  --i-auto:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 3a9 9 0 0 1 0 18z' fill='black'/%3E%3C/svg%3E");
+  --i-search:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  --i-inbox:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z'/%3E%3C/svg%3E");
+}
+.i-check{--i:var(--i-check)} .i-alert{--i:var(--i-alert)} .i-x{--i:var(--i-x)}
+.i-doc{--i:var(--i-doc)} .i-list{--i:var(--i-list)} .i-plug{--i:var(--i-plug)}
+.i-wrench{--i:var(--i-wrench)} .i-search{--i:var(--i-search)} .i-inbox{--i:var(--i-inbox)}
+
+/* ======================================================================= 3 */
+.go{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--control-h);padding:0 12px;line-height:calc(var(--control-h) - 2px);
+  font:var(--fw-medium) var(--fs-sm)/1 var(--font);white-space:nowrap;text-decoration:none;
+  color:var(--ink);background:var(--card);border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);cursor:pointer;box-shadow:var(--shadow-sm);
+  transition:background var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease)}
+.go:hover:not(:disabled){background:var(--bg2);border-color:var(--dim)}
+.go:active:not(:disabled){transform:translateY(1px)}
+.go:disabled{cursor:not-allowed;color:var(--dim);background:var(--bg2);border-color:var(--line);box-shadow:none}
+.go .ico{width:14px;height:14px}
+.go[style*="inline-block"]{display:inline-flex!important}   /* JS shows #btnReport/#btnStop with inline-block */
+.go.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:var(--fw-semi)}
+.go.primary:hover:not(:disabled){background:var(--accent-strong);border-color:var(--accent-strong)}
+.go.primary:disabled{background:var(--bg2);border-color:var(--line);color:var(--dim)}
+.go.quiet,.go.ghost{background:transparent;box-shadow:none;border-color:transparent;color:var(--ink)}
+/* An enabled quiet button is drawn in full ink: grey text is reserved for
+   :disabled, so 'off' and 'secondary' never look the same again. */
+.go.quiet:not(:disabled){text-decoration:underline;text-decoration-color:var(--line-strong,var(--line));text-underline-offset:3px}
+.go.quiet:disabled,.go.ghost:disabled{color:var(--dim)}
+.go.quiet:hover:not(:disabled),.go.ghost:hover:not(:disabled){background:var(--bg2);border-color:transparent;color:var(--ink)}
+.go.ghost{color:var(--ink)}
+.go.danger{color:var(--bad);border-color:var(--line-strong)}
+.go.danger:hover:not(:disabled){background:var(--bad-bg);border-color:var(--bad)}
+.go.icon{width:var(--control-h);padding:0}
+.go.sm{height:var(--control-h-sm);line-height:calc(var(--control-h-sm) - 2px);padding:0 9px;font-size:var(--fs-xs)}
+
+/* the theme button: dashboard.js/ranking.js write a text glyph and a title of
+   "Theme: auto|light|dark"; the glyph is hidden and replaced by an SVG icon. */
+.go.theme{font-size:0}
+.go.theme::before{content:"";width:16px;height:16px;background:currentColor;
+  -webkit-mask:var(--i-auto) center/contain no-repeat;mask:var(--i-auto) center/contain no-repeat}
+.go.theme[title*="light"]::before{-webkit-mask-image:var(--i-sun);mask-image:var(--i-sun)}
+.go.theme[title*="dark"]::before{-webkit-mask-image:var(--i-moon);mask-image:var(--i-moon)}
+.go.theme[title*="auto"]::before{-webkit-mask-image:var(--i-auto);mask-image:var(--i-auto)}
+
+/* autobuild: the JS writes "autobuild ON|OFF" plus an inline colour. The text
+   stays (status is never colour alone); the colour becomes a switch. */
+.go.switch{gap:8px;color:var(--ink)!important;border-color:var(--line-strong)!important}
+.go.switch::before{content:"";width:28px;height:16px;border-radius:var(--radius-pill);flex:none;
+  background:radial-gradient(circle at 8px 50%,var(--card) 5px,transparent 5.5px),var(--line-strong);
+  transition:background var(--dur) var(--ease)}
+.go.switch[style*="--green"]::before{
+  background:radial-gradient(circle at calc(100% - 8px) 50%,var(--card) 5px,transparent 5.5px),var(--ok)}
+
+input[type=number],input[type=text],input[type=search],input:not([type]),select{
+  height:var(--control-h);padding:0 10px;font:inherit;font-size:var(--fs-sm);color:var(--ink);
+  background:var(--card);border:1px solid var(--line-strong);border-radius:var(--radius-sm)}
+input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--focus)}
+.num-field input{width:56px;text-align:center;font-weight:var(--fw-semi);font-variant-numeric:tabular-nums}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0}
+
+/* ======================================================================= 4 */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--sp-5);margin-bottom:var(--sp-4);box-shadow:var(--shadow)}
+.card-head{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--control-h);margin-bottom:var(--sp-3)}
+.card-head h2,.card h2{font-size:var(--fs-sm);font-weight:var(--fw-semi);color:var(--ink);letter-spacing:0}
+.card-head .ico{color:var(--dim)}
+.card-intro{margin:0 0 var(--sp-4);color:var(--dim);font-size:var(--fs-sm)}
+.card-note{color:var(--dim);font-size:var(--fs-sm);text-align:right;text-wrap:pretty}
+.row{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--sp-3);flex-wrap:wrap}
+
+/* KPI: the number sits on its own line so a change of digit count never
+   shifts the words around it. */
+.kpi{display:flex;flex-direction:column;gap:2px}
+.big{font-size:var(--fs-2xl);font-weight:var(--fw-semi);line-height:var(--lh-tight);letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.kpi-unit{color:var(--dim);font-size:var(--fs-sm)}
+.kpi-unit:empty{display:none}
+.kpi-sub{color:var(--dim);font-size:var(--fs-sm);margin-top:var(--sp-2)}
+.kpi-sub:empty{display:none}
+
+.bar{height:6px;background:var(--bg2);border-radius:var(--radius-pill);overflow:hidden;margin:var(--sp-3) 0;
+  box-shadow:inset 0 0 0 1px var(--line)}
+.bar>span{display:block;height:100%;border-radius:var(--radius-pill);min-width:0;
+  transition:width var(--dur-slow) var(--ease)}
+.bar-lg{height:8px}
+
+/* pills and badges: text label + a leading dot. Colours come from section 5. */
+.pill,.badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;
+  border-radius:var(--radius-pill);font-size:var(--fs-xs);font-weight:var(--fw-semi);
+  line-height:1;white-space:nowrap;letter-spacing:.01em}
+.pill::before,.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.pill:empty{display:none}
+.badge{height:24px;padding:0 10px;font-size:var(--fs-sm)}
+
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;flex:none}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;font-size:var(--fs-xs);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg2);color:var(--ink)}
+
+.table-scroll{overflow-x:auto;margin:0 calc(-1 * var(--sp-5));padding:0 var(--sp-5)}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--dim);font-weight:var(--fw-semi);font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:var(--track-caps)}
+th:first-child,td:first-child{padding-left:0}
+th:last-child,td:last-child{padding-right:0}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.n{font-weight:var(--fw-medium)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background var(--dur-fast) var(--ease)}
+tbody tr:hover td{background:var(--bg2)}
+
+/* ======================================================================= 5
+ * Status surfaces.
+ *
+ * dashboard.js and ranking.js write status as an inline fill, e.g.
+ * <span class="pill" style="background:var(--red)">short</span>. A solid red
+ * under white text cannot pass AA in both themes, so the fill is replaced by
+ * the matching tint and the foreground colour. The attribute selector reads
+ * the variable name the JS chose, so no JS change is needed.
+ */
+:is(.pill,.badge,.v){background:var(--idle-bg)!important;color:var(--idle)!important;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,currentColor 22%,transparent)}
+:is(.pill,.badge,.v):is([style*="--green"],[style*="--ok"]){background:var(--ok-bg)!important;color:var(--ok)!important}
+:is(.pill,.badge,.v):is([style*="--amber"],[style*="--warn"]){background:var(--warn-bg)!important;color:var(--warn)!important}
+:is(.pill,.badge,.v):is([style*="--red"],[style*="--bad"]){background:var(--bad-bg)!important;color:var(--bad)!important}
+:is(.pill,.badge,.v):is([style*="--blue"],[style*="--accent"]){background:var(--accent-bg)!important;color:var(--accent)!important}
+:is(.pill,.badge,.v):is([style*="--purple"],[style*="--info"]){background:var(--info-bg)!important;color:var(--info)!important}
+:is(.pill,.badge,.v)[style*="--teal"]{background:var(--teal-bg)!important;color:var(--teal)!important}
+
+/* Phase badge: the JS colours building amber and ranking purple. In this
+   system amber means "warning", so every running phase reads as accent, with
+   a pulsing dot; the word on the badge says which phase it is. */
+.badge:is([style*="--blue"],[style*="--purple"],[style*="--amber"]){background:var(--accent-bg)!important;color:var(--accent)!important}
+.badge:is([style*="--blue"],[style*="--purple"],[style*="--amber"])::before{animation:pulse 1.6s var(--ease) infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+/* ======================================================================= 6 */
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
+  margin:0 calc(-1 * var(--sp-6)) var(--sp-5);padding:var(--sp-3) var(--sp-6);
+  background:var(--scrim);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px}
+.brand h1{font-size:var(--fs-lg);font-weight:var(--fw-semi);letter-spacing:-.015em}
+/* the mark: a three-bar funnel, drawn with backgrounds so it needs no file */
+.brand-mark{width:20px;height:20px;border-radius:5px;flex:none;background:
+  linear-gradient(var(--card),var(--card)) 4px 5px/12px 2px no-repeat,
+  linear-gradient(var(--card),var(--card)) 4px 9px/8px 2px no-repeat,
+  linear-gradient(var(--card),var(--card)) 4px 13px/4px 2px no-repeat,var(--ink)}
+.nav{display:flex;align-items:center;gap:2px}
+.health{display:inline-flex;align-items:center;font-size:var(--fs-sm);color:var(--dim)}
+.health .dot{margin-right:6px}
+.health:has(.dot[style*="--red"]){color:var(--bad);font-weight:var(--fw-semi)}
+.stamp{min-width:10ch;text-align:right;font-size:var(--fs-xs);color:var(--dim);font-variant-numeric:tabular-nums}
+.stamp:empty{display:none}
+
+/* ======================================================================= 7 */
+.hero{padding:0;overflow:hidden}
+.hero-status{padding:var(--sp-5) var(--sp-5) var(--sp-4);display:grid;gap:var(--sp-3)}
+#stageline{color:var(--ink)!important;font-size:var(--fs-xl);font-weight:var(--fw-semi);letter-spacing:-.015em;
+  line-height:1.25;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:var(--sp-3);row-gap:2px}
+#stageline .sub{display:block;flex-basis:100%;font-size:var(--fs-md);font-weight:var(--fw-regular);
+  color:var(--dim)!important;letter-spacing:0}
+/* a spinner in front of the sentence whenever a stage is running */
+.wrap:has(.step.active) #stageline::before{content:"";align-self:center;width:14px;height:14px;flex:none;
+  border-radius:50%;border:2px solid var(--accent-bg);border-top-color:var(--accent);animation:spin .9s linear infinite}
+
+.active{display:grid;gap:6px}
+.active .bar{margin:0}
+#activeBar{background:var(--accent)!important}   /* progress, not a warning */
+.active-label{font-size:var(--fs-sm);color:var(--dim)}
+.active-label b{color:var(--ink);font-weight:var(--fw-semi)}
+
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  border-top:1px solid var(--line);background:var(--bg2)}
+.step{position:relative;padding:var(--sp-4) var(--sp-4) var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-3);
+  border-left:1px solid var(--line);min-width:0}
+.step:first-child{border-left:none}
+/* the rail: one segment per stage along the top edge */
+.step::before{content:"";position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--line)}
+.step.done::before{background:var(--ok)}
+.step.active::before{background:repeating-linear-gradient(90deg,var(--accent) 0 14px,var(--accent-bg) 14px 20px);
+  background-size:40px 3px;animation:rail 1s linear infinite}
+@keyframes rail{to{background-position:40px 0}}
+.step.active{background:var(--card)}
+.step-top{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:10px;align-items:center}
+.step i{grid-row:span 2;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;
+  font-style:normal;font-size:var(--fs-sm);font-weight:var(--fw-semi);
+  color:var(--dim);background:var(--card);border:1px solid var(--line-strong);position:relative}
+.step b{font-size:var(--fs-md);font-weight:var(--fw-semi);line-height:1.2}
+.step small{font-size:var(--fs-xs);color:var(--dim);min-height:1.4em;line-height:1.4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step.pending b{color:var(--dim);font-weight:var(--fw-medium)}
+.step.done i{font-size:0;color:var(--ok);background:var(--ok-bg);border-color:transparent}
+.step.done i::before{content:"";width:14px;height:14px;background:currentColor;
+  -webkit-mask:var(--i-check) center/contain no-repeat;mask:var(--i-check) center/contain no-repeat}
+.step.active i{color:var(--accent);background:var(--accent-bg);border-color:transparent}
+.step.active i::after{content:"";position:absolute;inset:-3px;border-radius:50%;
+  border:2px solid transparent;border-top-color:var(--accent);animation:spin 1s linear infinite}
+.step-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:auto}
+.step-acts:not(:has(> :not([style*="none"]))){display:none}
+.num-field{display:inline-flex}
+/* The next thing to do gets the primary button: the first pending stage
+   after a finished one, or Scrape on a pipeline that has done nothing. */
+.step.done + .step.pending .go:not(.quiet):not(:disabled),
+.steps:not(:has(.done,.active)) .step:first-child .go:not(.quiet):not(:disabled){
+  background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:var(--fw-semi)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ======================================================================= 8 */
+/* ---- setup ---- */
+.setup{border-color:color-mix(in srgb,var(--warn) 40%,var(--line))}
+.setup .card-head .ico{color:var(--warn)}
+.check-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
+  border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.check-list li{display:flex;gap:var(--sp-3);align-items:flex-start;padding:10px var(--sp-3);
+  border-top:1px solid var(--line);background:var(--card)}
+.check-list li:first-child{border-top:none}
+.check-list li.bad{order:-1;background:var(--bad-bg)}   /* failures float to the top */
+.check-list .mark{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+  font-size:var(--fs-xs);font-weight:var(--fw-bold);color:var(--ok);background:var(--ok-bg);margin-top:0}
+.check-list li.bad .mark{color:var(--on-color);background:var(--bad-solid)}
+.check-list .body{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:var(--sp-2)}
+.check-list .label{font-weight:var(--fw-medium);font-size:var(--fs-sm)}
+.check-list li.bad .label{font-weight:var(--fw-semi)}
+.check-list .detail{color:var(--dim);font-size:var(--fs-xs);word-break:break-word;min-width:0}
+.check-list li.bad .detail{flex-basis:100%;margin-top:1px}
+.fix{margin-top:var(--sp-2);display:flex;align-items:center;gap:var(--sp-2);flex-basis:100%;min-width:0}
+.fix code{flex:1;min-width:0;font-size:var(--fs-xs);line-height:1.5;background:var(--log-bg);color:var(--log-ink);
+  padding:6px 10px;border-radius:var(--radius-sm);overflow-x:auto;white-space:pre}
+.fix code::before{content:"$ ";color:var(--log-dim)}
+.fix button{flex:none;height:var(--control-h-sm);line-height:calc(var(--control-h-sm) - 2px);font-size:var(--fs-xs)}
+
+/* ---- needs attention ---- */
+.attention{border-color:color-mix(in srgb,var(--bad) 45%,var(--line));background:var(--card)}
+.attention .card-head .ico,.attention .card-head h2{color:var(--bad)}
+.err-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--sp-2)}
+.err-list li{display:flex;align-items:flex-start;gap:var(--sp-3);padding:10px var(--sp-3);border-radius:var(--radius-sm);
+  background:var(--bad-bg);font-size:var(--fs-sm);color:var(--ink)}
+.err-list li::before{content:"";flex:none;width:16px;height:16px;margin-top:1px;background:var(--bad);
+  -webkit-mask:var(--i-alert) center/contain no-repeat;mask:var(--i-alert) center/contain no-repeat}
+.err-list li .etext{flex:1;min-width:0;font-weight:var(--fw-medium)}
+.err-list li .fix-line{font-weight:var(--fw-regular);color:var(--dim);margin-top:3px;font-size:var(--fs-xs);
+  white-space:normal;word-break:break-word}
+.err-list li button{flex:none;width:24px;height:24px;display:grid;place-items:center;font-size:0;
+  border:none;background:transparent;color:var(--dim);border-radius:var(--radius-xs);cursor:pointer}
+.err-list li button::before{content:"";width:14px;height:14px;background:currentColor;
+  -webkit-mask:var(--i-x) center/contain no-repeat;mask:var(--i-x) center/contain no-repeat}
+.err-list li button:hover{color:var(--bad);background:var(--card)}
+
+/* ---- first run: shown only when nothing has ever been scraped ---- */
+.onboard{display:none}
+.wrap:has(#scrTable td[colspan]):has(#funnelCard.hide) .onboard{display:block}
+.onboard-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3);
+  counter-reset:ob}
+.onboard-steps li{counter-increment:ob;padding:var(--sp-4);border:1px dashed var(--line-strong);border-radius:var(--radius-sm);
+  display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm);color:var(--dim)}
+.onboard-steps li::before{content:counter(ob);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  font-size:var(--fs-xs);font-weight:var(--fw-semi);color:var(--accent);background:var(--accent-bg);margin-bottom:4px}
+.onboard-steps b{color:var(--ink);font-size:var(--fs-md);font-weight:var(--fw-semi)}
+.onboard-steps em{font-style:normal;color:var(--ink);font-weight:var(--fw-medium)}
+/* with nothing collected, the zeros step back */
+.wrap:has(#scrTable td[colspan]):has(#funnelCard.hide) .board .big{color:var(--dim)}
+
+/* ======================================================================= 9
+ * Phase layout.
+ *
+ * The board is a two-column grid. dashboard.js already marks the running stage
+ * with .step.active, so :has() reads the phase from the stage row and moves
+ * the card for that stage to the top, full width, with a "Live" tag.
+ *
+ *   idle, done, built-partial   funnel · rank + build · scrape
+ *   scraping                    scrape · rank + build · funnel
+ *   ranking                     rank + funnel · build · scrape
+ *   building                    build · funnel + rank · scrape
+ */
+.board{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-4);align-items:start;grid-auto-flow:row dense}
+.board>.card{margin:0;min-width:0}
+#funnelCard{order:1;grid-column:1/-1}
+.card-rank{order:2}
+.card-build{order:3}
+.card-scrape{order:4;grid-column:1/-1}
+
+.wrap:has(.step[data-k="scrape"].active) .card-scrape{order:0}
+.wrap:has(.step[data-k="scrape"].active) #funnelCard{order:5}
+
+.wrap:has(.step[data-k="rank"].active) .card-rank{order:0}
+.wrap:has(.step[data-k="rank"].active) #funnelCard{grid-column:auto}
+.wrap:has(.step[data-k="rank"].active) .card-build{grid-column:1/-1}
+
+.wrap:has(.step[data-k="build"].active) .card-build{order:0;grid-column:1/-1}
+.wrap:has(.step[data-k="build"].active) #funnelCard{grid-column:auto}
+
+.live-tag{display:none;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:var(--radius-pill);
+  font-size:var(--fs-xs);font-weight:var(--fw-semi);color:var(--accent);background:var(--accent-bg)}
+.live-tag::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.6s var(--ease) infinite}
+.wrap:has(.step[data-k="scrape"].active) .card-scrape,
+.wrap:has(.step[data-k="rank"].active) .card-rank,
+.wrap:has(.step[data-k="build"].active) .card-build{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));
+  box-shadow:var(--shadow),0 0 0 3px var(--accent-bg)}
+.wrap:has(.step[data-k="scrape"].active) .card-scrape .live-tag,
+.wrap:has(.step[data-k="rank"].active) .card-rank .live-tag,
+.wrap:has(.step[data-k="build"].active) .card-build .live-tag{display:inline-flex}
+
+/* ====================================================================== 10 */
+/* ---- funnel: the centrepiece when idle ----
+   Bars are scaled to the first stage, so where the pool collapses reads as
+   lost width. The biggest drop reason (the server sorts them) is marked. */
+.funnel-card{container-type:inline-size}
+.funnel-card .card-head{flex-wrap:wrap}
+.funnel{display:flex;flex-direction:column;gap:6px;margin-top:var(--sp-1)}
+.fn{display:grid;grid-template-columns:128px minmax(0,1fr) 104px;align-items:center;gap:var(--sp-3)}
+.fn .fn-label{font-size:var(--fs-sm);color:var(--dim);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fn .fn-track{display:block;height:28px;background:var(--bg2);border-radius:var(--radius-xs);overflow:hidden;
+  box-shadow:inset 0 0 0 1px var(--line)}
+.fn .fn-fill{display:block;height:100%;min-width:2px;background:var(--accent);border-radius:var(--radius-xs);
+  transition:width var(--dur-slow) var(--ease)}
+.fn:last-child .fn-fill{background:var(--ok)}
+.fn>span:last-child{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:6px}
+.fn .fn-n{font-size:var(--fs-lg);font-weight:var(--fw-semi);font-variant-numeric:tabular-nums;min-width:3ch}
+.fn .fn-drop{font-size:var(--fs-xs);color:var(--dim)}
+.fn .fn-note{flex-basis:100%;font-size:var(--fs-xs);color:var(--accent);font-weight:var(--fw-semi);margin-top:1px}
+.drops-wrap{margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.drops-wrap:not(:has(.drop)){display:none}
+.drops-label{font-size:var(--fs-2xs);font-weight:var(--fw-semi);color:var(--dim);text-transform:uppercase;letter-spacing:var(--track-caps)}
+.drops{display:flex;flex-wrap:wrap;gap:6px}
+.drop{display:inline-flex;align-items:baseline;gap:5px;height:24px;line-height:22px;padding:0 9px;font-size:var(--fs-xs);
+  border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--card);color:var(--dim)}
+.drop b{color:var(--ink);font-weight:var(--fw-semi);font-variant-numeric:tabular-nums}
+.drop:first-child{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 35%,transparent);color:var(--warn)}
+.drop:first-child b{color:var(--warn)}
+.drop:first-child::after{content:"largest";font-size:var(--fs-2xs);font-weight:var(--fw-semi);text-transform:uppercase;letter-spacing:var(--track-caps)}
+/* The stage-to-stage percentage is the point of the funnel: it is what says
+   WHERE the pool collapsed. The card sits in a half-width column (~545px)
+   during a run, so hiding the percentage below 560px hid it exactly when it is
+   most useful. It now wraps under the count instead, and is only dropped at
+   true phone widths. */
+@container (max-width:560px){
+  .fn{grid-template-columns:88px minmax(0,1fr) 72px;gap:var(--sp-2)}
+  .fn .fn-label{font-size:var(--fs-xs)}
+  .funnel-card .card-note{flex-basis:100%;text-align:left}
+}
+@container (max-width:360px){
+  .fn .fn-drop{display:none}
+}
+
+/* ---- ranking ---- */
+.card-rank .kpi-sub span{color:var(--ink)}
+.card-rank #rkAt{color:var(--dim)}
+
+/* ---- build ---- */
+.card-build .bar{margin-bottom:var(--sp-2)}
+.bd-sect:empty{display:none}
+.bd-sect{margin-top:var(--sp-4);display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px}
+.bd-sect>:not(.bd-item){grid-column:1/-1}
+.bd-sect h3{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:var(--track-caps);color:var(--dim);
+  font-weight:var(--fw-semi);margin:0 0 2px;display:flex;align-items:center;gap:6px}
+.bd-sect h3 .count{min-width:20px;height:18px;padding:0 6px;display:inline-grid;place-items:center;border-radius:var(--radius-pill);
+  background:var(--bg2);font-size:var(--fs-2xs);color:var(--ink);letter-spacing:0}
+.bd-item{padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);font-size:var(--fs-sm);
+  min-width:0}
+.bd-item .t{font-weight:var(--fw-semi)}
+.bd-item .why{color:var(--dim);font-size:var(--fs-xs);margin-top:3px;white-space:normal;line-height:1.5}
+.bd-item.rej{background:var(--bg2)}
+.bd-item.rej .t{color:var(--dim);text-decoration:line-through;text-decoration-color:var(--line-strong)}
+.bd-item.now{display:flex;align-items:center;gap:10px;border-color:color-mix(in srgb,var(--accent) 40%,var(--line));background:var(--accent-bg)}
+.bd-item.now .spin{width:14px;height:14px;border:2px solid color-mix(in srgb,var(--accent) 25%,transparent);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;flex:none}
+.bd-phase{margin-left:auto;font-size:var(--fs-xs);font-weight:var(--fw-semi);color:var(--accent);text-transform:capitalize}
+.bd-flags{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+.bd-flag{font-size:var(--fs-2xs);padding:2px 7px;border-radius:var(--radius-xs);background:var(--warn-bg);color:var(--warn)}
+.log-wrap{margin-top:var(--sp-4)}
+.log-wrap summary{cursor:pointer;font-size:var(--fs-xs);color:var(--dim);user-select:none;width:max-content}
+.log-wrap summary:hover{color:var(--ink)}
+pre.log{margin:var(--sp-2) 0 0;background:var(--log-bg);color:var(--log-ink);border-radius:var(--radius-sm);padding:12px 14px;
+  font-size:var(--fs-xs);line-height:1.65;max-height:240px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+pre.log .err{color:var(--log-err)}
+
+/* ---- scrape ---- */
+.scr-health{margin:var(--sp-3) 0}
+.scr-health:empty{display:none}
+.scr-health>.muted{display:none}                 /* the empty table says it better */
+.src-row{display:flex;flex-wrap:wrap;gap:6px}
+.src{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;font-size:var(--fs-xs);color:var(--dim);
+  border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--card)}
+.src b{font-weight:var(--fw-semi);color:var(--ink)}
+.src .warn{color:var(--warn);font-weight:var(--fw-medium)}
+.src[style*="--bad"]{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 35%,transparent)!important;font-weight:var(--fw-semi)}
+#scrTable td:first-child{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+#scrTable tr:has(.pill:is([style*="--red"],[style*="--bad"])) td{background:var(--bad-bg)}
+#scrTable tr:has(.pill:is([style*="--red"],[style*="--bad"])) td.n:nth-child(4){color:var(--bad);font-weight:var(--fw-bold)}
+#scrTable .muted{font-size:var(--fs-xs);margin-left:4px}
+#scrTable td[colspan]{padding:var(--sp-7) 0;text-align:center;color:var(--dim);white-space:normal;background:none}
+#scrTable td[colspan]::before{content:"";display:block;margin:0 auto var(--sp-2);width:22px;height:22px;background:currentColor;
+  -webkit-mask:var(--i-inbox) center/contain no-repeat;mask:var(--i-inbox) center/contain no-repeat}
+#scrTable:has(td[colspan]) thead{visibility:collapse}
+
+/* ====================================================================== 11 */
+.offline{display:flex;align-items:flex-start;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);
+  border-radius:var(--radius);background:var(--bad-bg);color:var(--ink);font-size:var(--fs-sm);
+  border:1px solid color-mix(in srgb,var(--bad) 45%,transparent)}
+.offline .ico{color:var(--bad);margin-top:2px}
+.offline b{color:var(--bad);font-weight:var(--fw-semi)}
+/* while the bridge is down every number on the page is stale: say so, twice */
+.wrap:has(#offline:not(.hide)) :is(.hero,.board,#errCard,#setupCard,.onboard){opacity:.5;filter:grayscale(1)}
+.wrap:has(#offline:not(.hide)) .stamp::after{content:" · stale";color:var(--bad)}
+.wrap:has(#offline:not(.hide)) .badge{background:var(--idle-bg)!important;color:var(--idle)!important}
+.wrap:has(#offline:not(.hide)) .badge::before{animation:none}
+
+.toast{position:fixed;left:50%;bottom:var(--sp-6);z-index:99;max-width:min(560px,calc(100vw - 32px));
+  transform:translate(-50%,8px);opacity:0;pointer-events:none;
+  padding:10px 16px;border-radius:var(--radius);font-size:var(--fs-sm);font-weight:var(--fw-medium);
+  background:var(--ink);color:var(--bg);box-shadow:var(--shadow-lg);
+  transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast[style*="--red"]{background:var(--bad-solid)!important;color:var(--on-color)!important}
+
+.foot{margin-top:var(--sp-5);color:var(--dim);font-size:var(--fs-xs)}
+
+/* ====================================================================== 12 */
+@media (max-width:900px){
+  .board{grid-template-columns:minmax(0,1fr)}
+  .board>.card{grid-column:1/-1!important}
+  .onboard-steps{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .wrap{padding:0 var(--sp-4) var(--sp-7)}
+  .topbar{margin:0 calc(-1 * var(--sp-4)) var(--sp-4);padding:var(--sp-2) var(--sp-4);row-gap:var(--sp-2)}
+  .topbar .grow{flex-basis:100%;order:10;height:0}
+  .topbar .nav,.topbar .switch,.topbar .theme,.topbar .stamp{order:11}
+  .nav .go{padding:0 8px}
+  .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .step:nth-child(3){border-left:none}
+  .step:nth-child(n+3){border-top:1px solid var(--line)}
+  .card{padding:var(--sp-4)}
+  .hero-status{padding:var(--sp-4)}
+  .table-scroll{margin:0 calc(-1 * var(--sp-4));padding:0 var(--sp-4)}
+  #stageline{font-size:var(--fs-lg)}
+  .fn{grid-template-columns:84px minmax(0,1fr) 56px;gap:var(--sp-2)}
+  .fn .fn-label{font-size:var(--fs-xs)}
+  .fn .fn-drop{display:none}
+  .card-note{text-align:left}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:0s!important;animation-iteration-count:1!important;transition-duration:0s!important}
+  .step.active::before{background:var(--accent)}
+}
+
+/* Before the extension has ever sent a job, "+ Arbeitnow" is the one first step
+   that works without any setup, so it takes the primary look and Run scrape
+   steps back. The ids outrank the generic next-action rule above. */
+.no-extension .steps .step:first-child #btnScrape:not(:disabled){
+  background:var(--card);border-color:var(--line);color:var(--ink);font-weight:var(--fw-medium)}
+.no-extension #btnArbeitnow:not(:disabled){
+  background:var(--accent);border-color:var(--accent);color:var(--accent-ink);
+  font-weight:var(--fw-semi);text-decoration:none}
+
+
+/* ================================================================ activity
+ * Step outcome lines under each step, and the Activity card. Colour is never
+ * the only signal: every line also starts with a word (Failed, Stopped, Done). */
+.step-status{margin-top:var(--sp-2);font-size:var(--fs-xs);line-height:1.4;color:var(--dim);min-height:0}
+.step-status:empty{display:none}
+.step-status .st-word{font-weight:var(--fw-semi)}
+.step-status.failed .st-word,.act-item.failed .st-word{color:var(--bad)}
+.step-status.stopped .st-word,.act-item.stopped .st-word{color:var(--warn)}
+.step-status.ok .st-word,.act-item.ok .st-word{color:var(--ok)}
+.step-status .fix-line,.act-item .fix-line{margin-top:2px;color:var(--ink)}
+.step-status .go,.act-item .go{margin-top:var(--sp-1)}
+.act-list{list-style:none;margin:0;padding:0}
+.act-item{display:grid;grid-template-columns:auto 6em 1fr;gap:var(--sp-2);padding:var(--sp-2) 0;
+  border-top:1px solid var(--line);font-size:var(--fs-sm);align-items:baseline}
+.act-item:first-child{border-top:0}
+.act-item time{color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.act-item .act-step{color:var(--dim)}
+.act-item .act-msg{min-width:0;overflow-wrap:anywhere}
+@media (max-width:560px){
+  .act-item{grid-template-columns:auto 1fr}
+  .act-item .act-step{display:none}
+}

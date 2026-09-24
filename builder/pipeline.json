@@ -1,0 +1,6 @@
+{
+  "scraper_root": "../scraper",
+  "bridge": "http://127.0.0.1:8765",
+  "reference_cvs": "../profiles/example/reference",
+  "batch_size": 5
+}

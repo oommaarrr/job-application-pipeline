@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Job Collector</title>
+<style>
+/* ------------------------------------------------------------------ tokens
+ * A copy of web/tokens.css. The popup cannot load files from web/, so the
+ * values are duplicated here. When tokens.css changes, paste it over this
+ * block; nothing below this block contains a colour literal.
+ */
+:root {
+  color-scheme: light;
+
+  /* ---- surfaces ---- */
+  --bg:          #f5f6f8;
+  --bg2:         #eef0f3;
+  --card:        #ffffff;
+  --line:        #e2e5ea;
+  --line-strong: #8c94a0;
+
+  /* ---- text ---- */
+  --ink:         #101318;
+  --dim:         #59616e;
+
+  /* ---- accent ---- */
+  --accent:        #4f46e5;
+  --accent-strong: #4338ca;
+  --accent-ink:    #ffffff;
+  --accent-bg:     #eef0fe;
+  --focus:         #4f46e5;
+
+  /* ---- status: foreground (text-safe) ---- */
+  --ok:    #147436;
+  --warn:  #945400;
+  --bad:   #c02a1d;
+  --info:  #6b3fd4;
+  --teal:  #0c7268;
+  --idle:  #59616e;
+
+  /* ---- status: tint (backgrounds for pills, rows, banners) ---- */
+  --ok-bg:   #e6f4ea;
+  --warn-bg: #fbf0dc;
+  --bad-bg:  #fcebe9;
+  --info-bg: #f1ecfc;
+  --teal-bg: #e2f3f0;
+  --idle-bg: #eef0f3;
+
+  /* ---- status: solid (only under white text) ---- */
+  --ok-solid:  #147436;
+  --bad-solid: #c02a1d;
+  --on-color:  #ffffff;
+
+  /* ---- old names, kept because dashboard.js and ranking.js write them
+         into inline styles. They resolve to the text-safe foregrounds. ---- */
+  --blue:   var(--accent);
+  --green:  var(--ok);
+  --amber:  var(--warn);
+  --red:    var(--bad);
+  --purple: var(--info);
+  --gray:   var(--idle);
+  --accent-2: var(--accent);
+  --accent-3: var(--accent);
+  --ok-2:     var(--ok);
+
+  /* ---- code and logs: dark in both themes ---- */
+  --log-bg:  #0e1116;
+  --log-ink: #c9d1d9;
+  --log-dim: #8b949e;
+  --log-err: #ff8a80;
+
+  /* ---- scrims and shadows (colour lives here too) ---- */
+  --scrim:     rgba(245, 246, 248, .82);
+  --shadow-sm: 0 1px 1px rgba(16, 19, 24, .04);
+  --shadow:    0 1px 2px rgba(16, 19, 24, .05), 0 1px 3px rgba(16, 19, 24, .04);
+  --shadow-lg: 0 12px 32px -8px rgba(16, 19, 24, .28), 0 2px 6px rgba(16, 19, 24, .08);
+
+  /* ---- type ---- */
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --fs-2xs: 10.5px;  /* table heads, micro labels (uppercase, tracked) */
+  --fs-xs:  11.5px;  /* captions, chip text */
+  --fs-sm:  12.5px;  /* secondary text */
+  --fs-md:  14px;    /* body */
+  --fs-lg:  16px;    /* card numbers, emphasis */
+  --fs-xl:  20px;    /* stage headline */
+  --fs-2xl: 28px;    /* KPI numbers */
+  --fs-3xl: 36px;    /* hero number */
+  --lh-tight: 1.15;
+  --lh:       1.5;
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semi:    600;
+  --fw-bold:    700;
+  --track-caps: .07em;
+
+  /* ---- space: 4px grid ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+
+  /* ---- shape ---- */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius:      10px;
+  --radius-lg:   14px;
+  --radius-pill: 999px;
+  --control-h:   32px;   /* buttons, inputs */
+  --control-h-sm: 26px;
+
+  /* ---- motion ---- */
+  --ease:     cubic-bezier(.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur:      200ms;
+  --dur-slow: 500ms;
+}
+
+/*
+ * Dark theme.
+ *
+ * Two selectors on purpose: the media query follows the OS, and
+ * [data-theme] lets the header toggle override it. "auto" removes the
+ * attribute, so the media query decides again. Keep the two blocks equal.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg:          #0b0d10;
+    --bg2:         #111419;
+    --card:        #16191f;
+    --line:        #262b33;
+    --line-strong: #5f6875;
+    --ink:         #e7e9ed;
+    --dim:         #b3bbc7;
+    --accent:        #8f93fb;
+    --accent-strong: #aeb1fc;
+    --accent-ink:    #0b0d10;
+    --accent-bg:     #1e2040;
+    --focus:         #8f93fb;
+    --ok:    #53c47f;
+    --warn:  #e2a640;
+    --bad:   #f3806f;
+    --info:  #b59cfc;
+    --teal:  #43c2b2;
+    --idle:  #b3bbc7;
+    --ok-bg:   #12271a;
+    --warn-bg: #2b210e;
+    --bad-bg:  #321816;
+    --info-bg: #221c38;
+    --teal-bg: #0f2724;
+    --idle-bg: #1d2128;
+    --ok-solid:  #1b7a3a;
+    --bad-solid: #b3261e;
+    --log-bg:  #0a0c0f;
+    --scrim:     rgba(11, 13, 16, .8);
+    --shadow-sm: 0 1px 1px rgba(0, 0, 0, .3);
+    --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .02);
+    --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .4);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:          #0b0d10;
+  --bg2:         #111419;
+  --card:        #16191f;
+  --line:        #262b33;
+  --line-strong: #5f6875;
+  --ink:         #e7e9ed;
+  --dim:         #b3bbc7;
+  --accent:        #8f93fb;
+  --accent-strong: #aeb1fc;
+  --accent-ink:    #0b0d10;
+  --accent-bg:     #1e2040;
+  --focus:         #8f93fb;
+  --ok:    #53c47f;
+  --warn:  #e2a640;
+  --bad:   #f3806f;
+  --info:  #b59cfc;
+  --teal:  #43c2b2;
+  --idle:  #b3bbc7;
+  --ok-bg:   #12271a;
+  --warn-bg: #2b210e;
+  --bad-bg:  #321816;
+  --info-bg: #221c38;
+  --teal-bg: #0f2724;
+  --idle-bg: #1d2128;
+  --ok-solid:  #1b7a3a;
+  --bad-solid: #b3261e;
+  --log-bg:  #0a0c0f;
+  --scrim:     rgba(11, 13, 16, .8);
+  --shadow-sm: 0 1px 1px rgba(0, 0, 0, .3);
+  --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .02);
+  --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .4);
+}
+
+/* Reduced motion: every duration in the system goes to zero. Components
+   that loop (spinner, pulse) also switch their animation off in app.css. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur:      0ms;
+    --dur-slow: 0ms;
+  }
+}
+
+/* ------------------------------------------------------------------ base */
+*,*::before,*::after{box-sizing:border-box}
+/* Chrome sizes the popup to the <html> box, not <body>; constrain both. */
+html,body{width:380px;margin:0}
+body{background:var(--bg);color:var(--ink);font:var(--fw-regular) 13px/1.45 var(--font);
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ------------------------------------------------------------------ header */
+header{padding:12px 14px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;gap:8px}
+.mark{width:18px;height:18px;border-radius:5px;flex:none;background:
+  linear-gradient(var(--card),var(--card)) 4px 4px/10px 2px no-repeat,
+  linear-gradient(var(--card),var(--card)) 4px 8px/7px 2px no-repeat,
+  linear-gradient(var(--card),var(--card)) 4px 12px/4px 2px no-repeat,var(--ink)}
+h1{font-size:14px;margin:0;font-weight:var(--fw-semi);letter-spacing:-.01em}
+.bridge{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;min-width:0;
+  font-size:var(--fs-xs);color:var(--bad);background:var(--bad-bg);border-radius:var(--radius-pill)}
+.bridge:has(.dot.up){color:var(--ok);background:var(--ok-bg)}
+.bridge span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.sub{color:var(--dim);font-size:var(--fs-xs);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:12px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.stat{background:var(--bg2);padding:8px 10px;min-width:0}
+.stat b{display:block;font-size:var(--fs-xl);font-weight:var(--fw-semi);line-height:1.1;letter-spacing:-.01em}
+.stat span{display:block;font-size:var(--fs-xs);color:var(--dim);margin-top:1px}
+
+/* live status: a bar plus a line, visible on every tab */
+.status{padding:0 14px}
+.run{display:none;padding-top:10px}
+body.running .run{display:block}
+.track{height:4px;border-radius:var(--radius-pill);background:var(--line);overflow:hidden}
+.track i{display:block;height:100%;width:0;background:var(--accent);transition:width var(--dur) var(--ease)}
+body.running.indeterminate .track i{width:35%;animation:slide 1.1s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+#msg{font-size:var(--fs-xs);color:var(--dim);padding-top:8px;word-break:break-word;line-height:1.4}
+#msg:empty{display:none}
+
+/* ------------------------------------------------------------------ tabs
+ * Radio buttons + labels: no script, keyboard works (Tab to the group, arrow
+ * keys to switch), and the saved-search editor is one click away instead of
+ * buried in a collapsed <details>. */
+.tab-radio{position:absolute;opacity:0;pointer-events:none}
+.tabs{display:flex;gap:2px;padding:10px 14px 0;border-bottom:1px solid var(--line)}
+.tabs label{position:relative;padding:6px 10px 9px;font-size:var(--fs-sm);font-weight:var(--fw-medium);color:var(--dim);
+  cursor:pointer;border-radius:var(--radius-sm) var(--radius-sm) 0 0;user-select:none}
+.tabs label:hover{color:var(--ink)}
+#tab-page:checked ~ .tabs [for=tab-page],
+#tab-searches:checked ~ .tabs [for=tab-searches],
+#tab-more:checked ~ .tabs [for=tab-more]{color:var(--ink)}
+#tab-page:checked ~ .tabs [for=tab-page]::after,
+#tab-searches:checked ~ .tabs [for=tab-searches]::after,
+#tab-more:checked ~ .tabs [for=tab-more]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;
+  background:var(--accent);border-radius:2px}
+#tab-page:focus-visible ~ .tabs [for=tab-page],
+#tab-searches:focus-visible ~ .tabs [for=tab-searches],
+#tab-more:focus-visible ~ .tabs [for=tab-more]{outline:2px solid var(--focus);outline-offset:-2px}
+.panel{display:none;flex-direction:column;gap:10px;padding:12px 14px 14px}
+#tab-page:checked ~ main .p-page,
+#tab-searches:checked ~ main .p-searches,
+#tab-more:checked ~ main .p-more{display:flex}
+
+/* ------------------------------------------------------------------ controls */
+button{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:32px;padding:0 10px;
+  border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--card);color:var(--ink);
+  font:inherit;font-size:var(--fs-sm);font-weight:var(--fw-medium);cursor:pointer;
+  transition:background var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease)}
+button:hover:not(:disabled){background:var(--bg2);border-color:var(--dim)}
+button:disabled{cursor:not-allowed;color:var(--dim);background:var(--bg2);border-color:var(--line)}
+button.primary{height:36px;background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:var(--fw-semi)}
+button.primary:hover:not(:disabled){background:var(--accent-strong);border-color:var(--accent-strong)}
+button.primary:disabled{background:var(--bg2);border-color:var(--line);color:var(--dim)}
+button.danger{color:var(--bad)}
+button.danger:hover:not(:disabled){border-color:var(--bad);background:var(--bad-bg)}
+button.stop{background:var(--bad-solid);border-color:var(--bad-solid);color:var(--on-color);font-weight:var(--fw-semi)}
+button.stop:hover:not(:disabled){background:var(--bad-solid);opacity:.9}
+button.sm{width:auto;height:26px;font-size:var(--fs-xs);padding:0 9px}
+.opt{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--ink);cursor:pointer;user-select:none}
+.opt input[type=checkbox]{margin:0;accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex:none}
+input[type=number],input[type=text],select{height:30px;padding:0 8px;border-radius:var(--radius-sm);
+  border:1px solid var(--line-strong);background:var(--card);color:var(--ink);font:inherit;font-size:var(--fs-sm)}
+input[type=text],select{width:100%}
+input[type=number]{width:48px;text-align:center;font-weight:var(--fw-semi)}
+input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--focus)}
+.row{display:flex;gap:6px}
+.row>*{flex:1;min-width:0}
+.hint{font-size:var(--fs-xs);color:var(--dim);margin:0;line-height:1.45}
+.hint:empty{display:none}
+
+/* ------------------------------------------------------------------ groups */
+.group{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px}
+.group-title{font-size:var(--fs-2xs);font-weight:var(--fw-semi);color:var(--dim);text-transform:uppercase;
+  letter-spacing:var(--track-caps);margin:0}
+.sep{height:1px;background:var(--line);margin:0 -12px}
+.auto-row{display:flex;align-items:center;gap:8px}
+.auto-row label{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);flex:1}
+.auto-row button{width:auto;flex:none}
+.auto-row #stop{width:auto}
+
+.job{font-size:var(--fs-sm);font-weight:var(--fw-medium);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.built{display:none;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--ok);font-weight:var(--fw-medium);
+  background:var(--ok-bg);border-radius:var(--radius-xs);padding:3px 8px;width:max-content;max-width:100%}
+.built:not(:empty){display:inline-flex}
+
+details{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0 12px;box-shadow:var(--shadow)}
+details[open]{padding-bottom:12px}
+summary{display:flex;align-items:center;gap:8px;padding:10px 0;font-size:var(--fs-sm);font-weight:var(--fw-medium);cursor:pointer;
+  list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";flex:none;width:0;height:0;border-left:4.5px solid var(--dim);border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform var(--dur-fast) var(--ease)}
+details[open] summary::before{transform:rotate(90deg)}
+details>*+*{margin-top:8px}
+.batch{margin:0;padding-left:22px;font-size:var(--fs-xs);color:var(--ink);columns:2;column-gap:16px}
+.batch li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 0}
+.batch li::marker{color:var(--dim)}
+
+/* ------------------------------------------------------------------ saved searches
+ * popup.js builds: <li><span title=url>label</span><button>edit</button>
+ * <button>on|off</button><button>remove</button></li>. A switched-off search
+ * gets an inline line-through on its span, which is what :has() reads. */
+.searches-head{display:flex;align-items:center;gap:8px}
+.searches-head h2{font-size:var(--fs-md);font-weight:var(--fw-semi);margin:0;flex:1}
+.searches-head label{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--dim)}
+.searches-head select{width:auto;height:26px;font-size:var(--fs-xs)}
+ul.sched{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);
+  overflow:hidden;box-shadow:var(--shadow)}
+ul.sched li{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:4px;
+  padding:6px 6px 6px 12px;border-top:1px solid var(--line);font-size:var(--fs-sm)}
+ul.sched li:first-child{border-top:none}
+ul.sched li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--fw-medium)}
+ul.sched li:not(:has(button)){display:block;padding:18px 12px;text-align:center;color:var(--dim)}
+ul.sched li:not(:has(button)) span{font-weight:var(--fw-regular)}
+ul.sched button{width:auto;height:24px;padding:0 7px;border:1px solid transparent;background:transparent;box-shadow:none;
+  font-size:var(--fs-xs);color:var(--dim);border-radius:var(--radius-xs)}
+ul.sched button:hover:not(:disabled){background:var(--bg2);border-color:transparent;color:var(--ink)}
+/* on/off is the second button: drawn as a switch that still says on/off */
+ul.sched li button:nth-of-type(2){min-width:44px;gap:5px;color:var(--ok);background:var(--ok-bg);border-radius:var(--radius-pill);
+  font-weight:var(--fw-semi)}
+ul.sched li button:nth-of-type(2)::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+ul.sched li:has(> span[style*="line-through"]) button:nth-of-type(2){color:var(--dim);background:var(--bg2)}
+ul.sched li:has(> span[style*="line-through"]) button:nth-of-type(2)::before{background:transparent;box-shadow:inset 0 0 0 1.5px currentColor}
+ul.sched li button:nth-of-type(3):hover:not(:disabled){color:var(--bad);background:var(--bad-bg)}
+.io{display:flex;gap:6px;justify-content:flex-end}
+.io button{width:auto}
+
+/* ------------------------------------------------------------------ danger zone */
+.danger-zone{border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}
+.danger-zone .group-title{color:var(--bad)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:0s!important;transition-duration:0s!important}
+  body.running.indeterminate .track i{width:100%;margin-left:0;opacity:.5}
+}
+
+/* Dark mode draws light text on a dark ground. `antialiased` renders that with
+   visibly thinner strokes on macOS, which is what made dark mode look washed
+   out even though every colour passed contrast (24 Sep 2026). Let the OS use
+   its default, heavier rendering there; keep antialiased for light mode. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) body{-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}
+}
+:root[data-theme="dark"] body{-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}
+
+/* Pipeline pages, reachable from anywhere in the popup. Before this there was
+   no way to get from the extension to the dashboard at all. */
+.nav{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.nav button{padding:6px 4px;font-size:12px}
+.nav button:disabled{opacity:.55}
+</style>
+</head>
+<body>
+  <header>
+    <div class="top">
+      <span class="mark" aria-hidden="true"></span>
+      <h1>Job Collector</h1>
+      <span class="bridge">
+        <span class="dot" id="dot"></span>
+        <span id="bridge">checking pipeline…</span>
+      </span>
+    </div>
+    <div class="sub" id="site">checking page…</div>
+    <div class="stats">
+      <div class="stat"><b id="stored">0</b><span>stored in this browser</span></div>
+      <div class="stat"><b id="visible">0</b><span>on this page</span></div>
+    </div>
+    <nav class="nav" aria-label="Open the pipeline pages">
+      <button id="navDash" title="the live dashboard: setup, progress, funnel">Dashboard</button>
+      <button id="navApps" title="the CVs and cover letters that were built">Applications</button>
+      <button id="navRank" title="every job the model read, with its score and verdict">Fit ranking</button>
+    </nav>
+  </header>
+
+  <div class="status" aria-live="polite">
+    <div class="run"><div class="track"><i id="bar"></i></div></div>
+    <div id="msg"></div>
+  </div>
+
+  <input type="radio" name="tab" id="tab-page" class="tab-radio" checked>
+  <input type="radio" name="tab" id="tab-searches" class="tab-radio">
+  <input type="radio" name="tab" id="tab-more" class="tab-radio">
+  <nav class="tabs" aria-label="Sections">
+    <label for="tab-page">This page</label>
+    <label for="tab-searches">Saved searches</label>
+    <label for="tab-more">More</label>
+  </nav>
+
+  <main>
+    <!-- =============================================== this page -->
+    <section class="panel p-page" aria-label="This page">
+      <div class="group">
+        <button id="collect" class="primary">Collect this page</button>
+        <label class="opt"><input type="checkbox" id="desc" checked> Also capture descriptions</label>
+        <div class="sep"></div>
+        <div class="auto-row">
+          <label for="pages">Auto-collect <input type="number" id="pages" value="3" min="1" max="15"> pages</label>
+          <button id="auto">Start</button>
+          <button id="stop" class="stop" style="display:none">Stop</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <p class="group-title">Open job</p>
+        <div class="job" id="currentJob">no job open</div>
+        <div class="built" id="builtFlag"></div>
+        <button id="applied">Mark this job applied</button>
+      </div>
+
+      <details id="batchBox">
+        <summary id="batchLine">no batch built yet</summary>
+        <ol class="batch" id="batchList"></ol>
+        <button id="openReport">Open the fit ranking</button>
+      </details>
+    </section>
+
+    <!-- =============================================== saved searches -->
+    <section class="panel p-searches" aria-label="Saved searches">
+      <div class="searches-head">
+        <h2>Saved searches</h2>
+        <label for="schedPages">Pages each
+          <select id="schedPages">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+      </div>
+      <ul id="schedList" class="sched"></ul>
+      <div class="row">
+        <button id="schedAdd">Add the page I am on</button>
+        <button id="schedRun" class="primary">Run all searches now</button>
+      </div>
+      <p id="schedLast" class="hint"></p>
+      <div class="io">
+        <button id="schedExport" class="sm" title="copy all saved searches as JSON">Export JSON</button>
+        <button id="schedImport" class="sm" title="replace the saved list from JSON">Import JSON</button>
+      </div>
+
+      <details id="searchBox">
+        <summary>New search from keywords</summary>
+        <label class="sr-only" for="kw">Keywords</label>
+        <input type="text" id="kw" placeholder="ai engineer" autocomplete="off">
+        <div class="row">
+          <label class="sr-only" for="loc">Location</label>
+          <input type="text" id="loc" placeholder="Berlin" autocomplete="off">
+          <label class="sr-only" for="radius">Radius</label>
+          <select id="radius">
+            <option value="5">5 km</option>
+            <option value="10">10 km</option>
+            <option value="30" selected>30 km</option>
+            <option value="50">50 km</option>
+            <option value="100">100 km</option>
+            <option value="0">anywhere</option>
+          </select>
+        </div>
+        <div class="row">
+          <label class="sr-only" for="siteSel">Site</label>
+          <select id="siteSel">
+            <option value="linkedin" selected>LinkedIn</option>
+            <option value="indeed">Indeed</option>
+            <option value="stepstone">StepStone</option>
+          </select>
+          <label class="sr-only" for="posted">Posted</label>
+          <select id="posted">
+            <option value="">any date</option>
+            <option value="1">past 24h</option>
+            <option value="7">past week</option>
+            <option value="30">past month</option>
+          </select>
+        </div>
+        <label class="opt"><input type="checkbox" id="remote"> Remote only</label>
+        <button id="go">Open this search</button>
+      </details>
+    </section>
+
+    <!-- =============================================== more -->
+    <section class="panel p-more" aria-label="More">
+      <div class="group">
+        <p class="group-title">Pipeline</p>
+        <button id="resend">Resend everything to the pipeline</button>
+        <button id="export">Export JSON (manual fallback)</button>
+      </div>
+      <div class="group danger-zone">
+        <p class="group-title">Danger zone</p>
+        <button id="freshStart" class="danger">Erase everything and start fresh</button>
+        <p class="hint">Clears collected jobs here and in the pipeline, and forgets that they were ever seen, so the next
+          scrape returns them all. Built CVs and letters move to applications/archive (never deleted); your applied list, your 30-day job history and your saved searches are kept.</p>
+        <div class="sep"></div>
+        <button id="clear" class="danger">Erase collected jobs only</button>
+        <p class="hint">Unlike the button above, the pipeline still remembers these jobs as seen.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

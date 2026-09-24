@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------- generated
+# Everything the pipeline produces about a real person lives here. This file is
+# the first commit in the repo for exactly that reason: a contributor WILL run
+# the pipeline inside their own clone, and this is what stops their address,
+# their phone number and their job history reaching a pull request.
+inbox/
+out/
+logs/
+applications/
+_backups/
+*.pdf
+*.docx
+
+# Per-user state
+applied.json
+applied.json.*
+history/
+seen_jobs.json
+shortlist*.json
+.build_target
+
+# Profiles: the example is committed, everything else is someone's real life.
+profiles/*
+!profiles/example/
+!profiles/example/**
+
+# Local overrides
+config_local.py
+local.env
+config.local.py
+settings.local.toml
+pipeline.local.json
+
+# ---------------------------------------------------------------- environment
+.venv/
+.venv
+venv/
+__pycache__/
+*.py[cod]
+.python-version
+
+# ---------------------------------------------------------------- editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ---------------------------------------------------------------- scratch
+*.bak
+*.pre-*
+.!*
+purged-*
+
+# ---------------------------------------------------------------- design handoff
+# The kit sent to the designer on 24 September 2026 carries real ranking output
+# and screenshots of a real batch report. It was a one-off; keep it local.
+docs/design-kit/
+docs/design-kit.zip
+
+# The active profile, symlinked by run-batch.sh for the build
+builder/profile
+
+# Claude Code per-machine settings
+.claude/settings.local.json
+**/.claude/settings.local.json

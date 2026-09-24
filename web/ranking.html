@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fit ranking · Job Pipeline</title>
+<link rel="stylesheet" href="/web/tokens.css">
+<link rel="stylesheet" href="/web/app.css">
+<link rel="stylesheet" href="/web/ranking.css">
+</head>
+<body class="page-ranking"><div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <h1>Fit ranking</h1>
+    </div>
+    <span id="model" class="model"></span>
+    <span class="grow"></span>
+    <nav class="nav" aria-label="Pages">
+      <a class="go ghost" href="/dashboard"><span class="ico i-back" aria-hidden="true"></span>Dashboard</a>
+    </nav>
+    <button id="themeBtn" class="go icon theme" type="button" title="light / dark / follow the system" aria-label="Theme">&#9789;</button>
+  </header>
+
+  <p class="summary" id="summary">loading…</p>
+
+  <div class="rank-panel card">
+    <div class="filters">
+      <label class="search">
+        <span class="ico i-search" aria-hidden="true"></span>
+        <span class="sr-only">Filter</span>
+        <input id="q" type="search" placeholder="Filter by company, role or location" autocomplete="off">
+      </label>
+      <label class="opt"><input type="checkbox" id="showDropped"> Show dropped</label>
+      <span class="grow"></span>
+      <span class="legend" aria-hidden="true">
+        <span class="lg lg-sent">Sent to Claude</span>
+        <span class="lg lg-passed">Passed</span>
+        <span class="lg lg-dropped">Dropped</span>
+      </span>
+      <span class="shown" id="shown"></span>
+    </div>
+
+    <div class="table-scroll">
+      <table id="tbl">
+        <thead><tr>
+          <th class="n sc-h" data-sort="score"><button type="button" class="th-sort" title="Sort by fit. The dot sits on the range shown, lowest to highest, so tied scores line up in one column.">Fit</button></th>
+          <th data-sort="company"><button type="button" class="th-sort" title="Sort by company">Company</button></th>
+          <th>Role</th>
+          <th>Verdict</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script src="/web/ranking.js"></script>
+</body></html>

@@ -1,0 +1,4 @@
+# The scraper had no requirements file at all until 24 September 2026 — it ran
+# on whatever happened to be in the author's venv.
+requests>=2.31
+beautifulsoup4>=4.12

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Pipeline · Live</title>
+<link rel="stylesheet" href="/web/tokens.css">
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body class="page-dashboard"><div class="wrap">
+
+  <!-- ============================================================ top bar
+       Identity, phase and health on the left, navigation on the right.
+       #phase and #health are what a glance from another tab reads first. -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <h1>Job Pipeline</h1>
+    </div>
+    <span id="phase" class="badge" style="background:var(--gray)">…</span>
+    <span id="health" class="health"></span>
+    <span class="grow"></span>
+    <nav class="nav" aria-label="Pages">
+      <a id="btnReport2" class="go ghost" href="/report/" target="_blank"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>
+      <a id="btnRanking" class="go ghost" href="/ranking" target="_blank"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
+    </nav>
+    <button id="autobuild" class="go switch" type="button" title="toggle autobuild after a scrape"></button>
+    <button id="themeBtn" class="go icon theme" type="button" title="light / dark / follow the system" aria-label="Theme">&#9789;</button>
+    <span id="stamp" class="stamp" title="last update"></span>
+  </header>
+
+  <div id="offline" class="offline hide" role="alert">
+    <span class="ico i-plug" aria-hidden="true"></span>
+    <span><b>The bridge is not answering.</b> Is serve.py running? The numbers below are from the last answer and will not change until it is back.</span>
+  </div>
+
+  <!-- ============================================================ setup
+       Shown by dashboard.js while any check fails. CSS moves failing rows to
+       the top of the list and collapses the passing ones to a single line. -->
+  <section id="setupCard" class="card setup hide" aria-labelledby="setupTitle">
+    <div class="card-head">
+      <span class="ico i-wrench" aria-hidden="true"></span>
+      <h2 id="setupTitle">Setup</h2>
+      <span id="setupScore" class="pill" style="background:var(--amber)"></span>
+      <span class="grow"></span>
+      <button class="go" id="setupRefresh" type="button">Re-check</button>
+      <button class="go quiet" id="setupHide" type="button">Hide</button>
+    </div>
+    <p class="card-intro" id="setupIntro"></p>
+    <ul id="setupList" class="check-list"></ul>
+  </section>
+
+  <!-- ============================================================ hero
+       The glance: one sentence for the state, one bar for "how far", and the
+       four stages with their actions. -->
+  <section class="card hero" aria-label="Pipeline status">
+    <div class="hero-status">
+      <div class="stageline" id="stageline" aria-live="polite">…</div>
+      <div id="activeWrap" class="active hide">
+        <div class="bar bar-lg"><span id="activeBar" style="width:0;background:var(--blue)"></span></div>
+        <div id="activeLabel" class="active-label"></div>
+      </div>
+    </div>
+
+    <ol class="steps" id="steps">
+      <li class="step pending" data-k="scrape">
+        <div class="step-top"><i>1</i><b>Scrape</b><small id="stScrape"></small></div>
+        <div class="step-acts">
+          <button class="go" id="btnScrape" type="button" data-act="scrape">&#9654; Run scrape</button>
+          <button class="go quiet" id="btnArbeitnow" type="button" data-act="arbeitnow"
+            title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
+        </div>
+        <div class="step-status" id="ssScrape" aria-live="polite"></div>
+      </li>
+      <li class="step pending" data-k="rank">
+        <div class="step-top"><i>2</i><b>Rank</b><small id="stRank"></small></div>
+        <div class="step-acts">
+          <button class="go" id="btnRank" type="button" data-act="rank">&#9654; Rank pool</button>
+        </div>
+        <div class="step-status" id="ssRank" aria-live="polite"></div>
+      </li>
+      <li class="step pending" data-k="build">
+        <div class="step-top"><i>3</i><b>Build</b><small id="stBuild"></small></div>
+        <div class="step-acts">
+          <label class="num-field" title="how many to build. The model suggests, you decide">
+            <span class="sr-only">How many to build</span>
+            <input id="buildN" type="number" min="1" max="99">
+          </label>
+          <button class="go primary" id="btnBuild" type="button" data-act="build">&#9654; Build</button>
+        </div>
+        <div class="step-status" id="ssBuild" aria-live="polite"></div>
+      </li>
+      <li class="step pending" data-k="done">
+        <div class="step-top"><i>4</i><b>Done</b><small id="stDone"></small></div>
+        <div class="step-acts">
+          <a class="go" id="btnReport" href="#" target="_blank" style="display:none">Open report</a>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ============================================================ attention
+       Only present when /progress reports errors. Sits directly under the
+       hero so "does it need me?" is answered above the fold. -->
+  <section id="errCard" class="card attention hide" aria-labelledby="errTitle">
+    <div class="card-head">
+      <span class="ico i-alert" aria-hidden="true"></span>
+      <h2 id="errTitle">Needs attention</h2>
+      <span class="grow"></span>
+      <button class="go quiet" id="clearErrs" type="button">Dismiss all</button>
+    </div>
+    <ul id="errs" class="err-list"></ul>
+  </section>
+
+  <!-- ============================================================ first run
+       Pure CSS decides when this shows: no search has ever been reported and
+       the funnel is empty. It turns a page of zeros into a to-do list. -->
+  <section class="card onboard" aria-labelledby="onboardTitle">
+    <div class="card-head"><h2 id="onboardTitle">Nothing collected yet</h2></div>
+    <p class="card-intro">The pipeline is idle, not broken. It fills up in three steps, each started from the stage row above.</p>
+    <ol class="onboard-steps">
+      <li><b>Scrape</b><span>Load the extension, open a job board search and press <em>Run scrape</em>, or pull the Arbeitnow feed, which needs no browser.</span></li>
+      <li><b>Rank</b><span>The local model reads every posting and scores it against your profile. Nothing leaves the laptop.</span></li>
+      <li><b>Build</b><span>Claude writes a tailored CV and cover letter for the strongest matches. This step spends usage.</span></li>
+    </ol>
+  </section>
+
+  <!-- ============================================================ board
+       Card order and width follow the phase (see "phase layout" in app.css):
+       idle → funnel first; scraping → scrape; ranking → rank; building → build. -->
+  <div class="board">
+
+    <section id="funnelCard" class="card funnel-card hide" aria-labelledby="funnelTitle">
+      <div class="card-head">
+        <h2 id="funnelTitle">Funnel</h2>
+        <span class="grow"></span>
+        <span class="card-note" id="funnelWhy"></span>
+      </div>
+      <div id="funnel" class="funnel"></div>
+      <div class="drops-wrap">
+        <span class="drops-label">Dropped at the gates</span>
+        <div id="funnelDrops" class="drops"></div>
+      </div>
+    </section>
+
+    <section class="card card-rank" aria-labelledby="rankTitle">
+      <div class="card-head"><h2 id="rankTitle">Ranking</h2><span class="live-tag">Live</span></div>
+      <div class="kpi">
+        <span id="rkMatch" class="big">–</span>
+        <span class="kpi-unit">passed the filters</span>
+      </div>
+      <div class="kpi-sub">from <span id="rkColl" class="num">–</span> collected · <span id="rkAt">not run yet</span></div>
+      <div id="rkErr" class="kpi-sub"></div>
+    </section>
+
+    <section class="card card-build" aria-labelledby="buildTitle">
+      <div class="card-head">
+        <h2 id="buildTitle">Build</h2><span class="live-tag">Live</span>
+        <span class="grow"></span>
+        <button class="go danger" id="btnStop" type="button" style="display:none">&#9209; Stop build</button>
+      </div>
+      <div class="row">
+        <div class="kpi">
+          <span id="bdBuilt" class="big">0</span>
+          <span class="kpi-unit">of <span id="bdTarget" class="num">0</span> built <span id="bdRejected"></span></span>
+        </div>
+        <div class="card-note" id="bdState"></div>
+      </div>
+      <div class="bar"><span id="bdBar" style="width:0;background:var(--green)"></span></div>
+      <div id="bdNow" class="bd-sect"></div>
+      <div id="bdBuiltList" class="bd-sect"></div>
+      <div id="bdDropped" class="bd-sect"></div>
+      <div id="bdCarried" class="bd-sect"></div>
+      <details id="bdLogWrap" class="log-wrap">
+        <summary>Raw build log</summary>
+        <pre class="log" id="bdLog">no build log yet</pre>
+      </details>
+    </section>
+
+    <section class="card card-scrape" aria-labelledby="scrapeTitle">
+      <div class="card-head">
+        <h2 id="scrapeTitle">Scrape</h2><span class="live-tag">Live</span>
+        <span class="grow"></span>
+        <span class="card-note" id="scrState"></span>
+      </div>
+      <div class="kpi">
+        <span id="scrDone" class="big">0</span>
+        <span class="kpi-unit">of <span id="scrTotal" class="num">0</span> searches</span>
+      </div>
+      <div class="bar"><span id="scrBar" style="width:0;background:var(--blue)"></span></div>
+      <div id="scrHealth" class="scr-health"></div>
+      <div class="table-scroll"><table id="scrTable"><thead><tr>
+        <th>Search</th><th>Site</th><th class="n">Found</th><th class="n">Loaded</th><th class="n">New</th><th>Status</th>
+      </tr></thead><tbody></tbody></table></div>
+    </section>
+
+  </div>
+
+  <!-- ============================================================ activity
+       Every step's outcome, newest first, from out/events.jsonl. A failed or
+       stopped step carries its fix and a Retry button; every step is safe to
+       re-run because each one skips work already done. -->
+  <section id="actCard" class="card activity" aria-labelledby="actTitle">
+    <div class="card-head">
+      <h2 id="actTitle">Activity</h2>
+      <span class="grow"></span>
+      <span class="card-note">what happened, newest first</span>
+    </div>
+    <ul id="actList" class="act-list"><li class="muted">nothing has happened yet</li></ul>
+  </section>
+
+  <footer class="foot">Refreshes every 2 s · <span id="collInfo"></span></footer>
+  <div id="toast" class="toast" role="status"></div>
+</div>
+<script src="/web/dashboard.js"></script>
+</body></html>
