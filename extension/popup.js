@@ -134,7 +134,7 @@ async function refresh() {
     // it is not guessable from "Not a supported search page".
     const t = await tab();
     const url = t?.url || "";
-    const supported = /^https:\/\/(www\.linkedin\.com\/jobs\/|[^/]*indeed\.com\/)/.test(url);
+    const supported = /^https:\/\/(www\.linkedin\.com\/jobs\/|[^/]*indeed\.com\/|www\.stepstone\.de\/)/.test(url);
     $("site").textContent = supported
       ? "extension not active in this tab — reload the page (⌘R)"
       : "Not a supported search page";
@@ -531,7 +531,7 @@ $("schedPages").addEventListener("change", async () => {
 $("schedAdd").onclick = async () => {
   const t = await tab();
   const url = t?.url || "";
-  if (!/linkedin\.com|indeed\.com/.test(url)) {
+  if (!/linkedin\.com|indeed\.com|stepstone\.de/.test(url)) {
     msg("open a job search page first, then add it");
     return;
   }
@@ -540,6 +540,7 @@ $("schedAdd").onclick = async () => {
   const host = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
   const kw = new URLSearchParams(new URL(url).search).get("keywords") ||
              new URLSearchParams(new URL(url).search).get("q") ||
+             new URLSearchParams(new URL(url).search).get("what") ||
              decodeURIComponent(new URL(url).pathname.split("/")[2] || "").replace(/-/g, " ");
   s.searches.push({ label: `${host}: ${kw || "search"}`, url });
   await sched({ type: "sched:set", patch: { searches: s.searches } });

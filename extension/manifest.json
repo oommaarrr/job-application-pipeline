@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Job Collector (Berlin)",
-  "version": "2.0.0",
-  "description": "Collects job cards from search pages you are already viewing and pushes them straight to the local ranking pipeline.",
+  "name": "Job Collector",
+  "version": "2.1.0",
+  "description": "Collects job postings from LinkedIn, Indeed and StepStone search pages you are viewing and sends them to your local Job Pipeline.",
   "permissions": [
     "storage",
     "downloads",
@@ -35,7 +35,7 @@
         "https://*.indeed.com/q-*",
         "https://*.indeed.com/viewjob*",
         "https://www.linkedin.com/jobs/*",
-        "https://www.stepstone.de/jobs/*",
+        "https://www.stepstone.de/jobs*",
         "https://www.stepstone.de/work/*",
         "https://www.stepstone.de/stellenangebote*"
       ],

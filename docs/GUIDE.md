@@ -93,9 +93,14 @@ Click the toolbar icon. The top row has **Dashboard**, **Applications** and
 - **Mark this job applied**: press it on a job's page after applying. That job
   never comes back in a batch.
 
-LinkedIn shows 25 jobs per page and removes cards from the page as you scroll
-past them. The collector scrolls, gathers as it goes, and waits for all 25
-before reading. A page that yields fewer is flagged on the dashboard.
+Each site is read its own way:
+
+- **LinkedIn** shows 25 jobs per page and removes cards as you scroll past
+  them. The collector scrolls, gathers as it goes, and waits for all 25 before
+  reading. A page that yields fewer is flagged on the dashboard.
+- **Indeed** and **StepStone**: the collector reads the job cards on the
+  results page, then fetches each job's full description from that page, a few
+  seconds apart, instead of clicking through every job.
 
 ### Saved searches
 
@@ -115,8 +120,9 @@ Your list of searches, each with **edit** (change its name or URL), **on / off**
 not the words you type, and falls back to your profile's country when the words
 are ambiguous. Open a place once on LinkedIn and the popup remembers its id.
 
-Three example searches are added on first install. Edit or delete them freely;
-a search you delete does not come back.
+Three example searches are added on first install, one each for LinkedIn,
+Indeed and StepStone. Edit or delete them freely; a search you delete does not
+come back.
 
 ### More
 

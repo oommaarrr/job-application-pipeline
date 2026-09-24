@@ -39,7 +39,7 @@ flowchart LR
 
 | Step | You do | It does |
 |---|---|---|
-| **Collect** | press **+ Arbeitnow**, or run your saved LinkedIn searches from the Chrome extension | gathers postings with their full descriptions |
+| **Collect** | press **+ Arbeitnow**, or run your saved LinkedIn, Indeed and StepStone searches from the Chrome extension | gathers postings with their full descriptions |
 | **Rank** | press **Rank pool** | a local AI reads every posting and drops the ones that don't fit: wrong language, too senior, wrong field |
 | **Build** | choose how many, press **Build** | Claude writes a one-page CV and a cover letter for each of the best matches |
 | **Apply** | open **Applications**, download, send | |
@@ -100,7 +100,7 @@ it; press `Ctrl+C` there to stop. On a Mac, `scripts/install-agent.sh` makes it
 start by itself at every login instead. The **Setup** panel at the top lists anything
 still missing, with the command to fix it. When it disappears, you're ready.
 
-**7. (Optional) Install the Chrome extension**, to collect from LinkedIn:
+**7. (Optional) Install the Chrome extension**, to collect from LinkedIn, Indeed and StepStone:
 
 1. Open `chrome://extensions` in Chrome
 2. Turn on **Developer mode** (top right)
@@ -169,12 +169,12 @@ that happened.
 feature, the job sources, how ranking decides, the settings you can change,
 how Claude writes the documents, the CV-writing rules, and privacy.
 
-## A note on LinkedIn
+## A note on job sites
 
-LinkedIn's terms don't allow automated collection. The extension reads only
-pages you open yourself, at human pace, from your own logged-in browser. Still,
-know it before you use it. The Arbeitnow source is a public API and raises none
-of this.
+LinkedIn, Indeed and StepStone don't allow automated collection in their terms.
+The extension reads only search pages you open yourself, at human pace, from
+your own browser. Still, know it before you use it. The Arbeitnow source is a
+public API and raises none of this.
 
 ## License
 

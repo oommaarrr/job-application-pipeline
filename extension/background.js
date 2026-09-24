@@ -130,10 +130,13 @@ const li = (kw) =>
   `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(kw)}` +
   `&location=Germany&geoId=${GEO.germany}&f_TPR=r604800`;
 
+// One per site, so a new user sees all three working and can copy the pattern.
 const RECOMMENDED = [
-  { label: "Example: Machine Learning Engineer", url: li("Machine Learning Engineer") },
-  { label: "Example: Applied AI Engineer",       url: li("Applied AI Engineer") },
-  { label: "Example: MLOps Engineer",            url: li("MLOps Engineer") },
+  { label: "Example (LinkedIn): Machine Learning Engineer", url: li("Machine Learning Engineer") },
+  { label: "Example (Indeed): Applied AI Engineer",
+    url: "https://de.indeed.com/jobs?q=Applied+AI+Engineer&l=Deutschland&fromage=7" },
+  { label: "Example (StepStone): MLOps Engineer",
+    url: "https://www.stepstone.de/jobs?what=MLOps+Engineer&ag=7" },
 ];
 
 // Bump to re-seed. The seed is one-time (guarded by this), so a search the user
@@ -151,7 +154,7 @@ function searchKey(url) {
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/^www\./, "").split(".")[0];
-    const kw = u.searchParams.get("keywords") || u.searchParams.get("q") ||
+    const kw = u.searchParams.get("keywords") || u.searchParams.get("q") || u.searchParams.get("what") ||
                decodeURIComponent(u.pathname.split("/")[2] || "").replace(/-/g, " ");
     const geo = u.searchParams.get("geoId") || u.searchParams.get("location") || "";
     return `${host}:${geo}:${kw.trim().toLowerCase()}`;
