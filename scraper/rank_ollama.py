@@ -46,6 +46,7 @@ import urllib.error
 import urllib.request
 
 import config
+import ollama_model
 from applied_index import built_before, index as applied_index
 import ledger
 from jobkey import job_key
@@ -586,12 +587,15 @@ def sort_key(r: dict) -> tuple:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--model", default=config.OLLAMA_MODEL)
+    ap.add_argument("--model", default=None,
+                    help="default: OLLAMA_MODEL, or a model already installed in Ollama")
     ap.add_argument("--top", type=int, default=config.TOP_N)
     ap.add_argument("--day", default=None, help="only this scrape date, e.g. 2026-09-13")
     ap.add_argument("--limit", type=int, default=0, help="only the first N, for testing")
     ap.add_argument("--recheck", action="store_true", help="ignore cached answers")
     args = ap.parse_args()
+    # OLLAMA_MODEL if it is installed, otherwise one Ollama already has.
+    args.model = args.model or ollama_model.resolve(config) or ollama_model.wanted(config)
 
     OUT.mkdir(exist_ok=True)
     profile = PROFILE_PATH.read_text(encoding="utf-8")
