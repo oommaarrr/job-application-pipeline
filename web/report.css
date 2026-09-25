@@ -16,6 +16,10 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .wrap{max-width:60rem;margin:0 auto;padding:var(--sp-7) var(--sp-6) var(--sp-8)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
+/* The dashboard opens this page in the same tab, so it needs a way back. */
+.back{display:inline-block;margin:0 0 var(--sp-3);color:var(--dim);font-size:var(--fs-sm);text-decoration:none}
+.back:hover{color:var(--ink);text-decoration:underline}
+@media print{.back{display:none}}
 h1{font-size:var(--fs-2xl);font-weight:var(--fw-semi);letter-spacing:-.02em;line-height:var(--lh-tight);margin:0 0 var(--sp-2)}
 .sub{color:var(--dim);font-size:var(--fs-md);margin:0 0 var(--sp-5);max-width:44rem;text-wrap:pretty}
 h2{font-size:var(--fs-2xs);font-weight:var(--fw-semi);text-transform:uppercase;letter-spacing:var(--track-caps);

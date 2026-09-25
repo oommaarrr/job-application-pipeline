@@ -2,3 +2,5 @@
 # on whatever happened to be in the author's venv.
 requests>=2.31
 beautifulsoup4>=4.12
+# Finding and stopping processes the same way on macOS, Linux and Windows.
+psutil>=5.9

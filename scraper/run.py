@@ -15,7 +15,6 @@ throttled live source.
 """
 
 import pathlib
-import subprocess
 import sys
 from collections import Counter
 
@@ -82,7 +81,8 @@ def main() -> int:
     print(f"  audit → {audit_path}   (one-pass filter review)")
 
     if "--no-open" not in args:
-        subprocess.run(["open", str(html_path)], check=False)
+        from platform_util import open_path
+        open_path(html_path)
     return 0
 
 

@@ -69,6 +69,8 @@ is active. To keep two profiles:
 PROFILE_DIR=profiles/other ./start.sh
 ```
 
+(Windows PowerShell: `$env:PROFILE_DIR="profiles\other"; .\start.bat`.)
+
 A build **refuses to start** while your profile is still the example, so Claude
 is never paid to write CVs for someone who does not exist.
 
@@ -215,9 +217,16 @@ without a click. Turn it on once you trust the ranking.
 overwrites them: `scraper/config_local.py` (any value from `config.py`, e.g.
 `BUILD_TARGET = 15`) and `local.env` (e.g. `AUTOBUILD=1`).
 
-**Start at login (Mac):** `scripts/install-agent.sh` runs the bridge in the
-background at every login and restarts it if it crashes.
-`scripts/install-agent.sh --remove` undoes it.
+**Start at login (optional):** runs the bridge in the background at every
+login and restarts it if it crashes. Add `--remove` to undo it.
+
+| System | Command | What it installs |
+|---|---|---|
+| macOS | `scripts/install-agent.sh` | a launchd agent |
+| Windows | `scripts\install-agent.bat` | a per-user startup entry (no admin rights), running without a window |
+| Linux | `scripts/install-agent.sh` | a systemd user service (or an autostart entry without systemd) |
+
+Its output goes to `scraper/out/bridge.log`.
 
 **When something fails:** every step writes what happened to
 `scraper/out/events.jsonl`, shown on the dashboard's Activity panel. A failed
@@ -228,17 +237,25 @@ from what is there.
 
 **Two copies at once:** `BRIDGE_PORT=8799 ./start.sh` runs a second copy on
 another port. Everything the bridge starts follows it, except the Chrome
-extension, which always talks to port 8765.
+extension, which always talks to port 8765. Each copy only ever sees, adopts or
+stops its own builds.
+
+**Windows notes:** everything runs natively, no WSL. Setup links `builder/.venv`
+and `builder/profile` with directory junctions, which need no admin rights, and
+adds `.venv/bin/python` so the instructions Claude follows work unchanged in Git
+Bash. The shell helpers in `builder/` and `scraper/` (`pipeline-status.sh`,
+`rank-progress.sh`, `fresh-start.sh`) are Mac and Linux extras; the dashboard
+shows the same things.
 
 ---
 
 ## How Claude writes the documents
 
-Pressing **Build** runs `builder/run-batch.sh`, which:
+Pressing **Build** runs `builder/run_batch.py` (the same on every system), which:
 
-1. ranks the pool locally,
-2. checks your profile is filled in (and stops if it is not),
-3. links your profile at `builder/profile`,
+1. checks your profile is filled in (and stops if it is not),
+2. links your profile at `builder/profile`,
+3. ranks the pool locally,
 4. starts Claude Code in the background: `claude -p "/apply-batch N"`.
 
 Claude then follows `builder/.claude/commands/apply-batch.md`: read each job's
@@ -348,6 +365,9 @@ read what you commit.
   `scripts/export-open-source.sh` copies only what git would commit (never
   your profile, settings, history or CVs) into `../job-pipeline-open-source`,
   then runs the privacy scan on the copy.
+- **Test your change**: `python scripts/selftest.py` runs setup, the bridge and
+  real builds in a temporary copy, with a fake Claude and a fake ranker, so it
+  costs nothing and takes under a minute. It runs on macOS, Linux and Windows.
 - **Add a source**: copy `scraper/arbeitnow.py`, see [Job sources](#job-sources).
 - **Change a filter**: the rules are in `scraper/rank_ollama.py`; the gate tests
   in `scraper/test_gate.py` must still pass (`./scraper/.venv/bin/python

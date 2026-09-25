@@ -417,8 +417,21 @@ async function loadFunnel(){
   let f;
   try{ f=await fetch("/funnel").then(r=>r.json()); }catch(e){ return; }
   const card=$("funnelCard"); if(!card) return;
+  if(f.erased){
+    // The last ranking belongs to the pool that was erased: say so instead of
+    // showing its numbers as if they were this pool's.
+    card.classList.remove("hide");
+    $("funnel").innerHTML='<p class="muted">Nothing yet since the erase'+
+      (f.erased_at?' ('+esc(f.erased_at.replace("T"," "))+')':'')+
+      '. The funnel fills again after the next scrape and rank.</p>';
+    $("funnelWhy").textContent="";
+    $("funnelDrops").innerHTML="";
+    card.querySelector(".drops-wrap").classList.add("hide");
+    return;
+  }
   if(!f.ok||!f.stages||!f.stages.length){ card.classList.add("hide"); return; }
   card.classList.remove("hide");
+  card.querySelector(".drops-wrap").classList.remove("hide");
 
   const top=Math.max(1,f.stages[0].n||1);
   $("funnel").innerHTML=f.stages.map((st,i)=>{

@@ -132,10 +132,10 @@ const li = (kw) =>
 
 // One per site, so a new user sees all three working and can copy the pattern.
 const RECOMMENDED = [
-  { label: "Example (LinkedIn): Machine Learning Engineer", url: li("Machine Learning Engineer") },
-  { label: "Example (Indeed): Applied AI Engineer",
+  { label: "Example: Machine Learning Engineer", url: li("Machine Learning Engineer") },
+  { label: "Example: Applied AI Engineer",
     url: "https://de.indeed.com/jobs?q=Applied+AI+Engineer&l=Deutschland&fromage=7" },
-  { label: "Example (StepStone): MLOps Engineer",
+  { label: "Example: MLOps Engineer",
     url: "https://www.stepstone.de/jobs?what=MLOps+Engineer&ag=7" },
 ];
 
@@ -507,6 +507,14 @@ async function runOneSearch(search, pages) {
  * however long the intervening searches take, which is real work rather than a
  * sleep.
  */
+function siteLabel(url) {
+  const h = hostOf(url).toLowerCase();
+  if (h.includes("linkedin")) return "LinkedIn";
+  if (h.includes("stepstone")) return "StepStone";
+  if (h.includes("indeed")) return "Indeed";
+  return h;
+}
+
 function hostOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
@@ -577,7 +585,7 @@ async function runSchedule() {
       await setSched({ runState: rs });
 
       await chrome.storage.local.set({ autoStatus: {
-        text: `search ${i + 1}/${searches.length}: ${search.label}`, running: true } });
+        text: `search ${i + 1}/${searches.length}: ${siteLabel(search.url)} · ${search.label}`, running: true } });
 
       const res = await runOneSearch(search, s0.pages);
 

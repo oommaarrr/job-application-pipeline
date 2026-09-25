@@ -2,7 +2,7 @@
 """
 Merge the batch fragments written by parallel build shards into one batch.json.
 
-When run-batch.sh builds in parallel, each Claude session is one shard and writes
+When run_batch.py builds in parallel, each Claude session is one shard and writes
 its own applications/<date>/batch.shard-<i>.json rather than the shared
 batch.json, because two sessions writing the same file at once would corrupt it.
 This stitches them back together after both have finished:

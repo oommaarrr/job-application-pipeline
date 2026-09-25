@@ -41,7 +41,7 @@ import config; print(config.BUILD_TARGET)" 2>/dev/null || echo 15)
     fi
   done
 
-  batch=$(pgrep -f "run-batch.sh" | head -1)
+  batch=$(pgrep -f "run_batch.py|run-batch.sh" | head -1)
   writer=$(pgrep -f "claude -p" | head -1)
   rank=$(pgrep -f "rank_ollama" | head -1)
 
@@ -81,7 +81,7 @@ line_pass() {
   done
   if pgrep -f "claude -p" > /dev/null; then st="writing"
   elif pgrep -f "rank_ollama" > /dev/null; then st="ranking"
-  elif pgrep -f "run-batch.sh" > /dev/null; then st="between stages"
+  elif pgrep -f "run_batch.py|run-batch.sh" > /dev/null; then st="between stages"
   else st="not running"; fi
   printf '%s  %-14s built %2d  payloads %2d  planned %2d\n' \
          "$(date +%H:%M:%S)" "$st" "$d" "$pay" "$pl"
@@ -94,7 +94,7 @@ case "${1:-}" in
     # below exists for when that is distracting.
     while :; do
       clear; one_pass
-      if ! pgrep -f "run-batch.sh" > /dev/null; then
+      if ! pgrep -f "run_batch.py|run-batch.sh" > /dev/null; then
         echo; echo " The run has finished. Press Ctrl-C to close."; break
       fi
       sleep 10
@@ -109,7 +109,7 @@ case "${1:-}" in
       cur=$(line_pass)
       key=${cur#* }
       if [ "$key" != "$prev" ]; then echo "$cur"; prev="$key"; fi
-      pgrep -f "run-batch.sh" > /dev/null || { echo "run finished."; break; }
+      pgrep -f "run_batch.py|run-batch.sh" > /dev/null || { echo "run finished."; break; }
       sleep 10
     done
     ;;

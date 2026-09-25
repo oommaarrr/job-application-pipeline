@@ -26,7 +26,6 @@ from __future__ import annotations
 import contextlib
 import csv
 import datetime as dt
-import fcntl
 import io
 import json
 import os
@@ -34,6 +33,7 @@ import pathlib
 
 from applied_index import role_key
 from jobkey import job_key
+from platform_util import file_lock
 
 HERE = pathlib.Path(__file__).parent
 HISTORY = HERE / "history"
@@ -56,13 +56,8 @@ def _seen_days() -> int:
 @contextlib.contextmanager
 def _locked():
     """One writer at a time across processes: the bridge and the ranker both write."""
-    HISTORY.mkdir(parents=True, exist_ok=True)
-    with open(_LOCK, "a") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+    with file_lock(_LOCK):
+        yield
 
 
 def _read(path: pathlib.Path, fields: list[str]) -> list[dict]:

@@ -3,7 +3,7 @@
 A Claude Code skill can live in your Claude account or inside a project. For
 this pipeline it **must** live in the project, at `.claude/skills/cv-builder/`.
 
-The build runs headless: `run-batch.sh` starts `claude -p "/apply-batch N"` with
+The build runs headless: `run_batch.py` starts `claude -p "/apply-batch N"` with
 no interactive session attached. An account-synced skill resolves in an
 interactive session and is **missing from every headless run**, because the
 account copy sits under a session-scoped path that no longer exists when the

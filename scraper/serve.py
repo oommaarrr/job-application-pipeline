@@ -28,7 +28,6 @@ import json
 import pathlib
 import re
 import os
-import signal
 import subprocess
 import urllib.request
 import threading
@@ -66,13 +65,20 @@ _load_local_env(REPO / "local.env")
 # The ranking profile. PROFILE_DIR lets a user keep several (profiles/me,
 # profiles/side-quest) and pick one per run without editing any source.
 from profile_dir import profile_dir as _profile_dir
+import platform_util as pu
+# Every Python child (ranker, Arbeitnow, the build and what Claude runs) reads
+# and writes UTF-8, whatever the Windows code page is.
+os.environ.update(pu.utf8_env())
 PROFILE_DIR = _profile_dir()
 PROFILE = PROFILE_DIR / "profile.md"
 INBOX = ROOT / "inbox"
 ARCHIVE = INBOX / "archive"
 APPLIED = ROOT / "applied.json"
 OUT = ROOT / "out"
-PYTHON = ROOT / ".venv" / "bin" / "python"
+PYTHON = pu.venv_python(ROOT / ".venv")
+if not PYTHON.exists():
+    # Started with some other interpreter (a hand-made venv, a CI runner).
+    PYTHON = pathlib.Path(sys.executable)
 # Where /apply-batch writes its results. Read-only from here: the bridge shows
 # what was built so the popup can flag it, and never writes into that project.
 BATCHES = REPO / "builder" / "applications"
@@ -393,7 +399,8 @@ def rerank() -> dict:
         try:
             proc = subprocess.run(
                 [str(PYTHON), "run.py", "--inbox", "--no-open"],
-                cwd=ROOT, capture_output=True, text=True, timeout=300)
+                cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=300, **pu.quiet_kwargs())
         except (subprocess.TimeoutExpired, OSError) as e:
             _last_rank.update(ran_at=dt.datetime.now().isoformat(timespec="seconds"),
                               error=str(e))
@@ -450,7 +457,7 @@ _trigger_only: str | None = None
 # something in the pool, start the build itself. No polling, no window, and it
 # does not matter how the scrape was started.
 BUILDER = pathlib.Path(os.environ.get("BUILDER_DIR") or (REPO / "builder"))
-BUILD_SCRIPT = BUILDER / "run-batch.sh"
+BUILD_SCRIPT = BUILDER / "run_batch.py"
 
 # Off by default. Autobuild spends Claude usage on its own the moment a scrape
 # finishes, which a first-time user should never discover by surprise. Turn it
@@ -501,11 +508,23 @@ _RESET_MARK = ROOT / "out" / ".cycle_reset"
 
 def _load_reset_at() -> float | None:
     try:
-        return float(_RESET_MARK.read_text().strip())
+        return float(_RESET_MARK.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
 
 _reset_at: float | None = _load_reset_at()
+
+
+def _rank_is_current() -> bool:
+    """False when the last ranking predates the last erase. The ranking belongs
+    to the pool that was erased, so the funnel and the Fit ranking page must not
+    keep showing it as if it were this pool's. The file itself is kept (its
+    cache makes the next rank faster); only its numbers stop being shown."""
+    f = OUT / "ollama_rank.json"
+    try:
+        return not (_reset_at is not None and f.stat().st_mtime <= _reset_at)
+    except OSError:
+        return False
 
 def _load_search_log() -> list:
     """
@@ -527,12 +546,7 @@ _search_log = _load_search_log()
 
 def _adopt_running_rank() -> None:
     """If a rank_ollama.py is still going (bridge restarted mid-rank), track it."""
-    try:
-        out = subprocess.run(["pgrep", "-f", "rank_ollama.py"],
-                             capture_output=True, text=True, timeout=5).stdout.split()
-        pid = next((int(x) for x in out if x.isdigit()), None)
-    except (subprocess.SubprocessError, ValueError):
-        pid = None
+    pid = next(iter(pu.find_script_procs(ROOT / "rank_ollama.py")), None)
     if pid:
         _rank.update(running=True, pid=pid, finished=None,
                      started=_rank.get("started"))
@@ -630,14 +644,8 @@ def _rank_running() -> bool:
         # treating a zombie as finished (same reasoning as _build_running).
         pid = _rank.get("pid")
         if pid is not None:
-            try:
-                os.kill(pid, 0)
-                out = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
-                                     capture_output=True, text=True, timeout=5).stdout.strip()
-                if out and not out.startswith("Z"):
-                    return True
-            except (OSError, subprocess.SubprocessError):
-                pass
+            if pu.alive(pid) and any("rank_ollama.py" in t for t in pu.cmdline(pid)):
+                return True
     code = _rank_proc.returncode if _rank_proc is not None else None
     _rank_proc = None
     _rank.update(running=False,
@@ -651,7 +659,7 @@ def _rank_running() -> bool:
                fix=_error_fix(tail) or "Press Retry. Jobs already judged are cached, so it resumes where it stopped.")
         return False
     try:
-        h = json.loads((OUT / "ollama_rank.json").read_text()).get("health", {})
+        h = json.loads((OUT / "ollama_rank.json").read_text(encoding="utf-8")).get("health", {})
         _rank["result"] = {"buildable": h.get("buildable"),
                            "strong": h.get("strong"), "verdict": h.get("verdict")}
         _event("rank", "ok", f"ranked: {h.get('buildable', 0)} passed the filters, "
@@ -683,7 +691,7 @@ def start_rank() -> dict:
     global _rank_proc
     proc = subprocess.Popen([str(PYTHON), str(ranker), "--top", str(top)],
                             cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT,
-                            start_new_session=True)
+                            stdin=subprocess.DEVNULL, **pu.detach_kwargs())
     _rank_proc = proc
     _rank.update(running=True, started=dt.datetime.now().isoformat(timespec="seconds"),
                  finished=None, pid=proc.pid, result=None)
@@ -694,37 +702,33 @@ def start_rank() -> dict:
 _adopt_running_rank()
 
 
+def _build_pids() -> list[int]:
+    """Running builds: the Python runner, or a run-batch.sh started before the
+    runner moved to Python and still going."""
+    return pu.find_script_procs(BUILD_SCRIPT, BUILDER / "run-batch.sh")
+
+
 def _adopt_running_build() -> None:
     """
-    Adopt a build (run-batch.sh) still running when the bridge restarts, so the
+    Adopt a build (run_batch.py) still running when the bridge restarts, so the
     tracker keeps following it instead of showing it finished. _build_running()
     already falls back to the pid; this repopulates it on startup.
     """
-    try:
-        out = subprocess.run(["pgrep", "-f", "run-batch.sh"],
-                             capture_output=True, text=True, timeout=5).stdout.split()
-        pid = next((int(x) for x in out if x.isdigit()), None)
-    except (subprocess.SubprocessError, ValueError):
-        pid = None
+    pid = next(iter(_build_pids()), None)
     if pid and not _build.get("running"):
         _build.update(running=True, pid=pid, finished=None, target=_build_target_of(pid),
                       reason=_build.get("reason") or "in progress (adopted on restart)")
 
 
 def _build_target_of(pid: int | None) -> int | None:
-    """The build ceiling the running run-batch.sh was launched with — its numeric
+    """The build ceiling the running run_batch.py was launched with — its numeric
     argument. Read from the live process so the tracker shows the number the user
     actually asked for (e.g. 25), not the config default. None if not passed."""
     if not pid:
         return None
-    try:
-        args = subprocess.run(["ps", "-o", "args=", "-p", str(pid)],
-                              capture_output=True, text=True, timeout=5).stdout
-    except subprocess.SubprocessError:
-        return None
-    toks = args.split()
+    toks = pu.cmdline(pid)
     for i, t in enumerate(toks):
-        if t.endswith("run-batch.sh"):
+        if t.endswith(("run_batch.py", "run-batch.sh")):
             for nxt in toks[i + 1:]:
                 if nxt.isdigit():
                     return int(nxt)
@@ -757,14 +761,10 @@ def _build_running() -> bool:
     if pid is None:
         _build.update(running=False)
         return False
-    try:
-        os.kill(pid, 0)
-        out = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
-                             capture_output=True, text=True, timeout=5).stdout.strip()
-        if out and not out.startswith("Z"):
-            return True
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # ...and check it is still a BUILD: a recycled pid must not read as one.
+    if pu.alive(pid) and any(t.endswith(("run_batch.py", "run-batch.sh"))
+                             for t in pu.cmdline(pid)):
+        return True
     _build.update(running=False,
                   finished=dt.datetime.now().isoformat(timespec="seconds"))
     _record_build_outcome(None)
@@ -801,13 +801,13 @@ def arbeitnow_running() -> bool:
 
 
 def _build_outcome() -> dict:
-    """What the last build ended with, as run-batch.sh recorded it."""
+    """What the last build ended with, as run_batch.py recorded it."""
     return _read_json(BUILD_OUTCOME, {})
 
 
 def _record_build_outcome(code: int | None) -> None:
     """
-    Turn a finished build into one audit line. run-batch.sh writes
+    Turn a finished build into one audit line. run_batch.py writes
     logs/last-outcome.json on every exit path with a plain reason and a fix;
     when it could not (killed, crashed), the exit code and log tail stand in.
     """
@@ -1353,7 +1353,7 @@ def progress() -> dict:
 
 def start_build(reason: str, top: int | None = None) -> dict:
     """
-    Launch run-batch.sh detached, at most one at a time.
+    Launch run_batch.py detached, at most one at a time.
 
     Detached on purpose: this runs inside an HTTP handler, and a build takes
     the better part of an hour between the local ranking and Claude writing.
@@ -1369,7 +1369,7 @@ def start_build(reason: str, top: int | None = None) -> dict:
         log_dir = BUILDER / "logs"
         log_dir.mkdir(exist_ok=True)
         log_path = log_dir / f"{_today()}.log"
-        cmd = ["/bin/bash", str(BUILD_SCRIPT)]
+        cmd = [str(PYTHON), str(BUILD_SCRIPT)]
         if top:
             cmd.append(str(top))
         env = dict(os.environ, BRIDGE_PORT=str(PORT))
@@ -1383,12 +1383,12 @@ def start_build(reason: str, top: int | None = None) -> dict:
         handle.write(f"\n=== build started by the bridge ({reason}) "
                      f"{dt.datetime.now():%Y-%m-%d %H:%M:%S} ===\n")
         handle.flush()
-        # start_new_session detaches it from this process group, so stopping the
-        # bridge does not take a running build down with it.
+        # Detached (a new session, or on Windows a new process group with no
+        # window), so stopping the bridge does not take a running build down.
         global _build_proc
         proc = subprocess.Popen(cmd, cwd=str(BUILDER), stdout=handle,
-                                stderr=subprocess.STDOUT, start_new_session=True,
-                                env=env)
+                                stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                env=env, **pu.detach_kwargs())
         _build_proc = proc
         _build.update(running=True, started=dt.datetime.now().isoformat(timespec="seconds"),
                       finished=None, reason=reason, pid=proc.pid, log=str(log_path),
@@ -1407,50 +1407,23 @@ def stop_build() -> dict:
     Stop a running build now, cleanly, so the dashboard's Stop button actually
     halts it and a fresh build can start straight after.
 
-    run-batch.sh is launched with start_new_session, so its pid leads a process
-    group that also holds the Claude sessions and the watchdogs it spawned.
-    Killing the group takes the whole tree down in one signal, which the pid
-    alone would not: killing run-batch.sh leaves its detached claude children
-    writing documents. TERM first for a chance to clean up, then KILL. The run
+    The runner's whole process tree goes: killing the runner alone would leave
+    its claude children writing documents. TERM first for a chance to clean up
+    (on POSIX the runner then records "stopped" itself), then KILL. The run
     lock and the resume state are cleared too, otherwise the next build would
     refuse with "already running" or resume the half-finished batch.
     """
-    pids: list[int] = []
-    p = _build.get("pid")
-    if p:
-        pids.append(int(p))
-    try:
-        out = subprocess.run(["pgrep", "-f", "run-batch.sh"],
-                             capture_output=True, text=True, timeout=5).stdout.split()
-        pids += [int(x) for x in out if x.isdigit()]
-    except (subprocess.SubprocessError, ValueError):
-        pass
+    # Found by command line, never by the remembered pid alone: pids are reused
+    # (quickly, on Windows), and a stale one would stop an unrelated program.
+    pids = _build_pids()
 
     killed = False
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        groups: set[int] = set()
-        for pid in set(pids):
-            try:
-                groups.add(os.getpgid(pid))
-            except ProcessLookupError:
-                pass
-        for gid in groups:
-            try:
-                os.killpg(gid, sig)
-                killed = True
-            except (ProcessLookupError, PermissionError):
-                pass
-        # Any Claude session that outlived its group (an adopted orphan) dies here.
-        try:
-            subprocess.run(["pkill", sig == signal.SIGKILL and "-9" or "-15",
-                            "-f", "claude -p /apply-batch"], timeout=5)
-        except subprocess.SubprocessError:
-            pass
-        if sig is signal.SIGTERM:
-            import time as _t
-            _t.sleep(2)
-        if not _any_build_proc():
-            break
+    for pid in set(pids):
+        # The runner and every Claude session and watchdog under it.
+        killed = pu.kill_tree(pid) or killed
+    # Any Claude session that outlived its runner (an adopted orphan) dies here.
+    for pid in pu.find_apply_batch_claudes(BUILDER):
+        killed = pu.kill_tree(pid) or killed
 
     # Clear the lock and resume state so the next build starts clean.
     for path in (BUILDER / "logs" / ".run.lock",):
@@ -1479,15 +1452,8 @@ def stop_build() -> dict:
 
 
 def _any_build_proc() -> bool:
-    """True if a run-batch.sh or an apply-batch Claude is still alive anywhere."""
-    for pat in ("run-batch.sh", "claude -p /apply-batch"):
-        try:
-            if subprocess.run(["pgrep", "-f", pat], capture_output=True,
-                              timeout=5).returncode == 0:
-                return True
-        except subprocess.SubprocessError:
-            pass
-    return False
+    """True if a build runner or an apply-batch Claude is still alive anywhere."""
+    return bool(_build_pids() or pu.find_apply_batch_claudes(BUILDER))
 
 
 def ranking_data() -> dict:
@@ -1499,7 +1465,7 @@ def ranking_data() -> dict:
     nobody could safely edit, because every CSS brace was a format placeholder.
     The page is now static and this only carries the numbers.
     """
-    data = _read_json(OUT / "ollama_rank.json", {})
+    data = _read_json(OUT / "ollama_rank.json", {}) if _rank_is_current() else {}
     if not data or not (data.get("passed") or data.get("dropped")):
         return {"ok": False, "rows": [], "counts": {}, "model": ""}
 
@@ -1570,7 +1536,8 @@ def _claude_signed_in(binary) -> bool | None:
         return _claude_auth_cache["value"]
     try:
         out = subprocess.run([str(binary), "auth", "status"], capture_output=True,
-                             text=True, timeout=12).stdout
+                             text=True, encoding="utf-8", errors="replace", timeout=12,
+                             stdin=subprocess.DEVNULL, **pu.quiet_kwargs()).stdout
         value = bool(json.loads(out).get("loggedIn"))
     except Exception:                                      # noqa: BLE001
         value = None
@@ -1620,13 +1587,17 @@ def doctor() -> dict:
     add("builder", "Builder directory found", BUILDER.exists(),
         str(BUILDER) if BUILDER.exists() else f"missing: {BUILDER}",
         "Set BUILDER_DIR, or keep builder/ next to scraper/")
-    claude = next((c for c in (pathlib.Path.home() / ".local/bin/claude",
-                               pathlib.Path("/usr/local/bin/claude"),
-                               pathlib.Path("/opt/homebrew/bin/claude"))
-                   if c.exists()), None)
+    claude = pu.find_claude()
     add("claude", "Claude Code is installed", bool(claude),
-        "found" if claude else "not found in the usual three places",
-        "curl -fsSL https://claude.ai/install.sh | bash")
+        "found" if claude else "not found on PATH or where its installers put it",
+        pu.install_hint("claude"))
+    if pu.IS_WIN:
+        # Claude Code runs its commands through Git Bash on Windows, so a build
+        # without it fails at the first command.
+        bash = pu.find_git_bash()
+        add("git-bash", "Git for Windows (Git Bash) is installed", bool(bash),
+            "found" if bash else "not found — Claude Code needs it on Windows",
+            pu.install_hint("git-bash"))
     if claude:
         signed = _claude_signed_in(claude)
         add("claude-login", "Claude Code is signed in", signed is not False,
@@ -1687,6 +1658,10 @@ def funnel() -> dict:
     invisible until now: a user whose batch came back tiny could not see whether
     the scrape was thin, the gates were harsh, or the target was simply low.
     """
+    if not _rank_is_current() and (OUT / "ollama_rank.json").exists():
+        return {"ok": False, "erased": True, "stages": [], "dropped": [],
+                "erased_at": dt.datetime.fromtimestamp(_reset_at).isoformat(timespec="minutes"),
+                "why": "Erased. The funnel fills again after the next scrape and rank."}
     rank = _read_json(OUT / "ollama_rank.json", {})
     counts = rank.get("counts", {}) or {}
     health = rank.get("health", {}) or {}
@@ -1888,7 +1863,8 @@ class Handler(BaseHTTPRequestHandler):
             _event("bridge", "failed", f"{self.command} {self.path.split('?')[0]} failed: "
                    f"{type(e).__name__}: {e}"[:300],
                    fix="The bridge is still running. Try again; if it repeats, the "
-                       "traceback is in the Terminal window running start.sh.")
+                       "traceback is in the window running the bridge, or in "
+                       "scraper/out/bridge.log.")
             try:
                 self._send({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
             except OSError:
@@ -2056,7 +2032,8 @@ class Handler(BaseHTTPRequestHandler):
                 handle.flush()
                 _arbeitnow["proc"] = subprocess.Popen(
                     [str(PYTHON), "arbeitnow.py"], cwd=ROOT,
-                    stdout=handle, stderr=subprocess.STDOUT, start_new_session=True,
+                    stdout=handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                    **pu.detach_kwargs(),
                     env=dict(os.environ, BRIDGE_PORT=str(PORT)))
                 _event("arbeitnow", "started", "collecting from Arbeitnow")
             except OSError as e:

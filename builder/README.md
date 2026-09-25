@@ -6,13 +6,16 @@ role, as PDFs, using Claude Code. See the main [README](../README.md) for setup.
 ## How a build runs
 
 ```bash
-./run-batch.sh               # build up to BUILD_TARGET from the current ranking
-BATCH_SIZE=3 ./run-batch.sh  # just three this time
+.venv/bin/python run_batch.py      # build up to BUILD_TARGET from the current ranking
+.venv/bin/python run_batch.py 3    # just three this time
 ```
+
+(Windows: `.venv\Scripts\python.exe run_batch.py`. `run-batch.sh` still works
+on Mac and Linux; it calls the same file.)
 
 Or press **Build** on the dashboard, which runs the same script.
 
-`run-batch.sh` ranks the pool locally, links the active profile at `profile/`,
+`run_batch.py` checks the profile, links it at `profile/`, ranks the pool locally,
 then starts `claude -p "/apply-batch N"` in this folder. Claude reads the
 `cv-builder` skill for the rules and your profile for the facts, writes a JSON
 payload per document, and `build_docs.py` renders the PDFs.
@@ -39,4 +42,4 @@ payload per document, and `build_docs.py` renders the PDFs.
 .venv/bin/python check_spread.py applications/<date>/*/cv_*.json
 ```
 
-Always `.venv/bin/python`: `setup.sh` links it to the scraper's environment.
+Always `.venv/bin/python`: setup links it to the scraper's environment (on Windows it also adds that path for Git Bash; `.venv\Scripts\python.exe` is the same interpreter).

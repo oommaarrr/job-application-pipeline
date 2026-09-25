@@ -107,7 +107,7 @@ def _shard(rows: list[dict]) -> list[dict]:
     Keep only this worker's slice of the ranked list, when the build is running
     in parallel.
 
-    run-batch.sh can launch two or more Claude sessions at once to cut wall-clock
+    run_batch.py can launch two or more Claude sessions at once to cut wall-clock
     time. Each is one shard, told which by APPLY_SHARD (1-based) and how many by
     APPLY_SHARDS. With APPLY_SHARDS unset or 1 this is a no-op and the single
     session sees the whole list exactly as before.

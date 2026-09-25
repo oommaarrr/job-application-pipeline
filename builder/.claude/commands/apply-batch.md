@@ -70,7 +70,9 @@ yours, renumber `rank` across the whole list.
 
 Read every description it prints. A CV written from a job title is worthless.
 Always use `.venv/bin/python`, never bare `python3`, which may not have the PDF
-libraries. If it prints zero roles, stop and say so.
+libraries. That path works on Windows too: setup adds it to the venv for Git
+Bash (if it is ever missing there, `.venv/Scripts/python.exe` is the same
+interpreter). If it prints zero roles, stop and say so.
 
 ## 2. Load the facts and the rules
 

@@ -387,6 +387,7 @@ def render(batch: dict) -> str:
 <script>{THEME_BOOT}</script><style>{CSS}</style></head>
 <body>
 <div class="wrap">
+  <a class="back" href="{BRIDGE}/dashboard">&larr; Dashboard</a>
   <h1>Application batch &middot; {esc(date)}</h1>
   <p class="sub">{len(built)} built{f' from a pool of {esc(pool)}' if pool else ''},
      ranked by fit rather than by the scraper's order.</p>
@@ -416,7 +417,7 @@ def render(batch: dict) -> str:
        <b>Skipped</b> is local to this page only. Both survive a reload, as does the
        Hide done filter. CV and cover letter links download rather than open.</p>
     <p>If the bridge shows offline, start it with
-       <code>./start.sh</code> in the project folder, then tick again.</p>
+       <code>./start.sh</code> (Windows: <code>start.bat</code>) in the project folder, then tick again.</p>
   </footer>
 </div>
 <script>{JS.replace("__DATE__", date).replace("__BRIDGE__", BRIDGE)}</script>

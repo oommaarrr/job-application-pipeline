@@ -1,7 +1,7 @@
 # Builder: context for every Claude session in this folder
 
 This file loads automatically in any Claude Code session opened in `builder/`,
-including the headless one `run-batch.sh` starts. Nothing carries over between
+including the headless one `run_batch.py` starts. Nothing carries over between
 sessions; everything that must survive is on disk.
 
 ## What this folder does
@@ -14,7 +14,7 @@ cover letter per role, as PDFs, plus a review page. The batch procedure is the
 
 1. **Invoke the `cv-builder` skill** (`.claude/skills/cv-builder/`). It holds the
    rules: structure, bullets, summary, tailoring, honesty, format, checklist.
-2. **Read the profile at `profile/`.** `run-batch.sh` links the active profile
+2. **Read the profile at `profile/`.** `run_batch.py` links the active profile
    there before Claude starts. `identity.md`, `profile.md` and
    `reference/PROJECTS.md` are the only source of facts. Nothing goes on a
    document that is not in them.
@@ -30,8 +30,10 @@ cover letter per role, as PDFs, plus a review page. The batch procedure is the
 ```
 
 Always `.venv/bin/python`, never bare `python3`: the system Python may not have
-the PDF libraries. `.venv` here is a link to `../scraper/.venv`, created by
-`setup.sh`.
+the PDF libraries. `.venv` here is a link to `../scraper/.venv` (a junction on
+Windows), created by setup. On Windows setup also adds `.venv/bin/python`, so
+the same command works in Git Bash; `.venv/Scripts/python.exe` is the same
+interpreter.
 
 ## Hard rules
 

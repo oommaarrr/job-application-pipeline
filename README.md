@@ -1,7 +1,9 @@
 # Job Pipeline
 
 **Finds jobs that fit you and writes a tailored CV and cover letter for each
-one, on your own computer.**
+one, on your own computer.** Works on Mac, Windows and Linux.
+
+[![selftest](https://github.com/oommaarrr/job-application-pipeline/actions/workflows/selftest.yml/badge.svg)](https://github.com/oommaarrr/job-application-pipeline/actions/workflows/selftest.yml)
 
 You collect postings with one click. A free AI on your laptop reads every one
 and keeps only the jobs that match you. Claude then writes a CV and a cover
@@ -49,19 +51,23 @@ flowchart LR
 
 ## What you need
 
-- **A Mac or Linux computer** with **[Python 3.11+](https://www.python.org/downloads/)**
+- **A Mac, Windows or Linux computer** with **[Python 3.11+](https://www.python.org/downloads/)**.
 - **[Ollama](https://ollama.com/download)**: the free local AI that ranks jobs. Install it and open it once.
 - **[Claude Code](https://claude.com/claude-code)** and a Claude subscription: writes the CVs.
 - **Google Chrome** (optional): only for collecting from LinkedIn, Indeed or StepStone.
+- **Windows only: [Git for Windows](https://git-scm.com/download/win)**. Claude Code
+  runs its commands through the Git Bash it installs.
+
+The Windows steps are [their own section](#set-up-on-windows-once).
 
 ---
 
-## Set up (once)
+## Set up on Mac or Linux (once)
 
 **1. Get the code.** Download the ZIP from this page (green **Code** button →
 **Download ZIP**) and unzip it, or `git clone` it.
 
-**2. Open Terminal in that folder.** On a Mac: open the folder in Finder,
+**2. Open a terminal in that folder.** On a Mac: open the folder in Finder,
 right-click it, choose **New Terminal at Folder**.
 
 **3. Run the setup:**
@@ -95,23 +101,84 @@ which jobs rank highly.
 ./start.sh
 ```
 
-Your browser opens the dashboard. Keep the Terminal window open while you use
-it; press `Ctrl+C` there to stop. On a Mac, `scripts/install-agent.sh` makes it
-start by itself at every login instead. The **Setup** panel at the top lists anything
+Your browser opens the dashboard. Keep that window open while you use it;
+press `Ctrl+C` there to stop. The **Setup** panel at the top lists anything
 still missing, with the command to fix it. When it disappears, you're ready.
 
-**7. (Optional) Install the Chrome extension**, to collect from LinkedIn, Indeed and StepStone:
+Optional: `scripts/install-agent.sh` starts it by itself at every login instead
+(`scripts/install-agent.sh --remove` undoes it).
+
+**7. (Optional) Install the Chrome extension**: see [below](#chrome-extension-optional).
+
+---
+
+## Set up on Windows (once)
+
+Windows 10 or 11. Everything runs natively; no WSL, no admin rights.
+
+**1. Install the four tools** (once). The quickest way is PowerShell
+(Start menu → type *PowerShell* → Enter):
+
+```powershell
+winget install -e --id Python.Python.3.12 --source winget
+winget install -e --id Git.Git --source winget
+winget install -e --id Ollama.Ollama --source winget
+irm https://claude.ai/install.ps1 | iex
+```
+
+Or use the installers: [Python](https://www.python.org/downloads/) (tick **Add
+python.exe to PATH**), [Git for Windows](https://git-scm.com/download/win)
+(Claude Code runs its commands through the Git Bash it installs),
+[Ollama](https://ollama.com/download) and [Claude Code](https://claude.com/claude-code).
+**Close PowerShell and open a new one afterwards**, so it sees them.
+
+**2. Get the code.** Download the ZIP from this page (green **Code** button →
+**Download ZIP**) and unzip it somewhere normal, like `Documents`, not a
+network drive.
+
+**3. Run the setup:** double-click **`setup.bat`** in that folder. It installs
+everything it needs, lists anything still missing with the command to fix it,
+and is safe to run again.
+
+**4. Sign in to Claude and create your profile.** In the folder, right-click an
+empty spot → **Open in Terminal**, then:
+
+```powershell
+claude auth login
+claude "/make-profile C:\Users\you\Downloads\my-cv.pdf"
+```
+
+Use the real path to your CV (PDF, Word or text). **Open
+`profiles\me\profile.md` once and check it**: it decides which jobs rank highly.
+
+**5. Start it:** double-click **`start.bat`**. Your browser opens the dashboard.
+Keep that window open while you use it; close it (or press `Ctrl+C`) to stop.
+The **Setup** panel at the top lists anything still missing.
+
+Optional: double-click **`scripts\install-agent.bat`** to start it by itself at
+every login, in the background with no window. Run
+`scripts\install-agent.bat --remove` to undo it.
+
+**6. (Optional) Install the Chrome extension**: see below.
+
+---
+
+## Chrome extension (optional)
+
+To collect from LinkedIn, Indeed and StepStone:
 
 1. Open `chrome://extensions` in Chrome
 2. Turn on **Developer mode** (top right)
 3. Click **Load unpacked** and choose the `extension` folder inside this project
 4. Click the puzzle icon in the toolbar and pin **Job Collector**
 
+Every saved search shows which site it runs on.
+
 ---
 
 ## Everyday use
 
-1. Run `./start.sh`. The dashboard opens.
+1. Run `./start.sh` (Windows: `start.bat`). The dashboard opens.
 2. **Collect.** Press **+ Arbeitnow**, or in the Chrome extension open
    **Saved searches** and press **Run all searches now**.
 3. **Rank.** Press **Rank pool**. It takes a few minutes; the **Funnel** shows
@@ -155,11 +222,15 @@ that happened.
 
 | Problem | Fix |
 |---|---|
-| The dashboard won't open | Run `./start.sh`, and keep its window open |
+| The dashboard won't open | Run `./start.sh` (Windows: `start.bat`), and keep its window open |
 | "Ollama is not running" | Open the Ollama app, or run `ollama serve` |
-| "Your profile is filled in" is red | Step 5 above: create your profile |
+| "Your profile is filled in" is red | Create your profile (Mac/Linux step 5, Windows step 4) |
 | Build stops straight away | Read the message in the build log; usually the profile or the Claude login |
 | The extension shows old things | You have two copies loaded. Remove the old one at `chrome://extensions` |
+| Windows: `setup.bat` says Python is not installed | Install it (Windows step 1), tick **Add python.exe to PATH**, then open a new window |
+| Windows: typing `python` opens the Microsoft Store | Same fix: that is Windows' placeholder, not Python |
+| Windows: "Git for Windows is not installed" | `winget install -e --id Git.Git --source winget`, then restart `start.bat` |
+| Windows: `claude` is not recognised | Open a new PowerShell window after installing it |
 
 ---
 

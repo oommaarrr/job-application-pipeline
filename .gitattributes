@@ -1,0 +1,9 @@
+# Line endings that each kind of script needs, whatever the checkout's
+# core.autocrlf says. A .sh with CRLF fails in bash ("bad interpreter: ^M"),
+# and a .bat with LF can misparse labels and blocks in cmd.exe.
+* text=auto
+*.sh   text eol=lf
+*.py   text eol=lf
+*.bat  text eol=crlf
+*.png  binary
+*.pdf  binary

@@ -438,6 +438,15 @@ refresh();
  */
 const sched = (m) => chrome.runtime.sendMessage(m).catch(() => null);
 
+function siteOf(url) {
+  let h = "";
+  try { h = new URL(url).hostname.toLowerCase(); } catch { return "?"; }
+  if (h.includes("linkedin")) return "LinkedIn";
+  if (h.includes("stepstone")) return "StepStone";
+  if (h.includes("indeed")) return "Indeed";
+  return h.replace(/^www\./, "");
+}
+
 async function refreshSched() {
   const s = await sched({ type: "sched:get" });
   if (!s) return;
@@ -453,7 +462,12 @@ async function refreshSched() {
   s.searches.forEach((q, i) => {
     const li = document.createElement("li");
     const span = document.createElement("span");
-    span.textContent = q.label;
+    // Every saved search says which site it runs on: a label alone ("ML
+    // Engineer Berlin") reads the same for LinkedIn, Indeed and StepStone.
+    const site = document.createElement("b");
+    site.className = "site";
+    site.textContent = siteOf(q.url);
+    span.append(site, " ", q.label);
     span.title = q.url;
     /*
      * Edit in place.
