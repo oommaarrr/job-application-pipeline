@@ -334,10 +334,17 @@ def main() -> int:
         section("bridge")
         stub_ollama()
         e.start_bridge()
-        check(e.wait_up(), f"start.py --background brings the bridge up on {e.port}")
+        began = time.time()
+        # Generous on purpose: the first start on a fresh CI machine loads a
+        # just-installed venv, and a cold macOS runner took about a minute.
+        up = e.wait_up(120)
+        log = work / "scraper" / "out" / "bridge.log"
+        check(up, f"start.py --background brings the bridge up on {e.port} "
+                  f"({time.time() - began:.0f}s)",
+              log.read_text(encoding="utf-8", errors="replace")[-1500:] if log.exists() else "no log")
         for path in ("/dashboard", "/ranking", "/funnel", "/doctor", "/events", "/status"):
             try:
-                code = e.get(path)[0]
+                code = e.get(path, 30)[0]
             except OSError as ex:
                 code = str(ex)
             check(code == 200, f"GET {path}", str(code))
