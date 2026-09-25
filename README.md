@@ -51,115 +51,111 @@ flowchart LR
 
 ## What you need
 
-- **A Mac, Windows or Linux computer** with **[Python 3.11+](https://www.python.org/downloads/)**.
-- **[Ollama](https://ollama.com/download)**: the free local AI that ranks jobs. Install it and open it once.
-- **[Claude Code](https://claude.com/claude-code)** and a Claude subscription: writes the CVs.
-- **Google Chrome** (optional): only for collecting from LinkedIn, Indeed or StepStone.
-- **Windows only: [Git for Windows](https://git-scm.com/download/win)**. Claude Code
-  runs its commands through the Git Bash it installs.
+- **A Mac, Windows or Linux computer.**
+- **A Claude subscription**, for writing the CVs.
+- **Google Chrome** (optional), only for collecting from LinkedIn, Indeed or StepStone.
 
-The Windows steps are [their own section](#set-up-on-windows-once).
+Everything else (Python on Windows, [Ollama](https://ollama.com), [Claude
+Code](https://claude.com/claude-code), and Git for Windows) is installed by the
+first start, which asks before each one. On a Mac or Linux you need Python 3.11+
+(`python3 --version`); on Windows it is installed for you too.
 
 ---
 
-## Set up on Mac or Linux (once)
+## Set up on Mac or Linux
 
 **1. Get the code.** Download the ZIP from this page (green **Code** button →
 **Download ZIP**) and unzip it, or `git clone` it.
 
-**2. Open a terminal in that folder.** On a Mac: open the folder in Finder,
-right-click it, choose **New Terminal at Folder**.
-
-**3. Run the setup:**
-
-```bash
-./setup.sh
-```
-
-It installs everything it needs and tells you if anything is missing. Safe to
-run again.
-
-**4. Sign in to Claude** (once):
-
-```bash
-claude auth login
-```
-
-**5. Create your profile from your current CV:**
-
-```bash
-claude "/make-profile ~/Downloads/my-cv.pdf"
-```
-
-Use the real path to your CV (PDF, Word or text). Claude reads it and fills in
-`profiles/me/`. **Open `profiles/me/profile.md` once and check it**: it decides
-which jobs rank highly.
-
-**6. Start it:**
+**2. Start it.** Open a terminal in that folder (on a Mac: right-click the
+folder in Finder → **New Terminal at Folder**) and run:
 
 ```bash
 ./start.sh
 ```
 
-Your browser opens the dashboard. Keep that window open while you use it;
-press `Ctrl+C` there to stop. The **Setup** panel at the top lists anything
-still missing, with the command to fix it. When it disappears, you're ready.
+The first time, it sets everything up by itself and **asks before each step**:
 
-Optional: `scripts/install-agent.sh` starts it by itself at every login instead
-(`scripts/install-agent.sh --remove` undoes it).
+- installs **Ollama** (the local AI that ranks jobs) and **Claude Code** (writes
+  the CVs) if they are missing
+- signs you in to Claude (your browser opens)
+- creates your profile from your current CV: drag the CV file (PDF, Word or
+  text) into the window when it asks
+- offers to start Job Pipeline by itself at every login, so it is always there
 
-**7. (Optional) Install the Chrome extension**: see [below](#chrome-extension-optional).
+Then your browser opens the dashboard, and the local model (a few GB, once)
+downloads in the background. Every step can be skipped and is offered again next
+time. **Open `profiles/me/profile.md` once and check it**: it decides which jobs
+rank highly.
+
+Keep the window open while you use it; `Ctrl+C` stops it. Next time, just run
+`./start.sh` again.
+
+**3. (Optional) Install the Chrome extension**: see [below](#chrome-extension-optional).
+
+<details>
+<summary>Doing the steps by hand instead</summary>
+
+```bash
+./setup.sh                                          # the same setup, on its own
+curl -fsSL https://claude.ai/install.sh | bash     # install Claude Code
+claude auth login                                   # sign in
+claude "/make-profile ~/Downloads/my-cv.pdf"        # your profile, from your CV
+scripts/install-agent.sh                            # start at every login (--remove undoes it)
+```
+</details>
 
 ---
 
-## Set up on Windows (once)
+## Set up on Windows
 
 Windows 10 or 11. Everything runs natively; no WSL, no admin rights.
 
-**1. Install the four tools** (once). The quickest way is PowerShell
-(Start menu → type *PowerShell* → Enter):
+**1. Get the code.** Download the ZIP from this page (green **Code** button →
+**Download ZIP**) and unzip it somewhere normal, like `Documents`.
+
+**2. Start it:** double-click **`start.bat`** in that folder.
+
+The first time, it sets everything up by itself and **asks before each step**:
+
+- installs **Python** if there is none (press **Y**)
+- installs **Git for Windows**, **Ollama** (the local AI that ranks jobs) and
+  **Claude Code** (writes the CVs) if they are missing, and puts Claude Code on
+  your PATH
+- signs you in to Claude (your browser opens)
+- creates your profile from your current CV: drag the CV file into the window
+  when it asks
+- offers to start Job Pipeline by itself at every login, in the background with
+  no window, so it is always there
+
+Then your browser opens the dashboard; Ollama starts by itself and the local
+model (a few GB, once) downloads in the background. Every step can be skipped
+and is offered again next time. **Open `profiles\me\profile.md` once and check
+it**: it decides which jobs rank highly.
+
+Keep the window open while you use it; close it to stop. Next time, just
+double-click `start.bat` again.
+
+**3. (Optional) Install the Chrome extension**: see below.
+
+<details>
+<summary>Doing the steps by hand instead</summary>
+
+In PowerShell, then **open a new window** so it finds what was installed:
 
 ```powershell
 winget install -e --id Python.Python.3.12 --source winget
 winget install -e --id Git.Git --source winget
 winget install -e --id Ollama.Ollama --source winget
 irm https://claude.ai/install.ps1 | iex
-```
-
-Or use the installers: [Python](https://www.python.org/downloads/) (tick **Add
-python.exe to PATH**), [Git for Windows](https://git-scm.com/download/win)
-(Claude Code runs its commands through the Git Bash it installs),
-[Ollama](https://ollama.com/download) and [Claude Code](https://claude.com/claude-code).
-**Close PowerShell and open a new one afterwards**, so it sees them.
-
-**2. Get the code.** Download the ZIP from this page (green **Code** button →
-**Download ZIP**) and unzip it somewhere normal, like `Documents`, not a
-network drive.
-
-**3. Run the setup:** double-click **`setup.bat`** in that folder. It installs
-everything it needs, lists anything still missing with the command to fix it,
-and is safe to run again.
-
-**4. Sign in to Claude and create your profile.** In the folder, right-click an
-empty spot → **Open in Terminal**, then:
-
-```powershell
 claude auth login
 claude "/make-profile C:\Users\you\Downloads\my-cv.pdf"
 ```
 
-Use the real path to your CV (PDF, Word or text). **Open
-`profiles\me\profile.md` once and check it**: it decides which jobs rank highly.
-
-**5. Start it:** double-click **`start.bat`**. Your browser opens the dashboard.
-Keep that window open while you use it; close it (or press `Ctrl+C`) to stop.
-The **Setup** panel at the top lists anything still missing.
-
-Optional: double-click **`scripts\install-agent.bat`** to start it by itself at
-every login, in the background with no window. Run
-`scripts\install-agent.bat --remove` to undo it.
-
-**6. (Optional) Install the Chrome extension**: see below.
+`setup.bat` runs the same setup on its own, and `scripts\install-agent.bat`
+(`--remove` to undo) starts it at every login. If `claude` is "not recognised"
+after installing it, run `start.bat` again: it adds Claude Code to your PATH.
+</details>
 
 ---
 
@@ -222,15 +218,15 @@ that happened.
 
 | Problem | Fix |
 |---|---|
-| The dashboard won't open | Run `./start.sh` (Windows: `start.bat`), and keep its window open |
-| "Ollama is not running" | Open the Ollama app, or run `ollama serve` |
-| "Your profile is filled in" is red | Create your profile (Mac/Linux step 5, Windows step 4) |
+| The dashboard or the extension says the pipeline is offline | Double-click `start.bat` (Windows) or run `./start.sh`, and keep its window open. To never see this again, let setup start it at every login |
+| "Ollama is not running" | It starts by itself when installed; if it keeps failing, open the Ollama app |
+| "Your profile is filled in" is red | Run setup again and give it your CV, or `claude "/make-profile <path to your CV>"` |
 | Build stops straight away | Read the message in the build log; usually the profile or the Claude login |
 | The extension shows old things | You have two copies loaded. Remove the old one at `chrome://extensions` |
-| Windows: `setup.bat` says Python is not installed | Install it (Windows step 1), tick **Add python.exe to PATH**, then open a new window |
+| Windows: Python could not be installed | Install it from python.org, tick **Add python.exe to PATH**, then double-click `start.bat` again |
 | Windows: typing `python` opens the Microsoft Store | Same fix: that is Windows' placeholder, not Python |
-| Windows: "Git for Windows is not installed" | `winget install -e --id Git.Git --source winget`, then restart `start.bat` |
-| Windows: `claude` is not recognised | Open a new PowerShell window after installing it |
+| Windows: "Git for Windows is not installed" | Double-click `start.bat` again and answer **Y**, or `winget install -e --id Git.Git --source winget` |
+| Windows: `claude` is not recognised | Double-click `start.bat` again (it adds Claude Code to PATH), then open a new window |
 
 ---
 

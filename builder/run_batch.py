@@ -56,6 +56,9 @@ REPO_ROOT = BUILDER_ROOT.parent
 SCRAPER_DIR = pathlib.Path(os.environ.get("SCRAPER_DIR") or REPO_ROOT / "scraper").resolve()
 sys.path.insert(0, str(SCRAPER_DIR))
 
+if __name__ == "__main__":
+    import bootstrap                                         # noqa: E402
+    bootstrap.ensure(__file__)
 import platform_util as pu                                   # noqa: E402
 
 _venv_py = pu.venv_python(SCRAPER_DIR / ".venv")
@@ -514,16 +517,19 @@ def main() -> None:
     # Ollama has to be up. It is a normal user process, not a service, so a
     # machine that rebooted has it installed and not running.
     if not ollama_up():
-        exe = pu.find_ollama()
-        if exe:
-            say("ollama is not running, starting it")
-            with open(LOG_DIR / "ollama.log", "a", encoding="utf-8") as fh:
-                subprocess.Popen([exe, "serve"], stdout=fh, stderr=subprocess.STDOUT,
-                                 stdin=subprocess.DEVNULL, **pu.detach_kwargs())
-            for _ in range(20):
-                time.sleep(1)
-                if ollama_up():
-                    break
+        say("ollama is not running, starting it")
+        pu.start_ollama(LOG_DIR / "ollama.log")
+    want_model = getattr(cfg, "OLLAMA_MODEL", "llama3.1")
+    tags = _get(getattr(cfg, "OLLAMA_URL", "http://127.0.0.1:11434") + "/api/tags", 5)
+    try:
+        names = [m.get("name", "") for m in json.loads(tags or b"{}").get("models", [])]
+    except ValueError:
+        names = None
+    if ollama_up() and names is not None and not any(
+            n == want_model or n.startswith(want_model + ":") for n in names):
+        end_with("info", f"the local model '{want_model}' is not downloaded yet, so nothing "
+                 "was ranked", "It downloads by itself while the pipeline runs; press Build "
+                 "again when the Activity panel says it is ready.", 0)
     if not ollama_up():
         notify("nothing was built", "Ollama is down")
         end_with("failed", "Ollama is not running and could not be started, so nothing "

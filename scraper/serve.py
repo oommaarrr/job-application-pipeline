@@ -34,6 +34,13 @@ import threading
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Started with any Python (`python serve.py` on a fresh download)? Set the
+# project up and continue inside its own environment, instead of crashing on
+# the first package that system Python does not have.
+if __name__ == "__main__":
+    import bootstrap
+    bootstrap.ensure(__file__)
+
 ROOT = pathlib.Path(__file__).parent.resolve()
 # The repo root, one level up from scraper/. Everything shared (web/, builder/,
 # profiles/) hangs off this, so the checkout can live anywhere. Before
@@ -679,11 +686,17 @@ def start_rank() -> dict:
     if not (PYTHON.exists() and ranker.exists()):
         return {"ok": False, "why": "ranker or venv is missing"}
     up, why, _models = _ollama_state()
+    if not up and pu.start_ollama(OUT / "ollama.log",
+                                  url=getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")):
+        up, why, _models = _ollama_state()
     if not up:
         _event("rank", "failed", "Ollama is not running, so nothing can be ranked",
                fix="Open the Ollama app (or run: ollama serve), then press Retry.")
         return {"ok": False, "why": "Ollama is not running. Open the Ollama app, then try again.",
                 "fix": "ollama serve"}
+    if not _have_model(_models, _model_wanted()):
+        return {"ok": False, "why": f"the local model '{_model_wanted()}' is still downloading "
+                "(it starts by itself when Ollama runs); try again when Activity says it is ready"}
     top = getattr(config, "TOP_N", 20)
     log = open(OUT / "rank.log", "a", encoding="utf-8")
     log.write(f"\n=== rank started by the dashboard {dt.datetime.now():%H:%M:%S} ===\n")
@@ -697,6 +710,36 @@ def start_rank() -> dict:
                  finished=None, pid=proc.pid, result=None)
     _event("rank", "started", "ranking the pool with the local model")
     return {"ok": True, "pid": proc.pid}
+
+
+def stop_rank() -> dict:
+    """
+    Stop a standalone ranking now. Nothing is lost: the ranker saves every
+    answer as it goes, so pressing Rank pool again continues where this one
+    stopped, which is what makes Stop also a pause.
+
+    A ranking that is part of a build is not stopped here: killing it would fail
+    the build with "the local ranking failed". The build's own Stop covers it.
+    """
+    global _rank_proc
+    if _build_running():
+        return {"ok": False, "why": "this ranking is part of a build; use Stop build"}
+    pids = pu.find_script_procs(ROOT / "rank_ollama.py")
+    for pid in pids:
+        pu.kill_tree(pid, grace=5)
+    # Cleared before the next status poll reaps it, so an exit code from the
+    # stop is not reported as the ranking failing.
+    _rank_proc = None
+    was = _rank.get("running")
+    _rank.update(running=False, finished=dt.datetime.now().isoformat(timespec="seconds"))
+    rp = _rank_progress()
+    if was or pids:
+        _event("rank", "stopped",
+               f"ranking stopped by hand after {rp['done']} of {rp['total']} judged; "
+               "their answers are saved",
+               fix="Press Rank pool to continue from where it stopped.")
+    return {"ok": True, "stopped": bool(pids),
+            "still_running": bool(pu.find_script_procs(ROOT / "rank_ollama.py"))}
 
 
 _adopt_running_rank()
@@ -1288,9 +1331,10 @@ def progress() -> dict:
     try:
         ps = pool_status.status()
         pool_usable = int(ps.get("usable") or 0)
+        pool_repeats = int(ps.get("repeats") or 0)
         pool_stale = bool(ps.get("stale"))
     except Exception:
-        pool_usable, pool_stale = len(inbox), False
+        pool_usable, pool_repeats, pool_stale = len(inbox), 0, False
 
     # One progress reading for whatever stage is running, so every process shows
     # how many of the batch are done and how many are left.
@@ -1323,6 +1367,7 @@ def progress() -> dict:
         "autobuild": _autobuild,
         "collected_today": len(inbox),
         "pool_usable": pool_usable,
+        "pool_repeats": pool_repeats,
         "pool_stale": pool_stale,
         "with_descriptions": sum(1 for j in inbox if j.get("description")),
         "applied": len(applied),
@@ -1517,6 +1562,57 @@ def _ollama_state() -> tuple[bool, str, list[str]]:
         return False, str(e), []
 
 
+# The local model, downloaded by the bridge itself. Setup used to be the only
+# thing that pulled it, so anyone who started the bridge without running setup
+# first (or with Ollama closed at the time) had a ranker that could never run
+# and a Setup panel telling them to type a command. Now: whenever Ollama is up
+# and the model is missing, download it in the background, once at a time.
+_model_pull: dict = {"running": False, "failures": 0}
+
+
+def _model_wanted() -> str:
+    return getattr(config, "OLLAMA_MODEL", "llama3.1")
+
+
+def _have_model(models: list[str], want: str) -> bool:
+    return any(m == want or m.startswith(want + ":") for m in models)
+
+
+def _model_watch() -> None:
+    import time as _t
+    base = getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")
+    while True:
+        try:
+            # Installed but not running (after a reboot, or just installed)?
+            # Start it, rather than show "open the Ollama app" and wait.
+            if base.startswith("http://127.0.0.1") and pu.find_ollama() and not pu.ollama_up(base):
+                if pu.start_ollama(OUT / "ollama.log", url=base):
+                    _event("model", "info", "started Ollama, which was not running")
+            up, _why, models = _ollama_state()
+            want = _model_wanted()
+            exe = pu.find_ollama()
+            if (up and exe and not _have_model(models, want)
+                    and _model_pull["failures"] < 3 and os.environ.get("AUTO_PULL") != "0"):
+                _model_pull["running"] = True
+                _event("model", "started", f"downloading the local model '{want}' "
+                       "(a few GB, once); ranking can start when it is done")
+                with open(OUT / "model-pull.log", "a", encoding="utf-8") as log:
+                    code = subprocess.call([exe, "pull", want], stdout=log,
+                                           stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                           **pu.quiet_kwargs())
+                _model_pull["running"] = False
+                if code == 0:
+                    _event("model", "ok", f"the local model '{want}' is ready")
+                else:
+                    _model_pull["failures"] += 1
+                    _event("model", "failed", f"downloading '{want}' failed (exit {code})",
+                           fix=f"Check the internet connection. It retries by itself; "
+                               f"or run: ollama pull {want}")
+        except Exception as e:                               # noqa: BLE001
+            _model_pull["running"] = False
+            print(f"  model watch: {e}")
+        _t.sleep(120)
+
 
 _claude_auth_cache: dict = {"at": 0.0, "value": None}
 
@@ -1561,7 +1657,9 @@ def doctor() -> dict:
         "ollama serve")
     have = any(m == want or m.startswith(want + ":") for m in models)
     add("model", f"Model '{want}' is pulled", up and have,
-        ", ".join(models[:4]) or "none found" if up else "cannot tell while Ollama is down",
+        ("downloading now, by itself (a few GB, once)" if _model_pull["running"]
+         else (", ".join(models[:4]) if have else "not yet: it downloads by itself shortly"))
+        if up else "cannot tell while Ollama is down; open the Ollama app",
         f"ollama pull {want}")
 
     # --- the extension --------------------------------------------------
@@ -2116,6 +2214,9 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/build/stop":
             return self._send(stop_build())
 
+        if route == "/rank/stop":
+            return self._send(stop_rank())
+
         if route == "/rank":
             # Rank only — a preview of what would be built, no Claude, no PDFs.
             return self._send(start_rank())
@@ -2235,6 +2336,8 @@ def _migrate_history() -> None:
 
 def main() -> int:
     INBOX.mkdir(exist_ok=True)
+    OUT.mkdir(exist_ok=True)
+    threading.Thread(target=_model_watch, daemon=True, name="model-watch").start()
     try:
         _migrate_history()
     except Exception as e:                                   # noqa: BLE001

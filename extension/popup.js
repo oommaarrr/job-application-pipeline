@@ -8,6 +8,13 @@ const $ = (id) => document.getElementById(id);
  * fraction, "loading cards… 40", is real progress with no known total, which is
  * what the indeterminate state is for.
  */
+// What to do when the pipeline is offline, in this computer's terms. Telling a
+// Windows user to "run serve.py" sent them to the one command that could not
+// work on a fresh download.
+const START_HINT = /win/i.test(navigator.userAgentData?.platform || navigator.platform || "")
+  ? "double-click start.bat in the project folder"
+  : "run ./start.sh in the project folder";
+
 const msg = (t) => {
   const text = t || "";
   $("msg").textContent = text;
@@ -53,7 +60,7 @@ async function refreshBridge() {
   const st = await bridge({ type: "bridge:status" });
   $("dot").classList.toggle("up", !!st?.ok);
   if (!st?.ok) {
-    $("bridge").textContent = "pipeline offline — run serve.py";
+    $("bridge").textContent = `pipeline offline — start it: ${START_HINT}`;
     $("batchLine").textContent = "pipeline offline";
     $("openReport").disabled = true;
     return;
@@ -351,7 +358,7 @@ $("resend").onclick = async () => {
   busy(true); msg(`sending ${all.length}…`);
   const r = await bridge({ type: "bridge:push", jobs: all });
   busy(false);
-  msg(!r?.ok ? `pipeline offline — start serve.py and retry`
+  msg(!r?.ok ? `pipeline offline — ${START_HINT}, then retry`
              : `sent ${all.length} · +${r.added} new · ${r.matches} ranked`);
   refresh();
 };

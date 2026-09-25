@@ -38,7 +38,9 @@ import hashlib
 import datetime as dt
 import json
 import pathlib
+import os
 import re
+import signal
 import sys
 import urllib.error
 import urllib.request
@@ -673,6 +675,17 @@ def main() -> int:
             return job, None, f"failed: {type(e).__name__}: {e}"[:120]
 
     rows, failures, asked = [], [], 0
+
+    # Stopped from the dashboard (or Ctrl+C): every answer is already saved, so
+    # say so and leave at once rather than waiting for the model calls in
+    # flight. os._exit because those calls run in worker threads.
+    def _stop(signum, _frame):
+        _save_cache(cache)
+        print(f"\nstopped after {len(rows) + len(failures)}/{len(pool)} "
+              "judged; press Rank pool to continue from here", flush=True)
+        os._exit(143)
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(_sig, _stop)
     with futures.ThreadPoolExecutor(max_workers=config.OLLAMA_CONCURRENCY) as pool_ex:
         for i, (job, v, how) in enumerate(pool_ex.map(one, pool), 1):
             if v is None:
@@ -682,11 +695,12 @@ def main() -> int:
             if how == "asked":
                 asked += 1
                 cache[cache_key(job)] = v
-                # Flush as we go. A run over 195 jobs takes the better part of an
-                # hour, and saving only at the end means a Ctrl-C, a closed lid
-                # or an Ollama crash throws away every answer bought so far.
-                if asked % 10 == 0:
-                    _save_cache(cache)
+                # Flush every answer. A run over 195 jobs takes the better part
+                # of an hour, and the dashboard's Stop ranking button ends it at
+                # any moment (on Windows without a chance to clean up), so an
+                # answer not on disk is an answer bought twice. The write is a
+                # few milliseconds against seconds per model call.
+                _save_cache(cache)
             # The location string decides Berlin, not the model. Fall back to
             # the model only where the posting truly does not say.
             b = berlin_from_text(job.get("location"), job.get("description"))

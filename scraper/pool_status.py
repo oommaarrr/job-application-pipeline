@@ -30,6 +30,7 @@ import sys
 import config
 from applied_index import built_before, index as applied_index
 from jobkey import job_key
+import ledger
 
 HERE = pathlib.Path(__file__).parent
 INBOX = HERE / "inbox"
@@ -65,7 +66,9 @@ def status() -> dict:
         payload = _read(f, {})
         for rec in (payload.get("jobs", []) if isinstance(payload, dict) else payload):
             if isinstance(rec, dict) and rec.get("url"):
-                jobs[job_key(rec["url"])] = rec
+                # The day it was collected, as the ranker stamps it, so the
+                # repeat rule below gives the same answer here as there.
+                jobs[job_key(rec["url"])] = {**rec, "_collected": m.group(1)} if m else rec
 
     applied_urls, applied_roles = applied_index()
 
@@ -78,12 +81,24 @@ def status() -> dict:
         return job_key(j.get("url", "")) in applied_urls
 
     described = [j for j in jobs.values() if (j.get("description") or "").strip()]
-    usable = [j for j in described if not seen(j)]
+    not_built = [j for j in described if not seen(j)]
+    # The ranker also drops REPEATS: a role first collected on an earlier day
+    # (history/seen.csv). Leaving that out here made the dashboard say "scoring
+    # 128 jobs" while the ranker was judging 86 (25 September 2026). Read only:
+    # the ranker is the one that records what it sees.
+    try:
+        first = ledger.seen_first() if getattr(config, "SEEN_DAYS", 30) > 0 else {}
+    except OSError:
+        first = {}
+    repeats = [j for j in not_built if ledger.seen_earlier(j, first)]
+    usable = [j for j in not_built if not ledger.seen_earlier(j, first)]
     return {
         "total": len(jobs),
         "with_descriptions": len(described),
-        # Not yet built or applied: the only number that decides anything.
+        # Not yet built or applied, and not a repeat: exactly what the ranker
+        # will judge. The only number that decides anything.
         "usable": len(usable),
+        "repeats": len(repeats),
         "newest_scrape": newest,
         "age_days": age,
         "stale": bool(age is not None and age > config.MAX_POOL_AGE_DAYS),

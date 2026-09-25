@@ -30,7 +30,7 @@
 
   <div id="offline" class="offline hide" role="alert">
     <span class="ico i-plug" aria-hidden="true"></span>
-    <span><b>The bridge is not answering.</b> Is serve.py running? The numbers below are from the last answer and will not change until it is back.</span>
+    <span><b>The pipeline is not running.</b> Start it again: double-click <code>start.bat</code> (Windows) or run <code>./start.sh</code> (Mac, Linux) in the project folder. The numbers below are from the last answer and will not change until it is back.</span>
   </div>
 
   <!-- ============================================================ setup
@@ -143,7 +143,10 @@
     </section>
 
     <section class="card card-rank" aria-labelledby="rankTitle">
-      <div class="card-head"><h2 id="rankTitle">Ranking</h2><span class="live-tag">Live</span></div>
+      <div class="card-head"><h2 id="rankTitle">Ranking</h2><span class="live-tag">Live</span>
+        <span class="grow"></span>
+        <button class="go danger" id="btnStopRank" type="button" style="display:none">&#9209; Stop ranking</button>
+      </div>
       <div class="kpi">
         <span id="rkMatch" class="big">–</span>
         <span class="kpi-unit">passed the filters</span>

@@ -4,10 +4,10 @@ rem   install-agent.bat            install and start it now
 rem   install-agent.bat --remove   stop it and stop starting at login
 setlocal
 cd /d "%~dp0.."
-if not exist "scraper\.venv\Scripts\python.exe" (
-  echo Not set up yet. Run setup.bat first.
+call scripts\find-python.bat venv-ok
+if errorlevel 1 (
   pause
   exit /b 1
 )
-"scraper\.venv\Scripts\python.exe" scripts\install-agent.py %*
+%PYEXE% scripts\install-agent.py %*
 pause

@@ -30,13 +30,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRAPER = ROOT / "scraper"
 sys.path.insert(0, str(SCRAPER))
 
-try:
-    import platform_util as pu                              # noqa: E402
-except ImportError:
-    # psutil lives in the project's venv: this is not it, or setup never ran.
-    print("Not set up yet (or not run with the project's Python). Run "
-          + ("setup.bat" if os.name == "nt" else "./setup.sh") + " first.")
-    raise SystemExit(1)
+import bootstrap                                            # noqa: E402
+bootstrap.ensure(__file__)                                  # sets up if needed
+import platform_util as pu                                  # noqa: E402
 
 PORT = "8765"
 LOG = SCRAPER / "out" / "bridge.log"

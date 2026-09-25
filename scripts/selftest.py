@@ -162,7 +162,8 @@ def stub_ollama() -> None:
 
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            body = b'{"version":"selftest-stub"}'
+            body = (b'{"models":[{"name":"llama3.1:latest"}]}' if "tags" in self.path
+                    else b'{"version":"selftest-stub"}')
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -230,7 +231,10 @@ class Env:
 
     def start_bridge(self) -> None:
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0
-        self.bridge = subprocess.Popen([str(self.py), str(self.work / "start.py"), "--background"],
+        # The PLAIN Python running this test, not the project's: start.py must
+        # hand itself over to the project's environment (bootstrap.py), which
+        # is what a user typing `python start.py` or `python serve.py` gets.
+        self.bridge = subprocess.Popen([sys.executable, str(self.work / "start.py"), "--background"],
                                        cwd=self.work, env=self.env, stdin=subprocess.DEVNULL,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        creationflags=flags)
@@ -278,7 +282,7 @@ def main() -> int:
         work = make_copy(tmp)
 
         section("setup")
-        r = subprocess.run([sys.executable, str(work / "setup.py"), "--skip-model"],
+        r = subprocess.run([sys.executable, str(work / "setup.py"), "--skip-model", "--no-prompt"],
                            cwd=work, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", env=dict(os.environ, PYTHONUTF8="1"), timeout=900)
         check(r.returncode == 0, "setup finishes", (r.stdout + r.stderr)[-600:])
@@ -339,7 +343,7 @@ def main() -> int:
         # just-installed venv, and a cold macOS runner took about a minute.
         up = e.wait_up(120)
         log = work / "scraper" / "out" / "bridge.log"
-        check(up, f"start.py --background brings the bridge up on {e.port} "
+        check(up, f"plain `python start.py` sets itself up and starts the bridge on {e.port} "
                   f"({time.time() - began:.0f}s)",
               log.read_text(encoding="utf-8", errors="replace")[-1500:] if log.exists() else "no log")
         for path in ("/dashboard", "/ranking", "/funnel", "/doctor", "/events", "/status"):

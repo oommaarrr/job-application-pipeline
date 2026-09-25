@@ -54,17 +54,22 @@ def main() -> int:
     load_local_env()
     port = os.environ.get("BRIDGE_PORT", "8765")
     url = f"http://127.0.0.1:{port}/dashboard"
-    try:
-        import platform_util as pu
-    except ImportError:
-        print("Job Pipeline is not set up yet (or not with this Python). Run this first:")
-        print("    setup.bat" if os.name == "nt" else "    ./setup.sh")
-        return 1
+    # Any Python will do: the first run sets the project up by itself, and an
+    # outdated environment is brought up to date, then this continues inside it.
+    import bootstrap
+    bootstrap.ensure(__file__)
+    import platform_util as pu
     py = pu.venv_python(SCRAPER / ".venv")
-    if not py.exists():
-        print("Job Pipeline is not set up yet. Run this first:")
-        print(f"    {pu.install_hint('setup')}")
-        return 1
+
+    # A tool still missing (Git on Windows, Ollama, Claude Code)? With someone
+    # at the window, offer setup again rather than leave it to the Setup panel
+    # and a command typed by hand. Each question can still be answered no.
+    missing = [n for n, ok in (("Git for Windows", not pu.IS_WIN or pu.find_git_bash()),
+                               ("Ollama", pu.find_ollama()),
+                               ("Claude Code", pu.find_claude())) if not ok]
+    if missing and not background and sys.stdin is not None and sys.stdin.isatty():
+        print(f"Not installed yet: {', '.join(missing)}. Running setup first.", flush=True)
+        subprocess.call([str(py), str(ROOT / "setup.py"), "--skip-model", "--from-start"])
 
     # Already running (another window, or the login agent)? Just open it.
     if answering(port):

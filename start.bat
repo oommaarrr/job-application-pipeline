@@ -1,12 +1,14 @@
 @echo off
 rem Start Job Pipeline and open the dashboard (Windows).
-rem Keep this window open while you use it. Press Ctrl+C to stop.
+rem Works straight after downloading: the first run installs and sets up
+rem whatever is missing, asking first. Keep this window open while you use
+rem it; close it or press Ctrl+C to stop.
 setlocal
 cd /d "%~dp0"
-if not exist "scraper\.venv\Scripts\python.exe" (
-  echo Job Pipeline is not set up yet. Run setup.bat first.
+call scripts\find-python.bat venv-ok
+if errorlevel 1 (
   pause
   exit /b 1
 )
-"scraper\.venv\Scripts\python.exe" start.py %*
+%PYEXE% start.py %*
 if errorlevel 1 pause

@@ -8,6 +8,12 @@ step checks before it acts.
     python setup.py     anywhere
 
     --skip-model        do not download the Ollama model (used by the self-test)
+    --no-prompt         never ask anything; only check and report (CI, scripts)
+    --from-start        run by start.py on a first start: do not offer to start it
+
+Setup offers to install what is missing (Ollama, Claude Code, Git for Windows),
+signs you in to Claude and creates your profile from your CV. It asks before
+each of those, and every one can be skipped and done later by hand.
 
 Uses only the standard library until the venv exists, because it is what
 creates the venv.
@@ -61,6 +67,69 @@ def ok(s: str) -> None:
 
 def no(s: str) -> None:
     print(f"  [!!] {s}" if PLAIN else f"  \033[31m✗\033[0m {s}")
+
+
+# Asking is only possible with a person at the keyboard. On Windows `< nul`
+# still looks like a terminal, so the flag and CI are checked explicitly.
+PROMPT = ("--no-prompt" not in sys.argv and not os.environ.get("CI")
+          and sys.stdin is not None and sys.stdin.isatty())
+
+
+def ask(question: str, default_yes: bool = True) -> bool:
+    if not PROMPT:
+        return False
+    try:
+        a = input(f"  {question} [{'Y/n' if default_yes else 'y/N'}] ").strip().lower()
+    except EOFError:
+        return False
+    return default_yes if not a else a.startswith("y")
+
+
+def install(what: str, windows: list[str] | None = None, posix: str | None = None) -> bool:
+    """Run the official installer for a missing tool, after asking."""
+    cmd = windows if IS_WIN else (["bash", "-c", posix] if posix else None)
+    if not cmd or not ask(f"{what} is not installed. Install it now?"):
+        return False
+    print(f"  installing {what}…")
+    return run(cmd).returncode == 0
+
+
+def add_to_path(folder: pathlib.Path) -> None:
+    """Make a freshly installed tool callable by name from new terminals.
+
+    The Claude Code installer puts claude.exe in %USERPROFILE%\\.local\\bin
+    and does not always put that folder on PATH, so `claude` was "not
+    recognised" right after installing it, and the natural reaction was to
+    install it again. Windows: the per-user PATH in the registry (no admin).
+    macOS/Linux: printed, because editing someone's shell profile silently is
+    worse than one line of instructions."""
+    folder = folder.resolve()
+    here = [pathlib.Path(p).resolve() for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    if folder in here:
+        return
+    os.environ["PATH"] = str(folder) + os.pathsep + os.environ.get("PATH", "")
+    if not IS_WIN:
+        print(f"  - {folder} is not on your PATH. Add this line to ~/.zshrc or ~/.bashrc:")
+        print(f'      export PATH="{folder}:$PATH"')
+        return
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
+                        winreg.KEY_READ | winreg.KEY_SET_VALUE) as key:
+        try:
+            cur, kind = winreg.QueryValueEx(key, "Path")
+        except FileNotFoundError:
+            cur, kind = "", winreg.REG_EXPAND_SZ
+        parts = [x for x in cur.split(";") if x]
+        if any(os.path.normcase(os.path.expandvars(x).rstrip("\\")) ==
+               os.path.normcase(str(folder)) for x in parts):
+            return
+        winreg.SetValueEx(key, "Path", 0, kind, ";".join(parts + [str(folder)]))
+    try:                                      # tell open programs PATH changed
+        import ctypes
+        ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 2, 5000, None)
+    except Exception:                                        # noqa: BLE001
+        pass
+    ok(f"added {folder} to your PATH (new terminal windows will find it)")
 
 
 def venv_python() -> pathlib.Path:
@@ -123,6 +192,13 @@ def after_venv(py: pathlib.Path) -> int:
     say("2. Local model (Ollama)")
     ollama = pu.find_ollama()
     if not ollama:
+        install("Ollama",
+                windows=["winget", "install", "-e", "--id", "Ollama.Ollama", "--source", "winget",
+                         "--accept-package-agreements", "--accept-source-agreements"],
+                posix=("brew install ollama" if IS_MAC and shutil.which("brew")
+                       else None if IS_MAC else "curl -fsSL https://ollama.com/install.sh | sh"))
+        ollama = pu.find_ollama()
+    if not ollama:
         no("ollama not installed — https://ollama.com/download")
         no("the ranker cannot run without it")
     else:
@@ -156,35 +232,29 @@ def after_venv(py: pathlib.Path) -> int:
         print("  - qpdf not installed. Documents still build; install it for smaller,")
         print(f"    faster-loading PDFs:  {how}")
 
-    say("3. Your profile")
-    me = ROOT / "profiles" / "me"
-    if not me.is_dir():
-        shutil.copytree(ROOT / "profiles" / "example", me)
-        ok("created profiles/me (a copy of the example — it is not you yet)")
-        cv = r"C:\path\to\your-cv.pdf" if IS_WIN else "~/path/to/your-cv.pdf"
-        print("  Next, make it yours. Easiest: let Claude read your current CV:")
-        print(f'      claude "/make-profile {cv}"')
-        print("  Or edit profiles/me/identity.md and profiles/me/profile.md by hand.")
-    else:
-        ok("profiles/me already exists")
+    say("3. Claude Code (writes the documents)")
+    claude = claude_step(pu)
 
-    say("4. Chrome extension")
+    say("4. Your profile")
+    profile_step(claude)
+
+    say("5. Chrome extension (optional)")
     print("  Load it by hand, once:")
     print("    1. open chrome://extensions")
     print("    2. turn on Developer mode (top right)")
     print(f"    3. Load unpacked → {ROOT / 'extension'}")
 
-    say("5. Claude Code CLI (only needed to WRITE documents)")
-    claude = pu.find_claude()
-    if claude:
-        ok(f"claude found: {claude}")
-    else:
-        no(f"not installed — {pu.install_hint('claude')}")
-    if IS_WIN:
-        if pu.find_git_bash():
-            ok("Git Bash found (Claude Code needs it on Windows)")
-        else:
-            no(f"Git for Windows not found — Claude Code needs it: {pu.install_hint('git-bash')}")
+    # Offer to keep it running, so the extension never finds it offline, or at
+    # least to start it now. Both optional; both can be done later.
+    agent_cmd = [str(py), str(ROOT / "scripts" / "install-agent.py")]
+    from_start = "--from-start" in sys.argv
+    if ask("Start Job Pipeline by itself every time you log in (in the background)?"):
+        if run(agent_cmd).returncode == 0:
+            return 0
+    elif not from_start and ask("Start it now?"):
+        return run([str(py), str(ROOT / "start.py")]).returncode
+    if from_start:
+        return 0
 
     say("Done. Start it with:")
     print(f"    {pu.install_hint('start')}")
@@ -193,6 +263,82 @@ def after_venv(py: pathlib.Path) -> int:
         "scripts/install-agent.sh" if IS_MAC else "scripts/install-agent.py")
     print(f"  Optional: start it automatically at login with {agent}")
     return 0
+
+
+def claude_step(pu) -> str | None:
+    """Git Bash (Windows), then Claude Code on PATH, then signed in."""
+    if IS_WIN and not pu.find_git_bash():
+        # Claude Code runs every command through Git Bash on Windows; without
+        # it claude will not even start, so this comes first.
+        install("Git for Windows",
+                windows=["winget", "install", "-e", "--id", "Git.Git", "--source", "winget",
+                         "--accept-package-agreements", "--accept-source-agreements"])
+        if pu.find_git_bash():
+            ok("Git Bash found")
+        else:
+            no(f"Git for Windows not found — Claude Code needs it: {pu.install_hint('git-bash')}")
+            return None
+    elif IS_WIN:
+        ok("Git Bash found (Claude Code needs it on Windows)")
+
+    claude = pu.find_claude()
+    if not claude:
+        install("Claude Code",
+                windows=["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                         "irm https://claude.ai/install.ps1 | iex"],
+                posix="curl -fsSL https://claude.ai/install.sh | bash")
+        claude = pu.find_claude()
+    if not claude:
+        no(f"not installed — {pu.install_hint('claude')}")
+        return None
+    ok(f"claude found: {claude}")
+    add_to_path(pathlib.Path(claude).parent)
+
+    signed = None
+    try:
+        out = run([claude, "auth", "status"], capture_output=True, text=True,
+                  encoding="utf-8", errors="replace", timeout=30).stdout
+        import json
+        signed = bool(json.loads(out).get("loggedIn"))
+    except Exception:                                        # noqa: BLE001
+        pass
+    if signed:
+        ok("signed in to Claude")
+    elif ask("Sign in to Claude now? (opens your browser)"):
+        run([claude, "auth", "login"])
+    else:
+        no("not signed in yet — run: claude auth login")
+    return claude
+
+
+def profile_step(claude: str | None) -> None:
+    """Create profiles/me, and fill it from the user's CV if they want."""
+    me, example = ROOT / "profiles" / "me", ROOT / "profiles" / "example"
+    if not me.is_dir():
+        shutil.copytree(example, me)
+        ok("created profiles/me (a copy of the example — it is not you yet)")
+    still_example = all((me / n).is_file() and (example / n).is_file()
+                        and (me / n).read_bytes() == (example / n).read_bytes()
+                        for n in ("profile.md", "identity.md"))
+    if not still_example:
+        ok("profiles/me is filled in")
+        return
+    if claude and PROMPT:
+        print("  Claude can fill it in from your current CV (PDF, Word or text).")
+        try:
+            cv = input("  Path to your CV (drag the file here), or Enter to skip: ")
+        except EOFError:
+            cv = ""
+        cv = cv.strip().strip('"').strip("'")
+        if cv and pathlib.Path(os.path.expanduser(cv)).is_file():
+            run([claude, f"/make-profile {os.path.expanduser(cv)}"], cwd=ROOT)
+            return
+        if cv:
+            no(f"no file at {cv}")
+    example_cv = r"C:\Users\you\Downloads\my-cv.pdf" if IS_WIN else "~/Downloads/my-cv.pdf"
+    print("  Make it yours later: in this folder run")
+    print(f'      claude "/make-profile {example_cv}"')
+    print("  Or edit profiles/me/identity.md and profiles/me/profile.md by hand.")
 
 
 if __name__ == "__main__":

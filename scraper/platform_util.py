@@ -95,6 +95,44 @@ def find_ollama() -> str | None:
                         "/Applications/Ollama.app/Contents/Resources/ollama"])
 
 
+def ollama_up(url: str = "http://127.0.0.1:11434") -> bool:
+    import urllib.request
+    try:
+        urllib.request.urlopen(f"{url}/api/version", timeout=3).close()
+        return True
+    except OSError:
+        return False
+
+
+def start_ollama(log: pathlib.Path | None = None, url: str = "http://127.0.0.1:11434",
+                 wait: float = 20) -> bool:
+    """Start Ollama if it is installed and not running; True once it answers.
+
+    It is a normal program, not a service, so after a reboot (or a fresh
+    install) it is installed and not running, and every ranking fails until
+    someone opens the app. Nobody should have to."""
+    if ollama_up(url):
+        return True
+    exe = find_ollama()
+    if not exe:
+        return False
+    out = open(log, "a", encoding="utf-8") if log else subprocess.DEVNULL
+    try:
+        subprocess.Popen([exe, "serve"], stdout=out, stderr=subprocess.STDOUT,
+                         stdin=subprocess.DEVNULL, **detach_kwargs())
+    except OSError:
+        return False
+    finally:
+        if log:
+            out.close()
+    end = time.time() + wait
+    while time.time() < end:
+        if ollama_up(url):
+            return True
+        time.sleep(1)
+    return False
+
+
 def find_git_bash() -> str | None:
     """Claude Code on Windows runs its shell commands through Git Bash, so a
     build cannot work without it. Not needed (and always None) elsewhere."""

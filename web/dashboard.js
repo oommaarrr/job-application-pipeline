@@ -32,7 +32,7 @@ async function tick(){
   ab.style.color=d.autobuild?"var(--green)":"var(--dim)";
   $("stamp").textContent=new Date(d.now).toLocaleTimeString();
   const poolN=(d.pool_usable!=null?d.pool_usable:(d.collected_today||0));
-  $("collInfo").textContent=poolN+" usable in pool · "+d.applied+" applied"+(d.pool_stale?" · pool is stale":"");
+  $("collInfo").textContent=poolN+" usable in pool"+(d.pool_repeats?(" · "+d.pool_repeats+" seen on an earlier day"):"")+" · "+d.applied+" applied"+(d.pool_stale?" · pool is stale":"");
 
   // ---- stage tracker: where is the pipeline right now (or where the last run left it)
   const bpr=d.build_progress||{}, rnk=d.rank||{}, bld=d.build||{};
@@ -85,7 +85,9 @@ async function tick(){
   if(ph==="scraping"){ head="Scraping in progress";
     sub=(d.scrape.done||0)+" of "+(d.scrape.total||0)+" searches done"; }
   else if(ph==="ranking"){ head="Ranking the pool";
-    sub="the local model is scoring "+poolN+" jobs"; }
+    const ac=d.active||{};
+    sub=ac.total? ("the local model has judged "+(ac.done||0)+" of "+ac.total+" jobs")
+                : ("the local model is scoring "+poolN+" jobs"); }
   else if(ph==="building"){ head="Building documents";
     sub=(bpr.built||0)+" of "+(bpr.target||0)+" built"+(bld.reason?(" · "+bld.reason):""); }
   else if(ph==="done"){ head="Done — last run complete";
@@ -179,6 +181,8 @@ async function tick(){
   $("bdBar").style.width=(bp.target?Math.round(100*(bp.built||0)/bp.target):0)+"%";
   $("bdState").textContent=b.running?("building… "+(b.reason||"")):(b.finished?("finished "+new Date(b.finished).toLocaleTimeString()):"idle");
   $("btnStop").style.display=b.running?"inline-block":"none";
+  // A standalone ranking only; inside a build, Stop build is the one to press.
+  $("btnStopRank").style.display=(d.rank_run&&d.rank_run.running&&!b.running)?"inline-block":"none";
 
   const now=bd.building_now||[], builtR=bd.built_roles||[], drop=bd.dropped_roles||[], carried=bd.carried_over||[];
   // what's being written right now
@@ -224,7 +228,7 @@ async function tick(){
  * searches already done, ranking reuses its cache, and a build skips every
  * application already on disk. */
 const STEP_NAME={scrape:"Extension",arbeitnow:"Arbeitnow",collect:"Collect",rank:"Rank",
-  build:"Build",reset:"Erase",applied:"Applied",data:"Data",bridge:"Bridge",pool:"Pool"};
+  build:"Build",reset:"Erase",applied:"Applied",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model"};
 const WORD={failed:"Failed",stopped:"Stopped",ok:"Done",info:"Note",started:"Running"};
 const hhmm=s=>{try{return new Date(s).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}catch(e){return "";}};
 function outcomeHTML(e,withRetry,noTime){
@@ -314,6 +318,15 @@ $("btnStop").onclick=async()=>{
   if(r && r.ok!==false && !r.still_running) toast("Build stopped. Finished documents are kept.");
   else if(r && r.still_running) toast("Sent stop, but a process is still winding down…",false);
   else toast("Couldn’t stop the build",false);
+  tick();
+};
+$("btnStopRank").onclick=async()=>{
+  if(!confirm("Stop ranking now?\n\nEvery job judged so far is saved. Press Rank pool later and it continues from where it stopped.")) return;
+  $("btnStopRank").disabled=true; $("btnStopRank").textContent="Stopping…";
+  const r=await post("/rank/stop",{});
+  $("btnStopRank").disabled=false; $("btnStopRank").textContent="⏹ Stop ranking";
+  if(r && r.ok!==false && !r.still_running) toast("Ranking stopped. Judged jobs are saved; Rank pool continues from here.");
+  else toast((r&&r.why)||"Couldn’t stop the ranking",false);
   tick();
 };
 tick(); setInterval(tick,2000);
