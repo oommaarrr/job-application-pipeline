@@ -6,6 +6,8 @@ if pgrep -f "rank_ollama.py" > /dev/null; then echo "ranking: RUNNING"; else ech
 import json, hashlib, pathlib, datetime, glob
 from jobkey import job_key
 import config
+import ollama_model
+model = ollama_model.resolve(config) or ollama_model.wanted(config)
 try:
     cache = json.loads(pathlib.Path('out/ollama_cache.json').read_text())
 except Exception:
@@ -31,7 +33,7 @@ def seen(j):
 
 pool = [j for j in jobs if (j.get('description') or '').strip() and not seen(j)]
 done = sum(1 for j in pool
-           if f"{job_key(j['url'])}|{config.OLLAMA_MODEL}|3|"
+           if f"{job_key(j['url'])}|{model}|3|"
               f"{hashlib.sha1((j.get('description') or '').encode()).hexdigest()[:12]}" in cache)
 pct = 100 * done // max(1, len(pool))
 bar = "#" * (pct // 4) + "." * (25 - pct // 4)

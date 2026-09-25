@@ -83,8 +83,9 @@ The first time, it sets everything up by itself and **asks before each step**:
   text) into the window when it asks
 - offers to start Job Pipeline by itself at every login, so it is always there
 
-Then your browser opens the dashboard, and the local model (a few GB, once)
-downloads in the background. Every step can be skipped and is offered again next
+Then your browser opens the dashboard. If Ollama already has a model installed,
+that one is used; otherwise the local model (a few GB, once) downloads in the
+background. Every step can be skipped and is offered again next
 time. **Open `profiles/me/profile.md` once and check it**: it decides which jobs
 rank highly.
 
@@ -128,8 +129,9 @@ The first time, it sets everything up by itself and **asks before each step**:
 - offers to start Job Pipeline by itself at every login, in the background with
   no window, so it is always there
 
-Then your browser opens the dashboard; Ollama starts by itself and the local
-model (a few GB, once) downloads in the background. Every step can be skipped
+Then your browser opens the dashboard; Ollama starts by itself. If it already
+has a model installed, that one is used; otherwise the local model (a few GB,
+once) downloads in the background. Every step can be skipped
 and is offered again next time. **Open `profiles\me\profile.md` once and check
 it**: it decides which jobs rank highly.
 

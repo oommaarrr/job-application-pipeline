@@ -203,20 +203,25 @@ def after_venv(py: pathlib.Path) -> int:
         no("the ranker cannot run without it")
     else:
         ok("ollama is installed")
+        import ollama_model as om
         try:
             import config
-            model = getattr(config, "OLLAMA_MODEL", "llama3.1")
         except Exception:                                  # noqa: BLE001
-            model = "llama3.1"
-        listed = run([ollama, "list"], capture_output=True, text=True,
-                     encoding="utf-8", errors="replace")
-        names = [line.split()[0] for line in listed.stdout.splitlines()[1:] if line.split()]
-        want = model.split(":")[0]
-        if any(n == model or n.split(":")[0] == want for n in names):
+            config = None
+        model = om.wanted(config)
+        url = getattr(config, "OLLAMA_URL", om.DEFAULT_URL)
+        entries = om.tags(url)
+        # An already-installed model is used as it is: nothing is downloaded
+        # when Ollama has one (scraper/ollama_model.py).
+        chosen = om.resolve(config, entries) if entries is not None else None
+        if chosen == model:
             ok(f"model '{model}' is present")
+        elif chosen:
+            ok(f"using '{chosen}', already installed in Ollama (nothing to download)")
+            print("    To use another, set OLLAMA_MODEL in scraper/config_local.py")
         elif "--skip-model" in sys.argv:
             print(f"  - model '{model}' not pulled (--skip-model)")
-        elif listed.returncode != 0:
+        elif entries is None:
             no("Ollama is installed but not running. Open the Ollama app, then run setup again")
         else:
             print(f"  pulling {model} (this is a few GB, once)…")

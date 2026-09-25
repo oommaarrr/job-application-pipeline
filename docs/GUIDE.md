@@ -205,6 +205,7 @@ is set the way it is. The ones you are most likely to touch:
 | `GERMAN_CAP`, `DROP_GERMAN_AT` | the German level you can work in, and where a requirement rules a job out |
 | `STRONG_SCORE` | the score that counts as a strong match |
 | `OLLAMA_MODEL` | any model from `ollama list`; bigger reads better, slower |
+| `OLLAMA_USE_INSTALLED` | `True` (default): if `OLLAMA_MODEL` is not installed, use a model Ollama already has instead of downloading it. `False`: always use exactly `OLLAMA_MODEL` |
 
 The defaults suit English-speaking technical roles in Germany. The German
 language filter is the one to change first if you are elsewhere.

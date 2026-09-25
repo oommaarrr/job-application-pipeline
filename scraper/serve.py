@@ -73,6 +73,7 @@ _load_local_env(REPO / "local.env")
 # profiles/side-quest) and pick one per run without editing any source.
 from profile_dir import profile_dir as _profile_dir
 import platform_util as pu
+import ollama_model as om
 # Every Python child (ranker, Arbeitnow, the build and what Claude runs) reads
 # and writes UTF-8, whatever the Windows code page is.
 os.environ.update(pu.utf8_env())
@@ -685,17 +686,17 @@ def start_rank() -> dict:
     ranker = ROOT / "rank_ollama.py"
     if not (PYTHON.exists() and ranker.exists()):
         return {"ok": False, "why": "ranker or venv is missing"}
-    up, why, _models = _ollama_state()
+    up, why, entries = _ollama_tags()
     if not up and pu.start_ollama(OUT / "ollama.log",
                                   url=getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")):
-        up, why, _models = _ollama_state()
+        up, why, entries = _ollama_tags()
     if not up:
         _event("rank", "failed", "Ollama is not running, so nothing can be ranked",
                fix="Open the Ollama app (or run: ollama serve), then press Retry.")
         return {"ok": False, "why": "Ollama is not running. Open the Ollama app, then try again.",
                 "fix": "ollama serve"}
-    if not _have_model(_models, _model_wanted()):
-        return {"ok": False, "why": f"the local model '{_model_wanted()}' is still downloading "
+    if _model_wanted(entries) is None:
+        return {"ok": False, "why": f"the local model '{om.wanted(config)}' is still downloading "
                 "(it starts by itself when Ollama runs); try again when Activity says it is ready"}
     top = getattr(config, "TOP_N", 20)
     log = open(OUT / "rank.log", "a", encoding="utf-8")
@@ -1552,14 +1553,18 @@ def ranking_data() -> dict:
 #
 # Nothing here mutates anything, so the dashboard can poll it freely.
 
-def _ollama_state() -> tuple[bool, str, list[str]]:
+def _ollama_tags() -> tuple[bool, str, list[dict]]:
     base = getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")
     try:
         with urllib.request.urlopen(f"{base}/api/tags", timeout=3) as r:
-            names = [m.get("name", "") for m in json.loads(r.read()).get("models", [])]
-        return True, "", names
+            return True, "", list(json.loads(r.read()).get("models") or [])
     except Exception as e:                                   # noqa: BLE001
         return False, str(e), []
+
+
+def _ollama_state() -> tuple[bool, str, list[str]]:
+    up, why, entries = _ollama_tags()
+    return up, why, [m.get("name", "") for m in entries]
 
 
 # The local model, downloaded by the bridge itself. Setup used to be the only
@@ -1567,15 +1572,14 @@ def _ollama_state() -> tuple[bool, str, list[str]]:
 # first (or with Ollama closed at the time) had a ranker that could never run
 # and a Setup panel telling them to type a command. Now: whenever Ollama is up
 # and the model is missing, download it in the background, once at a time.
+# Only when Ollama has no usable model at all: one that is already installed is
+# used instead of downloading OLLAMA_MODEL (scraper/ollama_model.py).
 _model_pull: dict = {"running": False, "failures": 0}
 
 
-def _model_wanted() -> str:
-    return getattr(config, "OLLAMA_MODEL", "llama3.1")
-
-
-def _have_model(models: list[str], want: str) -> bool:
-    return any(m == want or m.startswith(want + ":") for m in models)
+def _model_wanted(entries: list[dict]) -> str | None:
+    """The model the ranker will use; None when it still has to be downloaded."""
+    return om.resolve(config, entries, fetch=False)
 
 
 def _model_watch() -> None:
@@ -1588,10 +1592,10 @@ def _model_watch() -> None:
             if base.startswith("http://127.0.0.1") and pu.find_ollama() and not pu.ollama_up(base):
                 if pu.start_ollama(OUT / "ollama.log", url=base):
                     _event("model", "info", "started Ollama, which was not running")
-            up, _why, models = _ollama_state()
-            want = _model_wanted()
+            up, _why, entries = _ollama_tags()
+            want = om.wanted(config)
             exe = pu.find_ollama()
-            if (up and exe and not _have_model(models, want)
+            if (up and exe and _model_wanted(entries) is None
                     and _model_pull["failures"] < 3 and os.environ.get("AUTO_PULL") != "0"):
                 _model_pull["running"] = True
                 _event("model", "started", f"downloading the local model '{want}' "
@@ -1650,12 +1654,14 @@ def doctor() -> dict:
                        "detail": detail, "fix": fix, "weight": weight})
 
     # --- the local model -----------------------------------------------
-    up, why, models = _ollama_state()
-    want = getattr(config, "OLLAMA_MODEL", "llama3.1")
+    up, why, entries = _ollama_tags()
+    models = [m.get("name", "") for m in entries]
+    chosen = _model_wanted(entries) if up else None
+    want = chosen or om.wanted(config)
     add("ollama", "Ollama is running", up,
         f"{len(models)} model(s) available" if up else f"not reachable — {why}",
         "ollama serve")
-    have = any(m == want or m.startswith(want + ":") for m in models)
+    have = chosen is not None
     add("model", f"Model '{want}' is pulled", up and have,
         ("downloading now, by itself (a few GB, once)" if _model_pull["running"]
          else (", ".join(models[:4]) if have else "not yet: it downloads by itself shortly"))

@@ -160,6 +160,10 @@ USER_AGENT = (
 # window without writing a single document.
 OLLAMA_URL = "http://127.0.0.1:11434"
 OLLAMA_MODEL = "llama3.1"       # any `ollama list` name; bigger reads better
+# If OLLAMA_MODEL is not installed but another local model is, rank with that
+# one instead of downloading OLLAMA_MODEL (a few GB). False: always use, and
+# download if needed, exactly OLLAMA_MODEL.
+OLLAMA_USE_INSTALLED = True
 OLLAMA_CONCURRENCY = 2          # parallel requests; 16 GB holds two 8B streams
 OLLAMA_DESC_CHARS = 6000        # description truncation; the ask is near the top
 OLLAMA_TIMEOUT = 180            # seconds per job
