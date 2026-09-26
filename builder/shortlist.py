@@ -36,7 +36,7 @@ SCRAPER = (HERE / CONFIG["scraper_root"]).resolve()
 def _read(path: pathlib.Path, default):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, FileNotFoundError):
+    except (json.JSONDecodeError, OSError):
         return default
 
 

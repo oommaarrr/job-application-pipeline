@@ -42,12 +42,10 @@ import os
 import re
 import signal
 import sys
-import urllib.error
 import urllib.request
 
 import config
 import ollama_model
-from applied_index import index as applied_index
 import ledger
 from jobkey import job_key
 
@@ -92,23 +90,6 @@ def _read(path: pathlib.Path, default):
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return default
-
-
-def already_applied() -> tuple[set[str], dict[str, str]]:
-    """
-    Two filters, because one board's link is not another's.
-
-    Decision, 18 September 2026: match on the title, not the URL. A role
-    is (company, title) normalised, which survives the same posting appearing on
-    LinkedIn, StepStone and the company site under three different links. The
-    URL set is kept alongside it as a second net, not as the primary one.
-
-    The case that forced this: a role built once came back a month later
-    under a new link, missed by the URL check and caught only by a human
-    reading the batch.
-    """
-    urls, roles = applied_index()
-    return {job_key(u) for u in urls} | urls, roles
 
 
 # --------------------------------------------------------------- the model
@@ -622,7 +603,7 @@ def main() -> int:
             return job, cache[ck], "cached"
         try:
             return job, normalise(ask(args.model, build_prompt(job, profile))), "asked"
-        except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+        except (OSError, ValueError, KeyError) as e:
             return job, None, f"failed: {type(e).__name__}: {e}"[:120]
 
     rows, failures, asked = [], [], 0

@@ -66,3 +66,6 @@ builder/profile
 
 # Personal Claude instructions, never published
 CLAUDE.local.md
+
+# Tooling
+.scannerwork/
