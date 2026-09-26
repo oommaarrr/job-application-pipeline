@@ -191,18 +191,7 @@ tbody tr:hover td{background:var(--bg2)}
 @keyframes pulse{50%{opacity:.25}}
 
 /* ======================================================================= 6 */
-.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
-  margin:0 calc(-1 * var(--sp-6)) var(--sp-5);padding:var(--sp-3) var(--sp-6);
-  background:var(--scrim);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px}
-.brand h1{font-size:var(--fs-lg);font-weight:var(--fw-semi);letter-spacing:-.015em}
-/* the mark: a three-bar funnel, drawn with backgrounds so it needs no file */
-.brand-mark{width:20px;height:20px;border-radius:5px;flex:none;background:
-  linear-gradient(var(--card),var(--card)) 4px 5px/12px 2px no-repeat,
-  linear-gradient(var(--card),var(--card)) 4px 9px/8px 2px no-repeat,
-  linear-gradient(var(--card),var(--card)) 4px 13px/4px 2px no-repeat,var(--ink)}
-.nav{display:flex;align-items:center;gap:2px}
+/* the top bar (.topbar, .brand, .nav) is in topbar.css, shared by every page */
 .health{display:inline-flex;align-items:center;font-size:var(--fs-sm);color:var(--dim)}
 .health .dot{margin-right:6px}
 .health:has(.dot[style*="--red"]){color:var(--bad);font-weight:var(--fw-semi)}
@@ -481,10 +470,6 @@ pre.log .err{color:var(--log-err)}
 }
 @media (max-width:720px){
   .wrap{padding:0 var(--sp-4) var(--sp-7)}
-  .topbar{margin:0 calc(-1 * var(--sp-4)) var(--sp-4);padding:var(--sp-2) var(--sp-4);row-gap:var(--sp-2)}
-  .topbar .grow{flex-basis:100%;order:10;height:0}
-  .topbar .nav,.topbar .switch,.topbar .theme,.topbar .stamp{order:11}
-  .nav .go{padding:0 8px}
   .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
   .step:nth-child(3){border-left:none}
   .step:nth-child(n+3){border-top:1px solid var(--line)}

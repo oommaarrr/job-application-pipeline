@@ -280,6 +280,14 @@ with its reasoning, which becomes the Applications page.
 If Claude stops on purpose (profile not filled in, nothing worth building), it
 says why and the run ends, without retrying and spending more.
 
+If Claude runs out of usage mid-batch, nothing it finished is lost. The PDFs are
+the proof of work: any application with both PDFs on disk that `batch.json`
+does not list is added to it (`merge_batches.py`), matched back to its posting
+through the `entry.json` Claude writes beside each one. This happens when a run
+ends, and again for the last 14 days of batches before every run, so a role
+already built is never handed to Claude twice. Recovered entries carry a flag
+saying so.
+
 **The skill must live in the project.** A Claude skill saved to your account
 works in an interactive session but is missing from background runs, so the
 build would write without its rules. It lives at
@@ -287,7 +295,12 @@ build would write without its rules. It lives at
 
 Output: `builder/applications/<date>/<Company>/` holds the CV, the letter, and the
 data they were built from. The Applications page is re-rendered from that data
-every time you open it, so it always uses the current design.
+every time you open it, so it always uses the current design. It opens the
+newest batch, and links to every earlier one (`/report/<date>/`).
+
+All three pages share one top bar, `web/topbar.css`: the dashboard and Fit
+ranking link it, and the Applications page inlines it, since that page also has
+to work when opened straight from disk.
 
 ---
 

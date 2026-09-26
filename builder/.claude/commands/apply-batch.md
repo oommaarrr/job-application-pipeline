@@ -133,6 +133,14 @@ sections 1 and 2) into `applications/<date>/<Company>/`, then:
   filenames. When a posting names a brand or spinout, the employer wins.
 - `<First>_<Last>` is the CV name from `profile/identity.md`.
 
+As soon as both PDFs of a role are built, write its record beside them, in
+`applications/<date>/<Company>/entry.json`: the same object that role will get
+in `built` in step 6 (`company`, `title`, `location`, `url`, `why`, `flags`).
+Do it per role, not at the end. A session can stop at any moment (a usage
+limit), and a role with documents but no record was once built a second time
+the next day. The runner reads these files if the batch record never gets
+written.
+
 `check_spread.py` fails on a project with more than two bullets, fewer than four
 distinct projects, or a topic masquerading as a project label. Fix the payload
 until it passes; never edit the checker. `build_docs.py` refuses em dashes, en

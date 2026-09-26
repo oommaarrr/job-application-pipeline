@@ -412,6 +412,102 @@ def pool_section(py: pathlib.Path, work: pathlib.Path) -> None:
     _write_local(sc, None)
 
 
+def recovery_section(py: pathlib.Path, work: pathlib.Path, port: int) -> None:
+    """
+    A session cut off by a usage limit leaves finished applications on disk
+    that no batch record lists. On 25 September 2026 six of them went missing
+    from the Applications page and were built again the next day. The merge
+    must record every finished one, and only finished ones.
+    """
+    b = work / "builder"
+    day = b / "applications" / "2026-01-02"
+    pdf = b"%PDF-1.4\n" + b"0" * 9000
+
+    def app(name: str, entry: dict | None = None, finished: bool = True) -> None:
+        d = day / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"cv_{name.lower()}.json").write_text("{}", encoding="utf-8")
+        if finished:
+            (d / f"Alex_Rivera_CV_{name}.pdf").write_bytes(pdf)
+            (d / f"Alex_Rivera_CoverLetter_{name}.pdf").write_bytes(pdf)
+        if entry:
+            (d / "entry.json").write_text(json.dumps(entry), encoding="utf-8")
+
+    def row(company: str, title: str, url: str, folder: str) -> dict:
+        return {"company": company, "title": title, "url": url, "why": "", "flags": [],
+                "files": {"CV": f"{folder}/Alex_Rivera_CV_{folder}.pdf",
+                          "cover letter": f"{folder}/Alex_Rivera_CoverLetter_{folder}.pdf"}}
+
+    app("Alpha")
+    app("Confidential")
+    app("Beta", {"company": "Beta", "title": "ML Engineer", "url": "https://example.com/beta"})
+    app("Gamma")
+    app("Delta", finished=False)
+    alpha = row("Alpha", "AI Engineer", "https://example.com/alpha", "Alpha")
+    # Recorded on Windows: backslashes. Must still count as Alpha's folder.
+    alpha["files"] = {k: v.replace("/", "\\") for k, v in alpha["files"].items()}
+    (day / "batch.json").write_text(json.dumps({"date": day.name, "built": [
+        alpha,
+        row("Confidential", "AI Engineer", "https://example.com/conf-a", "Confidential")],
+        "dropped": []}), encoding="utf-8")
+    # A second shard's fragment: another role from another "Confidential".
+    (day / "batch.shard-2.json").write_text(json.dumps({"built": [
+        row("Confidential", "Data Engineer", "https://example.com/conf-b", "Confidential2")],
+        "dropped": []}), encoding="utf-8")
+    (b / "shortlist.json").write_text(json.dumps([
+        {"company": "Gamma GmbH", "title": "Applied AI Engineer", "url": "https://example.com/gamma"}]),
+        encoding="utf-8")
+
+    def merge() -> dict:
+        subprocess.run([str(py), "merge_batches.py", str(day)], cwd=b, capture_output=True,
+                       text=True, encoding="utf-8", env=dict(os.environ, PYTHONUTF8="1"), timeout=60)
+        return json.loads((day / "batch.json").read_text(encoding="utf-8"))
+
+    got = merge()
+    names = sorted(e["company"] for e in got["built"])
+    check(names == ["Alpha", "Beta", "Confidential", "Confidential", "Gamma GmbH"],
+          "every finished application is recorded, an unfinished one is not", str(names))
+    gamma = next((e for e in got["built"] if e["company"] == "Gamma GmbH"), {})
+    check(gamma.get("url") == "https://example.com/gamma",
+          "a recovered application gets its posting link back", str(gamma))
+    check(len(merge()["built"]) == 5, "recovering twice adds nothing")
+    (b / "shortlist.json").unlink(missing_ok=True)
+
+    subprocess.run([str(py), "batch_report.py", day.name], cwd=b, capture_output=True, timeout=60)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/report/{day.name}/batch.html",
+                                    timeout=10) as r:
+            html = r.read().decode("utf-8", "replace")
+    except OSError as e:
+        html = str(e)
+    check(f'<base href="/report/{day.name}/">' in html and "Gamma GmbH" in html,
+          "an earlier day's batch opens from the Applications page", html[:200])
+
+    # One top bar on every page: the brand and the same three tabs.
+    pages = {"dashboard": "/dashboard", "ranking": "/ranking"}
+    htmls = {"applications": html}
+    for name, path in pages.items():
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=10) as r:
+                htmls[name] = r.read().decode("utf-8", "replace")
+        except OSError as e:
+            htmls[name] = str(e)
+    same = all('class="topbar"' in h and "Job Pipeline" in h and 'aria-current="page"' in h
+               and all(t in h for t in (">Dashboard<", ">Applications<", ">Fit ranking<"))
+               for h in htmls.values())
+    check(same, "Dashboard, Applications and Fit ranking share one top bar",
+          ", ".join(k for k, h in htmls.items() if 'class="topbar"' not in h))
+
+    # A recovered role counts as built: the pool must not offer it again.
+    left = ps(py, work, """
+        import pool
+        print(sorted(j["company"] for j in pool.split([
+            {"company": "Beta", "title": "ML Engineer", "url": "https://example.com/other",
+             "description": "x"}])["applied"]))""")
+    check(left == "['Beta']", "a recovered application is never handed to Claude again", left)
+    shutil.rmtree(day, ignore_errors=True)
+
+
 def _write_local(sc: pathlib.Path, text: str | None) -> None:
     """Write (or remove) the copy's config_local.py, and drop its compiled
     copy: Python checks that by size and a timestamp in whole seconds, so two
@@ -603,6 +699,9 @@ def main() -> int:
         end = time.time() + 60
         while time.time() < end and e.get("/status")[1]["build"]["running"]:
             time.sleep(1)
+
+        section("a batch cut off by a usage limit keeps every finished application")
+        recovery_section(py, work, e.port)
 
         section("which jobs the ranker reads (real ranker, real pool rules)")
         pool_section(py, work)

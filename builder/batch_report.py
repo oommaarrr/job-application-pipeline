@@ -49,7 +49,7 @@ _WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 
 def _load_css() -> str:
     parts = []
-    for name in ("tokens.css", "report.css"):
+    for name in ("tokens.css", "topbar.css", "report.css"):
         try:
             parts.append((_WEB / name).read_text(encoding="utf-8"))
         except OSError:
@@ -87,6 +87,14 @@ JS = r"""
   }
   apply(cur, false);
   if (btn) btn.onclick = function () { apply(THEMES[(THEMES.indexOf(cur) + 1) % 3], true); };
+  // The batch toolbar is pinned directly under the shared top bar, whose
+  // height changes when it wraps on a narrow screen.
+  var top = document.querySelector(".topbar");
+  var fit = function () {
+    if (top) document.documentElement.style.setProperty("--topbar-h", top.offsetHeight + "px");
+  };
+  fit();
+  window.addEventListener("resize", fit);
   // Changed on the dashboard in another tab: follow it.
   window.addEventListener("storage", function (e) {
     if (e.key === "theme") apply(THEMES.indexOf(e.newValue) >= 0 ? e.newValue : "auto", false);
@@ -322,6 +330,28 @@ def backfill_urls(batch: dict) -> int:
     return filled
 
 
+def other_batches(date: str) -> str:
+    """
+    Links to every other day's batch. The Applications page opens the newest
+    batch, so before this a new day's batch hid the previous one entirely:
+    applications built yesterday, some already sent, simply vanished from view.
+    """
+    days = []
+    for d in sorted(APPS.glob("20??-??-??"), reverse=True):
+        if d.name == date or not (d / "batch.json").exists():
+            continue
+        try:
+            payload = json.loads((d / "batch.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        n = len(payload.get("built", [])) if isinstance(payload, dict) else 0
+        days.append(f'<a href="{BRIDGE}/report/{d.name}/batch.html">{esc(d.name)} '
+                    f'<span class="n">{n}</span></a>')
+    if not days:
+        return ""
+    return '  <nav class="batches" aria-label="Other batches">Other batches: ' + " ".join(days[:14]) + "</nav>"
+
+
 def render(batch: dict) -> str:
     date = batch.get("date", "")
     built = batch.get("built", [])
@@ -386,11 +416,26 @@ def render(batch: dict) -> str:
 <title>Application batch {esc(date)}</title>
 <script>{THEME_BOOT}</script><style>{CSS}</style></head>
 <body>
+<div class="topbar-shell">
+  <header class="topbar">
+    <a class="brand" href="{BRIDGE}/dashboard">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Job Pipeline</span>
+    </a>
+    <span class="grow"></span>
+    <nav class="nav" aria-label="Pages">
+      <a class="go ghost" href="{BRIDGE}/dashboard"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>
+      <a class="go ghost" href="{BRIDGE}/report/" aria-current="page"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>
+      <a class="go ghost" href="{BRIDGE}/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
+    </nav>
+    <button id="theme" class="go icon theme" type="button" title="Theme: auto" aria-label="Theme: auto">&#9788;</button>
+  </header>
+</div>
 <div class="wrap">
-  <a class="back" href="{BRIDGE}/dashboard">&larr; Dashboard</a>
   <h1>Application batch &middot; {esc(date)}</h1>
   <p class="sub">{len(built)} built{f' from a pool of {esc(pool)}' if pool else ''},
      ranked by fit rather than by the scraper's order.</p>
+{other_batches(date)}
 
   <div class="bar">
     <div class="bar-row">
@@ -401,7 +446,6 @@ def render(batch: dict) -> str:
       <input type="search" id="filter" placeholder="Filter roles&hellip;" aria-label="Filter roles">
       <button id="toggle-done" aria-pressed="false">Hide done</button>
       <button id="reset">Reset marks</button>
-      <button id="theme" type="button" title="Theme: auto (click to change)" aria-label="Theme: auto">&#9788; Auto</button>
       <span class="bridge" id="bridge">bridge <b>checking&hellip;</b></span>
     </div>
     <div class="progress" aria-hidden="true">

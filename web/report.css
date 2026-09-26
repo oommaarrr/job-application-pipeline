@@ -13,20 +13,28 @@
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
   font:var(--fw-regular) 15px/1.6 var(--font);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
-.wrap{max-width:60rem;margin:0 auto;padding:var(--sp-7) var(--sp-6) var(--sp-8)}
+.wrap{max-width:60rem;margin:0 auto;padding:0 var(--sp-6) var(--sp-8)}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
-/* The dashboard opens this page in the same tab, so it needs a way back. */
-.back{display:inline-block;margin:0 0 var(--sp-3);color:var(--dim);font-size:var(--fs-sm);text-decoration:none}
-.back:hover{color:var(--ink);text-decoration:underline}
-@media print{.back{display:none}}
+/* The top bar is topbar.css, inlined ahead of this file, the same bar as the
+   dashboard and Fit ranking. It sits in a shell as wide as their page (1160px)
+   rather than in this narrower reading column, so it lines up exactly when
+   moving between the three. */
+.topbar-shell{position:sticky;top:0;z-index:20;max-width:1160px;margin:0 auto;padding:0 var(--sp-6)}
+.topbar-shell .topbar{position:static}
+@media (max-width:720px){.topbar-shell{padding:0 var(--sp-4)}}
+.batches{margin:0 0 var(--sp-3);color:var(--dim);font-size:var(--fs-sm);display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline}
+.batches a{color:var(--ink);text-decoration:none;white-space:nowrap}
+.batches a:hover{text-decoration:underline}
+.batches .n{color:var(--dim)}
+@media print{.batches{display:none}}
 h1{font-size:var(--fs-2xl);font-weight:var(--fw-semi);letter-spacing:-.02em;line-height:var(--lh-tight);margin:0 0 var(--sp-2)}
 .sub{color:var(--dim);font-size:var(--fs-md);margin:0 0 var(--sp-5);max-width:44rem;text-wrap:pretty}
 h2{font-size:var(--fs-2xs);font-weight:var(--fw-semi);text-transform:uppercase;letter-spacing:var(--track-caps);
   color:var(--dim);margin:var(--sp-7) 0 var(--sp-3)}
 
 /* ---- sticky toolbar: counts, progress, filter, toggles, bridge ---- */
-.bar{position:sticky;top:0;z-index:5;margin:0 calc(-1 * var(--sp-6)) var(--sp-5);padding:var(--sp-3) var(--sp-6);
+.bar{position:sticky;top:var(--topbar-h,0px);z-index:5;margin:0 calc(-1 * var(--sp-6)) var(--sp-5);padding:var(--sp-3) var(--sp-6);
   background:var(--scrim);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .bar-row{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap}
 .count{display:inline-flex;align-items:baseline;gap:5px;font-size:var(--fs-sm);color:var(--dim)}
@@ -120,8 +128,8 @@ td.reason{color:var(--dim)}
 footer{margin-top:var(--sp-8);padding-top:var(--sp-4);border-top:1px solid var(--line);color:var(--dim);font-size:var(--fs-xs)}
 footer code{font-family:var(--mono);background:var(--bg2);padding:1px 5px;border-radius:var(--radius-xs)}
 
-@media (max-width:40rem){
-  .wrap{padding:var(--sp-5) var(--sp-4) var(--sp-7)}
+@media (max-width:720px){
+  .wrap{padding:0 var(--sp-4) var(--sp-7)}
   .bar{margin:0 calc(-1 * var(--sp-4)) var(--sp-4);padding:var(--sp-3) var(--sp-4)}
   .marks{margin-left:0;width:100%;justify-content:flex-start}
   .bridge{margin-left:0;flex-basis:100%}

@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job Pipeline · Live</title>
 <link rel="stylesheet" href="/web/tokens.css">
+<link rel="stylesheet" href="/web/topbar.css">
 <link rel="stylesheet" href="/web/app.css">
 </head>
 <body class="page-dashboard"><div class="wrap">
@@ -12,14 +13,15 @@
        Identity, phase and health on the left, navigation on the right.
        #phase and #health are what a glance from another tab reads first. -->
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="/dashboard">
       <span class="brand-mark" aria-hidden="true"></span>
-      <h1>Job Pipeline</h1>
-    </div>
+      <h1 class="brand-name">Job Pipeline</h1>
+    </a>
     <span id="phase" class="badge" style="background:var(--gray)">…</span>
     <span id="health" class="health"></span>
     <span class="grow"></span>
     <nav class="nav" aria-label="Pages">
+      <a class="go ghost" href="/dashboard" aria-current="page"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>
       <a id="btnReport2" class="go ghost" href="/report/"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>
       <a id="btnRanking" class="go ghost" href="/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
     </nav>

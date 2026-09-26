@@ -1881,7 +1881,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _serve_report(self) -> None:
-        base = _latest_batch_dir()
+        # /report/<date>/... is that day's batch (the report links to every
+        # other day); /report/... alone is the newest.
+        rel = self.path.split("?")[0][len("/report"):].lstrip("/")
+        m = re.match(r"(\d{4}-\d{2}-\d{2})(?:/|$)", rel)
+        if m and (BATCHES / m.group(1) / "batch.json").exists():
+            base, prefix, rel = BATCHES / m.group(1), f"/report/{m.group(1)}/", rel[len(m.group(0)):]
+        else:
+            base, prefix = _latest_batch_dir(), "/report/"
         if not base:
             return self._send_html(
                 # Styled with the shared tokens so it follows dark mode. This is
@@ -1890,16 +1897,26 @@ class Handler(BaseHTTPRequestHandler):
                 '<meta name="viewport" content="width=device-width, initial-scale=1">'
                 '<title>Applications · Job Pipeline</title>'
                 '<link rel="stylesheet" href="/web/tokens.css">'
+                '<link rel="stylesheet" href="/web/topbar.css">'
                 '<link rel="stylesheet" href="/web/app.css">'
                 '<script>try{var t=localStorage.getItem("theme");'
                 'if(t&&t!=="auto")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>'
-                '</head><body><div class="wrap" style="padding-top:48px">'
+                '</head><body><div class="wrap">'
+                # The same top bar as every other page (web/topbar.css).
+                '<header class="topbar"><a class="brand" href="/dashboard">'
+                '<span class="brand-mark" aria-hidden="true"></span>'
+                '<span class="brand-name">Job Pipeline</span></a><span class="grow"></span>'
+                '<nav class="nav" aria-label="Pages">'
+                '<a class="go ghost" href="/dashboard"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>'
+                '<a class="go ghost" href="/report/" aria-current="page"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>'
+                '<a class="go ghost" href="/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>'
+                '</nav></header>'
                 '<div class="card"><h2>No applications yet</h2>'
                 '<p class="muted">Nothing has been built. Rank the pool, then press '
                 '<b>Build</b> on the dashboard; each finished batch appears here.</p>'
-                '<p><a class="go" href="/dashboard">&larr; Dashboard</a></p></div>'
+                '<p><a class="go" href="/dashboard">Go to the dashboard</a></p></div>'
                 '</div></body></html>')
-        rel = self.path.split("?")[0][len("/report"):].lstrip("/") or "batch.html"
+        rel = rel or "batch.html"
         target = (base / rel).resolve()
         try:
             base_r = base.resolve()
@@ -1924,7 +1941,7 @@ class Handler(BaseHTTPRequestHandler):
         # it; the PDFs are served straight through.
         if target.suffix.lower() in (".html", ".htm"):
             html = data.decode("utf-8", "replace")
-            tag = '<base href="/report/">'
+            tag = f'<base href="{prefix}">'
             if tag not in html:
                 lower = html.lower()
                 i = lower.find("<head")

@@ -2,7 +2,6 @@
  * Fit ranking. Tokens from tokens.css, shared components from app.css; only
  * the filter bar, the fit strip and the row states live here.
  */
-.i-back{--i:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M12 19l-7-7 7-7'/%3E%3C/svg%3E")}
 .model{font-size:var(--fs-xs);color:var(--dim);font-family:var(--mono)}
 .model:empty{display:none}
 

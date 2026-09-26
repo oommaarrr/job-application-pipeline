@@ -1,0 +1,82 @@
+/*
+ * The top bar every page shares: Dashboard, Applications and Fit ranking.
+ *
+ * One file so the three can never drift apart again. Before this the dashboard
+ * had the "Job Pipeline" bar, Fit ranking had its own title and one link back,
+ * and Applications had a plain "<- Dashboard" link and no bar at all.
+ *
+ * Linked by dashboard.html and ranking.html (BEFORE app.css, so app.css keeps
+ * the last word on its own buttons), and INLINED into batch.html by
+ * batch_report.py, which is opened from disk and has no app.css. So this file
+ * is self-contained: its buttons and icons are defined here, scoped to
+ * .topbar, and it fetches nothing (the icons are data: URIs).
+ *
+ * Markup:
+ *   <header class="topbar">
+ *     <a class="brand" href="/dashboard"><span class="brand-mark"></span>
+ *       <span class="brand-name">Job Pipeline</span></a>
+ *     ...page-specific status...
+ *     <span class="grow"></span>
+ *     <nav class="nav"> three links, the current one aria-current="page" </nav>
+ *     <button class="go icon theme">
+ *   </header>
+ */
+.topbar{--i-doc:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E");
+  --i-list:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 6h16M4 12h11M4 18h6'/%3E%3C/svg%3E");
+  --i-home:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='9' rx='1'/%3E%3Crect x='14' y='3' width='7' height='5' rx='1'/%3E%3Crect x='14' y='12' width='7' height='9' rx='1'/%3E%3Crect x='3' y='16' width='7' height='5' rx='1'/%3E%3C/svg%3E");
+  --i-sun:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/%3E%3C/svg%3E");
+  --i-moon:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/%3E%3C/svg%3E");
+  --i-auto:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 3a9 9 0 0 1 0 18z' fill='black'/%3E%3C/svg%3E");
+  --gutter:var(--sp-6);
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
+  margin:0 calc(-1 * var(--gutter)) var(--sp-5);padding:var(--sp-3) var(--gutter);
+  background:var(--scrim);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);font-family:var(--font);line-height:1.4}
+.topbar .grow{flex:1}
+
+/* brand: the same on every page, and a way home from anywhere */
+.topbar .brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
+.topbar .brand-name{margin:0;font-size:var(--fs-lg);font-weight:var(--fw-semi);letter-spacing:-.015em;line-height:1.2}
+/* the mark: a three-bar funnel, drawn with backgrounds so it needs no file */
+.topbar .brand-mark{width:20px;height:20px;border-radius:5px;flex:none;background:
+  linear-gradient(var(--card),var(--card)) 4px 5px/12px 2px no-repeat,
+  linear-gradient(var(--card),var(--card)) 4px 9px/8px 2px no-repeat,
+  linear-gradient(var(--card),var(--card)) 4px 13px/4px 2px no-repeat,var(--ink)}
+
+/* buttons and links in the bar */
+.topbar .go{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--control-h);padding:0 12px;line-height:calc(var(--control-h) - 2px);
+  font:var(--fw-medium) var(--fs-sm)/1 var(--font);white-space:nowrap;text-decoration:none;
+  color:var(--ink);background:var(--card);border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);cursor:pointer;box-shadow:var(--shadow-sm);
+  transition:background var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease)}
+.topbar .go:hover{background:var(--bg2);border-color:var(--dim)}
+.topbar .go.ghost{background:transparent;box-shadow:none;border-color:transparent}
+.topbar .go.ghost:hover{background:var(--bg2);border-color:transparent}
+.topbar .go.icon{width:var(--control-h);padding:0}
+.topbar .ico{display:inline-block;flex:none;width:14px;height:14px;background:currentColor;
+  -webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+.topbar .i-doc{--i:var(--i-doc)} .topbar .i-list{--i:var(--i-list)} .topbar .i-home{--i:var(--i-home)}
+
+/* the three pages; the one you are on is marked, and is not a link target */
+.topbar .nav{display:flex;align-items:center;gap:2px}
+.topbar .nav .go{color:var(--dim)}
+.topbar .nav .go:hover{color:var(--ink)}
+.topbar .nav .go[aria-current="page"]{color:var(--ink);background:var(--bg2);font-weight:var(--fw-semi);cursor:default}
+
+/* the theme button: the page's JS writes a glyph and a title of
+   "Theme: auto|light|dark"; the glyph is hidden and an icon drawn instead. */
+.topbar .go.theme{font-size:0}
+.topbar .go.theme::before{content:"";width:16px;height:16px;background:currentColor;
+  -webkit-mask:var(--i-auto) center/contain no-repeat;mask:var(--i-auto) center/contain no-repeat}
+.topbar .go.theme[title*="light"]::before{-webkit-mask-image:var(--i-sun);mask-image:var(--i-sun)}
+.topbar .go.theme[title*="dark"]::before{-webkit-mask-image:var(--i-moon);mask-image:var(--i-moon)}
+.topbar .go.theme[title*="auto"]::before{-webkit-mask-image:var(--i-auto);mask-image:var(--i-auto)}
+
+@media (max-width:720px){
+  .topbar{--gutter:var(--sp-4);margin-bottom:var(--sp-4);padding-top:var(--sp-2);padding-bottom:var(--sp-2);row-gap:var(--sp-2)}
+  .topbar .grow{flex-basis:100%;order:10;height:0}
+  .topbar .nav,.topbar .switch,.topbar .theme,.topbar .stamp{order:11}
+  .topbar .nav .go{padding:0 8px}
+}
+@media print{.topbar{display:none}}

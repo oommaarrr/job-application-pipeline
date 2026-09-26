@@ -266,11 +266,14 @@ def run_logged(args: list[str], tee: bool = False) -> tuple[int, str]:
 # Finish the review page from whatever is on disk. A round cut off after the
 # PDFs were written but before the report used to leave good applications with
 # no page. The fragments and the PDFs are enough: merge, render, done.
+# The merge runs every time, not only when batch.json is missing: on 25
+# September 2026 batch.json existed (shard 1 had written its part) while six
+# applications from shard 2 were on disk and in no record. The merge adds them.
 def finish_report() -> None:
     if not TODAY_DIR.is_dir():
         return
-    if not (TODAY_DIR / "batch.json").exists() and any(TODAY_DIR.glob("batch.shard-*.json")):
-        say("finishing the report: merging shard fragments")
+    if (TODAY_DIR / "batch.json").exists() or any(TODAY_DIR.glob("batch.shard-*.json")) \
+            or built_companies():
         if run_logged([PY, "merge_batches.py", str(TODAY_DIR)])[0] != 0:
             say("merge failed — see above")
     if (TODAY_DIR / "batch.json").exists():
@@ -338,10 +341,42 @@ def json_count(path: pathlib.Path) -> int:
     return len(data) if isinstance(data, list) else 0
 
 
+def reconcile_recent(days: int = 14) -> None:
+    """
+    Record any finished application an earlier run left out of its batch.
+
+    finish_report does this when a run ends, but a run killed outright (a
+    crash, a shutdown, TerminateProcess on Windows) never reaches it. Before
+    anything is ranked, each recent batch folder is checked, so a role already
+    built can never be handed to Claude a second time.
+    """
+    # A Claude session from a killed run may still be writing into a folder.
+    # Its work is recorded by the next run instead.
+    if pu.find_apply_batch_claudes(BUILDER_ROOT):
+        return
+    root = pathlib.Path("applications")
+    cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    for d in sorted(root.glob("20??-??-??")):
+        if not d.is_dir() or d.name < cutoff:
+            continue
+        batch = _read_json(d / "batch.json", {})
+        rows = batch.get("built", []) if isinstance(batch, dict) else batch
+        listed = {str(f).replace("\\", "/").split("/", 1)[0] for r in (rows if isinstance(rows, list) else [])
+                  if isinstance(r, dict) for f in (r.get("files") or {}).values()}
+        orphans = [x.name for x in d.iterdir() if x.is_dir() and x.name not in listed
+                   and _big_pdf(x, "*_CV_*.pdf") and _big_pdf(x, "*_CoverLetter_*.pdf")]
+        if orphans or any(d.glob("batch.shard-*.json")):
+            say(f"{d.name}: recording {len(orphans)} finished application(s) the batch "
+                f"record was missing ({', '.join(sorted(orphans))})")
+            if run_logged([PY, "merge_batches.py", str(d)])[0] == 0:
+                run_logged([PY, "batch_report.py", d.name])
+
+
 # ---------------------------------------------------------------- the build
 def main() -> None:
     TODAY_DIR.mkdir(parents=True, exist_ok=True)
     cfg = _config()
+    reconcile_recent()
 
     # Read the target early: the completion check needs to know what it is
     # aiming for.

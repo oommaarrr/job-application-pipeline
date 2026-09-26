@@ -4,23 +4,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fit ranking · Job Pipeline</title>
 <link rel="stylesheet" href="/web/tokens.css">
+<link rel="stylesheet" href="/web/topbar.css">
 <link rel="stylesheet" href="/web/app.css">
 <link rel="stylesheet" href="/web/ranking.css">
 </head>
 <body class="page-ranking"><div class="wrap">
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="/dashboard">
       <span class="brand-mark" aria-hidden="true"></span>
-      <h1>Fit ranking</h1>
-    </div>
+      <span class="brand-name">Job Pipeline</span>
+    </a>
     <span id="model" class="model"></span>
     <span class="grow"></span>
     <nav class="nav" aria-label="Pages">
-      <a class="go ghost" href="/dashboard"><span class="ico i-back" aria-hidden="true"></span>Dashboard</a>
+      <a class="go ghost" href="/dashboard"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>
+      <a class="go ghost" href="/report/"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>
+      <a class="go ghost" href="/ranking" aria-current="page"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
     </nav>
     <button id="themeBtn" class="go icon theme" type="button" title="light / dark / follow the system" aria-label="Theme">&#9789;</button>
   </header>
 
+  <h1 class="sr-only">Fit ranking</h1>
   <p class="summary" id="summary">loading…</p>
 
   <div class="rank-panel card">
