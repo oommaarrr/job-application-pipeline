@@ -45,7 +45,7 @@
 
 /* buttons and links in the bar */
 .topbar .go{display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  height:var(--control-h);padding:0 12px;line-height:calc(var(--control-h) - 2px);
+  height:var(--control-h);padding:0 12px;
   font:var(--fw-medium) var(--fs-sm)/1 var(--font);white-space:nowrap;text-decoration:none;
   color:var(--ink);background:var(--card);border:1px solid var(--line-strong);
   border-radius:var(--radius-sm);cursor:pointer;box-shadow:var(--shadow-sm);

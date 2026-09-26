@@ -182,7 +182,7 @@ const isEnabled = (q) => q && q.enabled !== false;
 const activeSearches = (list) => (list || []).filter(isEnabled);
 
 async function migrateSched() {
-  const s = { ...DEFAULT_SCHED, ...((await chrome.storage.local.get(SCHED))[SCHED] || {}) };
+  const s = { ...DEFAULT_SCHED, ...(await chrome.storage.local.get(SCHED))[SCHED] };
   const before = JSON.stringify(s);
   /*
    * Nothing is blocked by site.
@@ -240,7 +240,7 @@ migrateSched();
 
 const getSched = async () => {
   await migrateSched();
-  return { ...DEFAULT_SCHED, ...((await chrome.storage.local.get(SCHED))[SCHED] || {}) };
+  return { ...DEFAULT_SCHED, ...(await chrome.storage.local.get(SCHED))[SCHED] };
 };
 const setSched = async (patch) =>
   chrome.storage.local.set({ [SCHED]: { ...(await getSched()), ...patch } });
@@ -664,9 +664,7 @@ async function runSchedule() {
                      lastResult: { at: Date.now(), lines: rs.done } });
   } finally {
     await setSched({ running: false });
-    const s = await getSched();
-    const unfinished = s.runState && s.runState.index < searches.length;
-    await reportScrape(!!unfinished && false, searches.length, searches.length);
+    await reportScrape(false, searches.length, searches.length);
   }
 }
 
@@ -674,7 +672,7 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
   if (msg?.type === "sched:get") { getSched().then(sendResponse); return true; }
   if (msg?.type === "sched:set") {
     (async () => {
-      const patch = { ...(msg.patch || {}) };
+      const patch = { ...msg.patch };
       // Editing, switching off, removing or importing searches must not be
       // undone by a stale resume. An interrupted run freezes its order in
       // runState and replays it, so after an edit it would re-run the OLD list.

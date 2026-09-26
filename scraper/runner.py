@@ -19,7 +19,7 @@ import datetime as _dt
 import json
 import pathlib
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import config
 from jobkey import job_key

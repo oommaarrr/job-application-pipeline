@@ -31,7 +31,6 @@ import random
 import re
 import sys
 import time
-import urllib.error
 import urllib.request
 from html.parser import HTMLParser
 
@@ -156,7 +155,7 @@ def main() -> int:
     for i, (rec, job_id) in enumerate(broken, 1):
         try:
             text = fetch(job_id)
-        except (urllib.error.URLError, OSError, TimeoutError) as e:
+        except OSError as e:
             failed += 1
             print(f"  {i:>3}/{len(broken)}  !! {(rec.get('company') or '?')[:26]:<26} {e}")
         else:

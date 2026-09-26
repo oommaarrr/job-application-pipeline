@@ -686,10 +686,10 @@ def start_rank() -> dict:
     ranker = ROOT / "rank_ollama.py"
     if not (PYTHON.exists() and ranker.exists()):
         return {"ok": False, "why": "ranker or venv is missing"}
-    up, why, entries = _ollama_tags()
+    up, _, entries = _ollama_tags()
     if not up and pu.start_ollama(OUT / "ollama.log",
                                   url=getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")):
-        up, why, entries = _ollama_tags()
+        up, _, entries = _ollama_tags()
     if not up:
         _event("rank", "failed", "Ollama is not running, so nothing can be ranked",
                fix="Open the Ollama app (or run: ollama serve), then press Retry.")
@@ -1565,11 +1565,6 @@ def _ollama_tags() -> tuple[bool, str, list[dict]]:
             return True, "", list(json.loads(r.read()).get("models") or [])
     except Exception as e:                                   # noqa: BLE001
         return False, str(e), []
-
-
-def _ollama_state() -> tuple[bool, str, list[str]]:
-    up, why, entries = _ollama_tags()
-    return up, why, [m.get("name", "") for m in entries]
 
 
 # The local model, downloaded by the bridge itself. Setup used to be the only

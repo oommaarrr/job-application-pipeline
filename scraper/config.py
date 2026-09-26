@@ -115,7 +115,6 @@ MAX_PAGES_PER_QUERY = 3  # hard ceiling per query; 5 tripped Akamai's throttle
 REQUEST_DELAY = (3.5, 7.0)   # random sleep between page fetches, seconds
 FETCH_DESCRIPTIONS = True    # fetch detail pages (needed for the German gate)
 MAX_DETAIL_FETCHES = 60      # cap detail fetches per run
-ENABLE_IMPORTED = True         # read Chrome-extension exports from inbox/
 
 # ---------------------------------------------------------------- applied
 # Jobs you have already applied to, maintained by the extension's "applied"
@@ -270,10 +269,6 @@ STRONG_SCORE = 95
 # is the floor. Above it, build what is here and then scrape. Below it, the
 # batch is too thin to be worth a run and scraping really is the only fix.
 MIN_WORTH_BUILDING = 4
-
-# Kept as the old name so nothing that imports it breaks; it now means the
-# floor, not the target.
-MIN_BUILDABLE = MIN_WORTH_BUILDING
 
 # Below this share of strong roles among the buildable ones, the pool is being
 # scraped through: still usable, but the next batch will be weaker than the last.
