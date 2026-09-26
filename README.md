@@ -216,15 +216,13 @@ Open a job search on LinkedIn, Indeed or StepStone, then:
 
 Save the searches you run often, then collect all of them with one click.
 
-**To save a search:**
+**To save a search**, either:
 
-1. On LinkedIn, Indeed or StepStone, search the way you normally would, and set
-   the filters you want (location, remote, date posted...)
-2. Open the extension, go to **Saved searches** and press **Add the page I am on**
-
-Or open **New search from keywords** at the bottom of the tab: type the job
-title and the city, choose the site, the distance and how recent, press
-**Open this search**, then **Add the page I am on**.
+- **From the site:** on LinkedIn, Indeed or StepStone, search the way you
+  normally would and set the filters you want (location, remote, date
+  posted...). Then open the extension, go to **Saved searches** and press
+  **Add the page I am on**.
+- **From keywords,** without going to the site first: see below.
 
 Every saved search shows the site it runs on. Beside each one:
 
@@ -243,6 +241,31 @@ last ran and what it found.
 
 **Export JSON** copies your list of searches; **Import JSON** replaces it. Use
 them to move your searches to another browser or computer.
+
+#### New search from keywords
+
+<img src="docs/screenshots/extension-keywords.png" alt="New search from keywords: job title, city, distance, site, how recent, remote only" width="380" align="right">
+
+Builds a search for you, so you do not have to set the filters on each site.
+It is at the bottom of the **Saved searches** tab:
+
+1. Click **New search from keywords** to open it
+2. Type the job title, e.g. `machine learning engineer`
+3. Type the city, and choose how far from it (5 to 100 km, or anywhere)
+4. Choose the site: LinkedIn, Indeed or StepStone
+5. Choose how recent: any date, past 24 hours, past week or past month
+6. Tick **Remote only** if you want only remote jobs
+7. Press **Open this search**: the results open in a new tab
+8. Check the results look right, then press **Add the page I am on** to save it
+
+What you typed is remembered for next time, so making the same search on
+another site is just changing the site and pressing the button again.
+
+On LinkedIn, the city only filters exactly after you have opened one LinkedIn
+search for that city yourself, which the extension then remembers. Until then
+the popup says so, and the search opens without the exact city filter.
+
+<br clear="right">
 
 ### More
 
