@@ -81,7 +81,7 @@ The first time, it sets everything up by itself and **asks before each step**:
 - signs you in to Claude (your browser opens)
 - creates your profile from your current CV: drag the CV file (PDF, Word or
   text) into the window when it asks
-- offers to start Job Pipeline by itself at every login, so it is always there
+- asks to start Job Pipeline by itself at every login (say **yes**)
 
 Then your browser opens the dashboard. If Ollama already has a model installed,
 that one is used; otherwise the local model (a few GB, once) downloads in the
@@ -89,8 +89,15 @@ background. Every step can be skipped and is offered again next
 time. **Open `profiles/me/profile.md` once and check it**: it decides which jobs
 rank highly.
 
-Keep the window open while you use it; `Ctrl+C` stops it. Next time, just run
-`./start.sh` again.
+**You run `./start.sh` once.** Job Pipeline is a small program on your own
+computer: the dashboard is a page it serves, and the Chrome extension talks to
+it. With start-at-login on, it runs in the background from then on, starts by
+itself when you log in, and restarts itself if it ever crashes. Open the
+dashboard from a bookmark: <http://127.0.0.1:8765/dashboard>.
+
+If you said no, it runs only while that terminal window is open (`Ctrl+C`
+stops it), and `./start.sh` asks once more next time. Turn it on later with
+`scripts/install-agent.sh`, off with `scripts/install-agent.sh --remove`.
 
 **3. (Optional) Install the Chrome extension**: see [below](#chrome-extension-optional).
 
@@ -126,8 +133,8 @@ The first time, it sets everything up by itself and **asks before each step**:
 - signs you in to Claude (your browser opens)
 - creates your profile from your current CV: drag the CV file into the window
   when it asks
-- offers to start Job Pipeline by itself at every login, in the background with
-  no window, so it is always there
+- asks to start Job Pipeline by itself at every login, in the background with
+  no window (say **Y**)
 
 Then your browser opens the dashboard; Ollama starts by itself. If it already
 has a model installed, that one is used; otherwise the local model (a few GB,
@@ -135,8 +142,15 @@ once) downloads in the background. Every step can be skipped
 and is offered again next time. **Open `profiles\me\profile.md` once and check
 it**: it decides which jobs rank highly.
 
-Keep the window open while you use it; close it to stop. Next time, just
-double-click `start.bat` again.
+**You double-click `start.bat` once.** Job Pipeline is a small program on
+your own computer: the dashboard is a page it serves, and the Chrome extension
+talks to it. With start-at-login on, it runs in the background with no window
+from then on, and starts by itself when you log in. Open the dashboard from a
+bookmark: <http://127.0.0.1:8765/dashboard>.
+
+If you said no, it runs only while that window is open (closing it stops it),
+and `start.bat` asks once more next time. Turn it on later with
+`scripts\install-agent.bat`, off with `scripts\install-agent.bat --remove`.
 
 **3. (Optional) Install the Chrome extension**: see below.
 
@@ -176,7 +190,8 @@ Every saved search shows which site it runs on.
 
 ## Everyday use
 
-1. Run `./start.sh` (Windows: `start.bat`). The dashboard opens.
+1. Open the dashboard: <http://127.0.0.1:8765/dashboard>. With start-at-login
+   on it is always there; otherwise run `./start.sh` (Windows: `start.bat`) first.
 2. **Collect.** Press **+ Arbeitnow**, or in the Chrome extension open
    **Saved searches** and press **Run all searches now**.
 3. **Rank.** Press **Rank pool**. It takes a few minutes; the **Funnel** shows
@@ -220,7 +235,7 @@ that happened.
 
 | Problem | Fix |
 |---|---|
-| The dashboard or the extension says the pipeline is offline | Double-click `start.bat` (Windows) or run `./start.sh`, and keep its window open. To never see this again, let setup start it at every login |
+| The dashboard or the extension says the pipeline is offline | It is not running. Double-click `start.bat` (Windows) or run `./start.sh` and answer **yes** to start-at-login; it then runs in the background for good. Already on? Its log is `scraper/out/bridge.log` |
 | "Ollama is not running" | It starts by itself when installed; if it keeps failing, open the Ollama app |
 | "Your profile is filled in" is red | Run setup again and give it your CV, or `claude "/make-profile <path to your CV>"` |
 | Build stops straight away | Read the message in the build log; usually the profile or the Claude login |

@@ -598,6 +598,12 @@ def main() -> int:
         check(up, f"plain `python start.py` sets itself up and starts the bridge on {e.port} "
                   f"({time.time() - began:.0f}s)",
               log.read_text(encoding="utf-8", errors="replace")[-1500:] if log.exists() else "no log")
+        # start.py asks to turn on start-at-login until it is on; that needs a
+        # status query that works on every system without installing anything.
+        st = subprocess.run([str(e.py), str(work / "scripts" / "install-agent.py"), "--status"],
+                            capture_output=True, text=True, encoding="utf-8", timeout=60)
+        check(st.returncode in (0, 1) and "at login" in st.stdout,
+              "start-at-login status can be read", (st.stdout + st.stderr)[-400:])
         for path in ("/dashboard", "/ranking", "/funnel", "/doctor", "/events", "/status"):
             try:
                 code = e.get(path, 30)[0]

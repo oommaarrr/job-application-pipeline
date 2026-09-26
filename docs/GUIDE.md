@@ -228,8 +228,13 @@ without a click. Turn it on once you trust the ranking.
 overwrites them: `scraper/config_local.py` (any value from `config.py`, e.g.
 `BUILD_TARGET = 15`) and `local.env` (e.g. `AUTOBUILD=1`).
 
-**Start at login (optional):** runs the bridge in the background at every
-login and restarts it if it crashes. Add `--remove` to undo it.
+**Start at login:** the dashboard is served by the bridge and the extension
+talks to it, so nothing works while it is stopped. Starting it at login runs it
+in the background at every login and restarts it if it crashes, which makes
+`./start.sh` / `start.bat` a one-time command. Setup asks, and so does every
+start until it is on or declined once; a "no" is kept as `START_AT_LOGIN=0` in
+`local.env` (delete the line to be asked again). `--status` says whether it is
+on, `--remove` undoes it.
 
 | System | Command | What it installs |
 |---|---|---|

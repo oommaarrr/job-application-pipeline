@@ -41,6 +41,35 @@ def load_local_env() -> None:
                               v.strip().strip('"').strip("'"))
 
 
+def ask_yes(question: str) -> bool:
+    try:
+        a = input(f"{question} [Y/n] ").strip().lower()
+    except EOFError:
+        return False
+    return not a or a.startswith("y")
+
+
+def remember_no_login_agent() -> None:
+    """A "no" to start-at-login, kept in local.env so it is not asked again."""
+    f = ROOT / "local.env"
+    try:
+        text = f.read_text(encoding="utf-8") if f.exists() else ""
+        if "START_AT_LOGIN=" not in text:
+            with open(f, "a", encoding="utf-8") as fh:
+                fh.write(("" if not text or text.endswith("\n") else "\n")
+                         + "# Asked once; set to 1 (or delete) to be asked again.\n"
+                         + "START_AT_LOGIN=0\n")
+    except OSError:
+        pass
+    os.environ["START_AT_LOGIN"] = "0"
+
+
+def agent_hint() -> str:
+    return (r"scripts\install-agent.bat" if os.name == "nt"
+            else "scripts/install-agent.sh" if sys.platform == "darwin"
+            else "scraper/.venv/bin/python scripts/install-agent.py")
+
+
 def answering(port: str) -> bool:
     try:
         urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=2).close()
@@ -70,6 +99,28 @@ def main() -> int:
     if missing and not background and sys.stdin is not None and sys.stdin.isatty():
         print(f"Not installed yet: {', '.join(missing)}. Running setup first.", flush=True)
         subprocess.call([str(py), str(ROOT / "setup.py"), "--skip-model", "--from-start"])
+        load_local_env()                     # setup may have recorded an answer
+
+    # The pipeline is a small local server: the dashboard is served by it and
+    # the extension talks to it, so something has to keep it running. Starting
+    # at login does that, and then this command is never needed again. Offered
+    # every time until it is on, or until it is turned down once (START_AT_LOGIN=0
+    # in local.env, which setup and this both write).
+    if not background and sys.stdin is not None and sys.stdin.isatty() \
+            and os.environ.get("START_AT_LOGIN", "").strip() != "0":
+        agent = [str(py), str(ROOT / "scripts" / "install-agent.py")]
+        if subprocess.call(agent + ["--status"], stdout=subprocess.DEVNULL) != 0:
+            if ask_yes("Start Job Pipeline by itself at every login, in the background, so "
+                       "the dashboard and the extension always work and you never need "
+                       "to run this again?"):
+                if subprocess.call(agent) == 0:
+                    print(f"Opening {url}")
+                    pu.open_path(url)
+                    return 0
+            else:
+                remember_no_login_agent()
+                print("OK. Run this again whenever you want it, or turn on start-at-login "
+                      f"later with {agent_hint()}")
 
     # Already running (another window, or the login agent)? Just open it.
     if answering(port):

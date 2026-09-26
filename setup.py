@@ -253,11 +253,17 @@ def after_venv(py: pathlib.Path) -> int:
     # least to start it now. Both optional; both can be done later.
     agent_cmd = [str(py), str(ROOT / "scripts" / "install-agent.py")]
     from_start = "--from-start" in sys.argv
-    if ask("Start Job Pipeline by itself every time you log in (in the background)?"):
+    # The dashboard and the extension only work while it runs, so this is the
+    # answer that makes ./start.sh (start.bat) a one-time thing.
+    if ask("Start Job Pipeline by itself every time you log in (in the background), "
+           "so you never have to start it by hand?"):
         if run(agent_cmd).returncode == 0:
             return 0
-    elif not from_start and ask("Start it now?"):
-        return run([str(py), str(ROOT / "start.py")]).returncode
+    else:
+        if PROMPT:
+            _remember_no_login_agent()
+        if not from_start and ask("Start it now?"):
+            return run([str(py), str(ROOT / "start.py")]).returncode
     if from_start:
         return 0
 
@@ -268,6 +274,20 @@ def after_venv(py: pathlib.Path) -> int:
         "scripts/install-agent.sh" if IS_MAC else "scripts/install-agent.py")
     print(f"  Optional: start it automatically at login with {agent}")
     return 0
+
+
+def _remember_no_login_agent() -> None:
+    """Kept in local.env, so start.py does not ask the same question again."""
+    f = ROOT / "local.env"
+    try:
+        text = f.read_text(encoding="utf-8") if f.exists() else ""
+        if "START_AT_LOGIN=" not in text:
+            with open(f, "a", encoding="utf-8") as fh:
+                fh.write(("" if not text or text.endswith("\n") else "\n")
+                         + "# Asked once; set to 1 (or delete) to be asked again.\n"
+                         + "START_AT_LOGIN=0\n")
+    except OSError:
+        pass
 
 
 def claude_step(pu) -> str | None:

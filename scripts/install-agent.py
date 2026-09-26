@@ -8,6 +8,7 @@ Optional: without it, run ./start.sh (or start.bat) when you want it.
     Linux     scraper/.venv/bin/python scripts/install-agent.py   (systemd --user)
 
     add --remove to stop it and stop starting at login.
+    add --status to ask whether it is installed (exit 0 yes, 1 no).
 
 After this the dashboard is always at http://127.0.0.1:8765/dashboard and the
 Chrome extension always finds it. Settings in local.env (e.g. AUTOBUILD=1) are
@@ -203,7 +204,38 @@ def linux_autostart(remove: bool) -> int:
     return wait_and_report()
 
 
+def installed() -> bool:
+    """Is Job Pipeline set to start at login on this computer?"""
+    home = pathlib.Path.home()
+
+    def points_here(f: pathlib.Path) -> bool:
+        # Installed by another copy of the project (a second checkout) does
+        # not count: that one would start, not this one.
+        try:
+            return str(SCRAPER) in f.read_text(encoding="utf-8", errors="replace") \
+                or str(ROOT / "start.py") in f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+    if pu.IS_MAC:
+        return points_here(home / "Library" / "LaunchAgents" / f"{LABEL}.plist")
+    if pu.IS_WIN:
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+                value = winreg.QueryValueEx(key, RUN_NAME)[0]
+            # An entry pointing at another copy of the project does not count.
+            return str(ROOT / "start.py").lower() in str(value).lower()
+        except OSError:
+            return False
+    return (points_here(home / ".config" / "systemd" / "user" / UNIT)
+            or points_here(home / ".config" / "autostart" / "job-pipeline.desktop"))
+
+
 def main() -> int:
+    if "--status" in sys.argv:
+        on = installed()
+        print("starts at login" if on else "does not start at login")
+        return 0 if on else 1
     remove = "--remove" in sys.argv
     if not remove and not pu.venv_python(SCRAPER / ".venv").exists():
         print(f"Not set up yet. Run {pu.install_hint('setup')} first.")

@@ -63,3 +63,6 @@ builder/profile
 # Claude Code per-machine settings
 .claude/settings.local.json
 **/.claude/settings.local.json
+
+# Personal Claude instructions, never published
+CLAUDE.local.md
