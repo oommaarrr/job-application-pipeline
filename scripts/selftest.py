@@ -119,6 +119,8 @@ print("fake ranked 8 (Ümlaut)")
 def make_copy(tmp: pathlib.Path) -> pathlib.Path:
     work = tmp / "jp"
     shutil.copytree(ROOT, work, ignore=_ignore, symlinks=False)
+    # The builds use a fake ranker; the real one is kept for the pool section.
+    shutil.copy(work / "scraper" / "rank_ollama.py", work / "scraper" / "rank_ollama_real.py")
     (work / "scraper" / "rank_ollama.py").write_text(FAKE_RANK, encoding="utf-8")
     (work / "scraper" / "check_live.py").write_text('print("fake: all open")\n', encoding="utf-8")
     # A filled-in profile, so the "still the example" guard lets the build run.
@@ -175,6 +177,39 @@ def stub_ollama() -> None:
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 11434), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print("  (no Ollama running: a stub answers its version check)")
+
+
+def answering_ollama(port: int, models: list[dict] | None = None) -> None:
+    """A stand-in Ollama on its own port that answers every question at once,
+    so the REAL ranker can run without touching a real model."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def _send(self, obj):
+            body = json.dumps(obj).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            self._send({"models": models if models is not None
+                        else [{"name": "llama3.1:latest"}]} if "tags" in self.path
+                       else {"version": "selftest"})
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            self._send({"response": json.dumps({
+                "german_level": "none", "years_required": 2, "role_family": "ml",
+                "is_management": False, "berlin": True, "remote_germany": False,
+                "fit": 80, "reason": "selftest answer"})})
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 
 def free_port() -> int:
@@ -273,6 +308,115 @@ def ps(py: pathlib.Path, work: pathlib.Path, code: str) -> str:
 
 
 # ------------------------------------------------------------------ the tests
+def pool_section(py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    One job of each kind, through the real rank_ollama.py and pool.py:
+      Alpha    judged on an earlier day        -> dropped as a repeat
+      Beta     collected earlier, never judged -> goes to the model
+      Gamma    applied to                      -> dropped
+      Delta    no description                  -> dropped
+      Epsilon, Zeta  new                       -> go to the model
+    and the dashboard's count must equal what the ranker reads.
+    """
+    sc = work / "scraper"
+    port = free_port()
+    answering_ollama(port)
+    (sc / "config_local.py").write_text(f'OLLAMA_URL = "http://127.0.0.1:{port}"\n',
+                                        encoding="utf-8")
+    for f in (sc / "inbox").glob("*.json"):
+        f.unlink()
+    (sc / "out" / "ollama_cache.json").unlink(missing_ok=True)
+    hist = sc / "history"
+    hist.mkdir(exist_ok=True)
+    desc = "Python machine learning in Berlin, Straße. " * 30
+    jobs = [{"url": f"https://www.linkedin.com/jobs/view/{900 + i}", "company": c,
+             "title": "ML Engineer", "location": "Berlin", "source": "linkedin",
+             "description": "" if c == "Delta" else desc}
+            for i, c in enumerate(["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"])]
+    (sc / "inbox" / f"job-collector-{DAY}.json").write_text(json.dumps({"jobs": jobs}),
+                                                            encoding="utf-8")
+    (hist / "seen.csv").write_text("first_seen,company,title,judged\n"
+                                   "2026-01-02,Alpha,ML Engineer,2026-01-02\n"
+                                   "2026-01-02,Beta,ML Engineer,\n".replace("2026-01-02", _days_ago(3)),
+                                   encoding="utf-8")
+    (hist / "applied.csv").write_text("date,company,title,url\n"
+                                      f"{DAY},Gamma,ML Engineer,https://www.linkedin.com/jobs/view/902\n",
+                                      encoding="utf-8")
+    (hist / ".judged-backfilled").write_text("selftest\n", encoding="utf-8")
+
+    def status() -> dict:
+        out = subprocess.run([str(py), "pool_status.py"], cwd=sc, capture_output=True,
+                             text=True, encoding="utf-8", timeout=120).stdout
+        try:
+            return json.loads(out)
+        except ValueError:
+            return {"error": out[-300:]}
+
+    s1 = status()
+    b = s1.get("breakdown", {})
+    check(b.get("to_judge") == 3 and b.get("repeat") == 1 and b.get("applied") == 1
+          and b.get("no_description") == 1 and b.get("collected") == 6,
+          "every collected job in exactly one bucket (3 to judge, 1 repeat, 1 applied, 1 no description)",
+          json.dumps(s1)[:400])
+    r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=300,
+                       env=dict(os.environ, PYTHONUTF8="1"))
+    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8")) \
+        if (sc / "out" / "ollama_rank.json").exists() else {}
+    judged = rank.get("counts", {}).get("judged")
+    check(r.returncode == 0 and judged == s1.get("usable") == 3,
+          "the ranker reads exactly the number the dashboard shows", f"exit {r.returncode}, "
+          f"ranker {judged}, dashboard {s1.get('usable')}: {(r.stdout + r.stderr)[-300:]}")
+    check(rank.get("not_read") == {"repeat": 1, "applied": 1, "no_description": 1, "too_old": 0},
+          "the ranker records why the rest were not read", str(rank.get("not_read")))
+    seen = (hist / "seen.csv").read_text(encoding="utf-8")
+    beta = next((l for l in seen.splitlines() if l.split(",")[1:2] == ["Beta"]), "")
+    check(beta.endswith(DAY), "a role never judged before goes to the model, and is recorded as judged", beta)
+    s2 = status()
+    check(s2.get("usable") == 3, "ranking the same pool again the same day drops nothing",
+          json.dumps(s2.get("breakdown")))
+
+    # A history written before the judged column: filled in once from the cache.
+    (hist / ".judged-backfilled").unlink()
+    (hist / "seen.csv").write_text("first_seen,company,title\n"
+                                   f"{_days_ago(3)},Epsilon,ML Engineer\n"
+                                   f"{_days_ago(3)},Omega,ML Engineer\n", encoding="utf-8")
+    status()
+    seen = (hist / "seen.csv").read_text(encoding="utf-8")
+    eps = next((l for l in seen.splitlines() if ",Epsilon," in l), "")
+    om = next((l for l in seen.splitlines() if ",Omega," in l), "")
+    check(eps.endswith(_days_ago(3)) and om.endswith(","),
+          "an old history is backfilled: judged only where the model has an answer", seen[-300:])
+
+    # PR #1: llama3.1 is not installed but another local model is. The ranker
+    # must use that one (never an embedding model or an Ollama cloud model,
+    # which would send job data off the machine), and nothing is downloaded.
+    port2 = free_port()
+    answering_ollama(port2, [{"name": "nomic-embed-text:latest",
+                              "details": {"family": "nomic-bert"}},
+                             {"name": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com"},
+                             {"name": "qwen3:8b"}])
+    (sc / "config_local.py").write_text(f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n',
+                                        encoding="utf-8")
+    subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc, capture_output=True,
+                   timeout=300, env=dict(os.environ, PYTHONUTF8="1"))
+    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8"))
+    check(rank.get("model") == "qwen3:8b",
+          "an installed model is used instead of downloading llama3.1 (not embedding, not cloud)",
+          str(rank.get("model")))
+    (sc / "config_local.py").write_text(f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n'
+                                        "OLLAMA_USE_INSTALLED = False\n", encoding="utf-8")
+    out = subprocess.run([str(py), "-c", "import config, ollama_model as m; "
+                          "print(m.resolve(config))"], cwd=sc, capture_output=True, text=True,
+                         timeout=60).stdout.strip()
+    check(out == "None", "OLLAMA_USE_INSTALLED = False insists on llama3.1 (download needed)", out)
+    (sc / "config_local.py").unlink(missing_ok=True)
+
+
+def _days_ago(n: int) -> str:
+    return (dt.date.today() - dt.timedelta(days=n)).isoformat()
+
+
 def main() -> int:
     print(f"Job Pipeline self-test on {sys.platform}, Python {sys.version.split()[0]}")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="jp-selftest-"))
@@ -447,6 +591,9 @@ def main() -> int:
         end = time.time() + 60
         while time.time() < end and e.get("/status")[1]["build"]["running"]:
             time.sleep(1)
+
+        section("which jobs the ranker reads (real ranker, real pool rules)")
+        pool_section(py, work)
 
     finally:
         section("cleanup")

@@ -28,9 +28,6 @@ import re
 import sys
 
 import config
-from applied_index import built_before, index as applied_index
-from jobkey import job_key
-import ledger
 
 HERE = pathlib.Path(__file__).parent
 INBOX = HERE / "inbox"
@@ -45,67 +42,31 @@ def _read(path: pathlib.Path, default):
 
 def status() -> dict:
     files = sorted(INBOX.glob("job-collector-*.json"))
-    days = []
-    for f in files:
-        m = re.search(r"(\d{4}-\d{2}-\d{2})", f.name)
-        if m:
-            days.append(m.group(1))
+    days = [m.group(1) for f in files if (m := re.search(r"(\d{4}-\d{2}-\d{2})", f.name))]
     newest = max(days) if days else None
-    age = None
-    if newest:
-        age = (dt.date.today() - dt.date.fromisoformat(newest)).days
+    age = (dt.date.today() - dt.date.fromisoformat(newest)).days if newest else None
 
-    # Only count scrapes inside the freshness window. An eight week old posting
-    # is usually filled, and a CV written for it is wasted work.
-    cutoff = dt.date.today() - dt.timedelta(days=config.MAX_POOL_AGE_DAYS)
-    jobs: dict[str, dict] = {}
-    for f in files:
-        m = re.search(r"(\d{4}-\d{2}-\d{2})", f.name)
-        if m and dt.date.fromisoformat(m.group(1)) < cutoff:
-            continue
-        payload = _read(f, {})
-        for rec in (payload.get("jobs", []) if isinstance(payload, dict) else payload):
-            if isinstance(rec, dict) and rec.get("url"):
-                # The day it was collected, as the ranker stamps it, so the
-                # repeat rule below gives the same answer here as there.
-                jobs[job_key(rec["url"])] = {**rec, "_collected": m.group(1)} if m else rec
-
-    applied_urls, applied_roles = applied_index()
-
-    def seen(j: dict) -> bool:
-        if built_before(j.get("company", ""), j.get("title", ""), applied_roles):
-            return True
-        # applied_urls is keyed with job_key now, so one comparison is enough.
-        # The old second comparison against split("?")[0] was the Indeed bug:
-        # every viewjob?jk=<id> collapsed to the same string.
-        return job_key(j.get("url", "")) in applied_urls
-
-    described = [j for j in jobs.values() if (j.get("description") or "").strip()]
-    not_built = [j for j in described if not seen(j)]
-    # The ranker also drops REPEATS: a role first collected on an earlier day
-    # (history/seen.csv). Leaving that out here made the dashboard say "scoring
-    # 128 jobs" while the ranker was judging 86 (25 September 2026). Read only:
-    # the ranker is the one that records what it sees.
-    try:
-        first = ledger.seen_first() if getattr(config, "SEEN_DAYS", 30) > 0 else {}
-    except OSError:
-        first = {}
-    repeats = [j for j in not_built if ledger.seen_earlier(j, first)]
-    usable = [j for j in not_built if not ledger.seen_earlier(j, first)]
+    # The same rule the ranker applies, from the same function (pool.py), so
+    # "usable" is exactly what the ranker will judge, never a different count.
+    import pool
+    b = pool.summary()
+    usable = b["to_judge"]
     return {
-        "total": len(jobs),
-        "with_descriptions": len(described),
-        # Not yet built or applied, and not a repeat: exactly what the ranker
-        # will judge. The only number that decides anything.
-        "usable": len(usable),
-        "repeats": len(repeats),
+        "total": b["collected"],
+        "with_descriptions": b["collected"] - b["no_description"] - b["too_old"],
+        # Exactly what the ranker will judge: the only number that decides anything.
+        "usable": usable,
+        "repeats": b["repeat"],
+        # Every collected job is in one bucket; they add up to "total".
+        "breakdown": b,
+        "explain": pool.explain(b),
         "newest_scrape": newest,
         "age_days": age,
         "stale": bool(age is not None and age > config.MAX_POOL_AGE_DAYS),
         # The floor, not the target. A pool of 10 is worth building; it is
         # simply a batch of 10 rather than a batch of 15.
-        "enough_to_build": len(usable) >= config.MIN_WORTH_BUILDING,
-        "build_now": min(len(usable), config.BUILD_TARGET),
+        "enough_to_build": usable >= config.MIN_WORTH_BUILDING,
+        "build_now": min(usable, config.BUILD_TARGET),
     }
 
 
@@ -121,7 +82,7 @@ def main() -> int:
     if not s["newest_scrape"]:
         print("nothing has ever been scraped")
     else:
-        print(f"{s['usable']} usable role(s) from {s['total']} scraped · "
+        print(f"{s['explain']} · "
               f"newest scrape {s['newest_scrape']} ({s['age_days']} day(s) old)"
               + (" · STALE" if s["stale"] else ""))
     return 0

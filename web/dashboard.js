@@ -32,7 +32,10 @@ async function tick(){
   ab.style.color=d.autobuild?"var(--green)":"var(--dim)";
   $("stamp").textContent=new Date(d.now).toLocaleTimeString();
   const poolN=(d.pool_usable!=null?d.pool_usable:(d.collected_today||0));
-  $("collInfo").textContent=poolN+" usable in pool"+(d.pool_repeats?(" · "+d.pool_repeats+" seen on an earlier day"):"")+" · "+d.applied+" applied"+(d.pool_stale?" · pool is stale":"");
+  // Every collected job accounted for, in plain words, from the same rule the
+  // ranker uses: "81 to judge, of 137 collected: 41 already judged on an
+  // earlier day, 14 already applied or built, 1 no description to read".
+  $("collInfo").textContent=(d.pool_explain||(poolN+" to judge"))+(d.pool_stale?" · the newest collection is old":"");
 
   // ---- stage tracker: where is the pipeline right now (or where the last run left it)
   const bpr=d.build_progress||{}, rnk=d.rank||{}, bld=d.build||{};
@@ -93,11 +96,11 @@ async function tick(){
   else if(ph==="done"){ head="Done — last run complete";
     sub=(bpr.built||0)+" built from "+(d.collected_today)+" collected"; }
   else if(ph==="built-partial"){ head="Idle — pool ready, not fully built";
-    sub=(bpr.built||0)+"/"+(bpr.target||0)+" built · "+poolN+" usable in pool"; }
+    sub=(bpr.built||0)+"/"+(bpr.target||0)+" built · "+poolN+" to judge"; }
   else if(rrr && !buildDone){ head="Ranked — ready to build";
     sub=rrr.buildable+" buildable · "+(d.suggested_build||rrr.strong)+" suggested to build · verdict "+rrr.verdict; }
   else { head="Idle — nothing running";
-    sub = scrapeDone? ("last run: "+(d.searches_done)+" searches, "+poolN+" usable in pool"
+    sub = scrapeDone? ("last run: "+(d.searches_done)+" searches, "+poolN+" to judge"
                        +(rnk.matches!=null?(", "+rnk.matches+" passed"):"")+(buildDone?(", "+(bpr.built)+" built"):""))
                     : "waiting for a scrape"; }
   $("stageline").style.color=LC[ph]||"var(--ink)";

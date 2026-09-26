@@ -82,7 +82,9 @@ function render() {
     const link = r.url
       ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + title + "</a>"
       : title;
-    const badge = r.kind === "dropped" ? esc(r.verdict || "dropped") : k.label;
+    // Plain words for the verdicts that are not the model's own labels.
+    const VERDICT = {"seen-earlier": "judged earlier"};
+    const badge = r.kind === "dropped" ? esc(VERDICT[r.verdict] || r.verdict || "dropped") : k.label;
     return '<tr class="' + r.kind + '">'
       + '<td class="sc n"><span class="num">' + r.score + "</span>"
       + '<span class="meter"><span style="width:' + pct + '%"></span></span></td>'

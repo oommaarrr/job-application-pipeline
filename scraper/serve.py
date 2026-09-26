@@ -1333,9 +1333,11 @@ def progress() -> dict:
         ps = pool_status.status()
         pool_usable = int(ps.get("usable") or 0)
         pool_repeats = int(ps.get("repeats") or 0)
+        pool_explain = ps.get("explain") or ""
         pool_stale = bool(ps.get("stale"))
     except Exception:
         pool_usable, pool_repeats, pool_stale = len(inbox), 0, False
+        pool_explain = ""
 
     # One progress reading for whatever stage is running, so every process shows
     # how many of the batch are done and how many are left.
@@ -1369,6 +1371,9 @@ def progress() -> dict:
         "collected_today": len(inbox),
         "pool_usable": pool_usable,
         "pool_repeats": pool_repeats,
+        # "81 to judge, of 137 collected: 41 already judged on an earlier day,
+        # ..." Every collected job accounted for, in words (pool.py).
+        "pool_explain": pool_explain,
         "pool_stale": pool_stale,
         "with_descriptions": sum(1 for j in inbox if j.get("description")),
         "applied": len(applied),
@@ -1772,8 +1777,15 @@ def funnel() -> dict:
     dropped = rank.get("dropped", []) or []
 
     reasons: dict[str, int] = {}
-    if rank.get("repeats"):
-        reasons["seen earlier"] = len(rank["repeats"])
+    # Not read by the model at all, in the words pool.py uses everywhere.
+    not_read = rank.get("not_read") or {}
+    labels = {"repeat": "already judged on an earlier day", "applied": "already applied or built",
+              "no_description": "no description", "too_old": "collected too long ago"}
+    for key, label in labels.items():
+        if not_read.get(key):
+            reasons[label] = not_read[key]
+    if rank.get("repeats") and not not_read:          # a ranking from before not_read
+        reasons["already judged on an earlier day"] = len(rank["repeats"])
     for row in dropped:
         reasons[row.get("verdict", "other")] = reasons.get(row.get("verdict", "other"), 0) + 1
 

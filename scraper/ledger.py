@@ -3,7 +3,8 @@ Two small, permanent logs that survive "Erase everything".
 
     history/applied.csv   every job marked applied: date, company, title, url
     history/seen.csv      every job collected in the last SEEN_DAYS days:
-                          first_seen, company, title  (no link, no description)
+                          first_seen, company, title, judged (the day the local
+                          model first judged it; empty if it never has)
 
 Why CSV: they are append-mostly lists of short rows that a person may want to
 open (Numbers, Excel, a text editor) and that must stay small. A row is about
@@ -42,7 +43,7 @@ SEEN_CSV = HISTORY / "seen.csv"
 _LOCK = HISTORY / ".lock"
 
 APPLIED_FIELDS = ["date", "company", "title", "url"]
-SEEN_FIELDS = ["first_seen", "company", "title"]
+SEEN_FIELDS = ["first_seen", "company", "title", "judged"]
 
 
 def _seen_days() -> int:
@@ -139,6 +140,91 @@ def _prune(rows: list[dict]) -> list[dict]:
     return [r for r in rows if r["first_seen"] >= cutoff]
 
 
+def history() -> dict[str, dict]:
+    """role key -> {"first": first collected, "judged": first judged or ""}."""
+    out: dict[str, dict] = {}
+    for r in _prune(_read(SEEN_CSV, SEEN_FIELDS)):
+        k = role_key(r["company"], r["title"])
+        if not k:
+            continue
+        cur = out.setdefault(k, {"first": r["first_seen"], "judged": r["judged"]})
+        cur["first"] = min(cur["first"], r["first_seen"])
+        if r["judged"] and (not cur["judged"] or r["judged"] < cur["judged"]):
+            cur["judged"] = r["judged"]
+    return out
+
+
+def repeat_of(job: dict, hist: dict[str, dict]) -> str:
+    """
+    The day this role was JUDGED before, if it is a repeat worth dropping; ""
+    otherwise. A repeat is a role the local model already judged on an earlier
+    day than this copy was collected. Collected-but-never-judged (the
+    pool was erased before ranking, the description was missing that day) is
+    not a repeat: it never had its chance, so it goes to the model now.
+    Decision, 25 September 2026, after a role collected on the 21st and never
+    ranked was dropped as "already had its chance".
+    """
+    h = hist.get(role_key(job.get("company", ""), job.get("title", "")))
+    if not h or not h["judged"]:
+        return ""
+    # Judged on an EARLIER day than this copy was collected. Judged today (a
+    # second ranking of the same pool) is the same pool, not a repeat: dropping
+    # it would silently shrink a re-run. Its answer is cached anyway.
+    collected = job.get("_collected") or _today()
+    return h["judged"] if h["judged"] < collected else ""
+
+
+def mark_judged(jobs: list[dict], when: str | None = None) -> int:
+    """Record that the local model has judged these roles. Keeps the earliest
+    date; adds a row for a role not logged yet. Returns how many changed."""
+    day = when or _today()
+    with _locked():
+        rows = _prune(_read(SEEN_CSV, SEEN_FIELDS))
+        index = {role_key(r["company"], r["title"]): r for r in rows}
+        changed = 0
+        for j in jobs:
+            company, title = (j.get("company") or "").strip(), (j.get("title") or "").strip()
+            k = role_key(company, title)
+            if not k:
+                continue
+            row = index.get(k)
+            if row is None:
+                row = {"first_seen": j.get("_collected") or day, "company": company,
+                       "title": title, "judged": ""}
+                rows.append(row)
+                index[k] = row
+            if not row["judged"] or day < row["judged"]:
+                row["judged"] = day
+                changed += 1
+        if changed:
+            _write(SEEN_CSV, SEEN_FIELDS, rows)
+        return changed
+
+
+def needs_judged_backfill() -> bool:
+    """A seen.csv from before the judged column existed."""
+    try:
+        with open(SEEN_CSV, encoding="utf-8") as fh:
+            return "judged" not in fh.readline()
+    except OSError:
+        return False
+
+
+def backfill_judged(judged_role_keys: set[str]) -> int:
+    """One-off, for a seen.csv written before the judged column: mark the roles
+    the model's cache shows were judged (dated by when they were first seen,
+    the best date available). Everything else stays unjudged."""
+    with _locked():
+        rows = _prune(_read(SEEN_CSV, SEEN_FIELDS))
+        n = 0
+        for r in rows:
+            if not r["judged"] and role_key(r["company"], r["title"]) in judged_role_keys:
+                r["judged"] = r["first_seen"]
+                n += 1
+        _write(SEEN_CSV, SEEN_FIELDS, rows)
+        return n
+
+
 def seen_first() -> dict[str, str]:
     """role key -> the first date it was collected, within the window."""
     out: dict[str, str] = {}
@@ -170,7 +256,7 @@ def record_seen(jobs: list[dict], when: str | None = None) -> int:
                 if day < index[k]["first_seen"]:
                     index[k]["first_seen"] = day
                 continue
-            row = {"first_seen": day, "company": company, "title": title}
+            row = {"first_seen": day, "company": company, "title": title, "judged": ""}
             rows.append(row)
             index[k] = row
             added += 1

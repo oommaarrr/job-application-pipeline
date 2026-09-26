@@ -47,7 +47,7 @@ import urllib.request
 
 import config
 import ollama_model
-from applied_index import built_before, index as applied_index
+from applied_index import index as applied_index
 import ledger
 from jobkey import job_key
 
@@ -92,28 +92,6 @@ def _read(path: pathlib.Path, default):
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return default
-
-
-def scraped_jobs(day: str | None) -> list[dict]:
-    """Every job the extension captured, newest file winning on a repeat URL."""
-    files = sorted(INBOX.glob("job-collector-*.json"))
-    if day:
-        files = [f for f in files if day in f.name]
-    out: dict[str, dict] = {}
-    for path in files:
-        payload = _read(path, {})
-        records = payload.get("jobs", []) if isinstance(payload, dict) else payload
-        # The day this copy was collected, from the file name. It is what the
-        # repeat check compares against, so ranking yesterday's pool after
-        # midnight does not call every job in it a repeat.
-        stamp = re.search(r"(\d{4}-\d{2}-\d{2})", path.name)
-        for rec in records:
-            if not isinstance(rec, dict) or not rec.get("url"):
-                continue
-            if stamp:
-                rec = {**rec, "_collected": stamp.group(1)}
-            out[job_key(rec["url"])] = rec
-    return list(out.values())
 
 
 def already_applied() -> tuple[set[str], dict[str, str]]:
@@ -600,60 +578,29 @@ def main() -> int:
     OUT.mkdir(exist_ok=True)
     profile = PROFILE_PATH.read_text(encoding="utf-8")
 
-    jobs = scraped_jobs(args.day)
-    applied_urls, applied_roles = already_applied()
-    applied_by_role = ledger.applied_role_keys()
-
-    def seen_before(j: dict) -> str:
-        when = built_before(j.get("company", ""), j.get("title", ""), applied_roles)
-        if when:
-            return f"built {when}"
-        u = (j.get("url") or "").split("?")[0].rstrip("/").lower()
-        if job_key(j.get("url", "")) in applied_urls or u in applied_urls:
-            return "already applied"
-        if ledger.role_key(j.get("company", ""), j.get("title", "")) in applied_by_role:
-            return "already applied (same role, new link)"
-        return ""
-
-    # Repeats: a role collected on an EARLIER day within SEEN_DAYS (history/
-    # seen.csv, which survives Erase). It already had its chance to rank, so it
-    # is not read or paid for again. Logged first, so today's pool is on record
-    # for tomorrow's check; same-day repeats are never dropped.
-    try:
-        ledger.record_seen(jobs)
-        first_seen = ledger.seen_first() if getattr(config, "SEEN_DAYS", 30) > 0 else {}
-    except OSError as e:
-        print(f"  ! job history unreadable ({e}); not dropping repeats this run")
-        first_seen = {}
-    repeats = []
-    for j in jobs:
-        when = ledger.seen_earlier(j, first_seen)
-        if when and not seen_before(j):
-            repeats.append({"title": j.get("title") or "", "company": j.get("company") or "",
-                            "url": j.get("url") or "", "location": j.get("location") or "",
-                            "source": j.get("source") or "", "rank_score": 0,
-                            "verdict": "seen-earlier",
-                            "why": f"already collected on {when}, so it had its chance"})
-    repeat_urls = {r["url"] for r in repeats}
-
-    pool = [j for j in jobs
-            if (j.get("description") or "").strip() and not seen_before(j)
-            and j.get("url") not in repeat_urls]
-    skipped_applied = sum(1 for j in jobs if seen_before(j))
-    no_desc = sum(1 for j in jobs if not (j.get("description") or "").strip())
+    # Which jobs the model reads is decided in pool.py, the one rule the
+    # dashboard's numbers use too, so the two can never disagree again.
+    import pool as pool_rules
+    jobs, too_old = pool_rules.load(args.day)
+    buckets = pool_rules.split(jobs, record=True)
+    pool = buckets["to_judge"]
+    repeats = [{"title": j.get("title") or "", "company": j.get("company") or "",
+                "url": j.get("url") or "", "location": j.get("location") or "",
+                "source": j.get("source") or "", "rank_score": 0,
+                "verdict": "seen-earlier",
+                "why": f"already judged on {j['_judged']}, when it was first collected"}
+               for j in buckets["repeat"]]
     if args.limit:
         pool = pool[: args.limit]
+    breakdown = {k: len(v) for k, v in buckets.items()}
+    breakdown.update(too_old=too_old, collected=len(jobs) + too_old)
 
     if not pool and not repeats:
         print("Nothing to rank. Scrape some jobs first.")
         return 1
-    if repeats:
-        print(f"{len(repeats)} dropped as repeats: collected on an earlier day "
-              f"within {getattr(config, 'SEEN_DAYS', 30)} days (history/seen.csv)")
+    print(pool_rules.explain(breakdown))
 
     cache = _read(CACHE_PATH, {})
-    print(f"{len(jobs)} scraped · {no_desc} without a description · "
-          f"{skipped_applied} already applied or built before · {len(pool)} to judge")
     print(f"model {args.model} · {config.OLLAMA_CONCURRENCY} at a time\n")
 
     def cache_key(job: dict) -> str:
@@ -679,12 +626,25 @@ def main() -> int:
             return job, None, f"failed: {type(e).__name__}: {e}"[:120]
 
     rows, failures, asked = [], [], 0
+    # Roles the model has now judged (answered fresh or from the cache), written
+    # to history/seen.csv: only a role judged before can later be dropped as a
+    # repeat. Flushed every ten, at the end, and on Stop.
+    judged_now: list[dict] = []
+
+    def _flush_judged() -> None:
+        if judged_now:
+            try:
+                ledger.mark_judged(judged_now)
+            except OSError as e:
+                print(f"  ! could not record judged roles ({e})")
+            judged_now.clear()
 
     # Stopped from the dashboard (or Ctrl+C): every answer is already saved, so
     # say so and leave at once rather than waiting for the model calls in
     # flight. os._exit because those calls run in worker threads.
     def _stop(signum, _frame):
         _save_cache(cache)
+        _flush_judged()
         print(f"\nstopped after {len(rows) + len(failures)}/{len(pool)} "
               "judged; press Rank pool to continue from here", flush=True)
         os._exit(143)
@@ -696,6 +656,9 @@ def main() -> int:
                 failures.append((job, how))
                 print(f"  {i:>3}/{len(pool)}  !! {(job.get('title') or '')[:48]:<48} {how}")
                 continue
+            judged_now.append(job)
+            if len(judged_now) >= 10:
+                _flush_judged()
             if how == "asked":
                 asked += 1
                 cache[cache_key(job)] = v
@@ -762,6 +725,7 @@ def main() -> int:
                   f"{vd:<11} {v['reason'][:44]}")
 
     _save_cache(cache)
+    _flush_judged()
 
     passed = sorted([r for r in rows if r["verdict"] == "passed"], key=sort_key)
     dropped = [r for r in rows if r["verdict"] != "passed"]
@@ -786,9 +750,11 @@ def main() -> int:
         "generated": dt.datetime.now().isoformat(timespec="seconds"),
         "model": args.model, "top_n": args.top,
         "health": health,
-        "counts": {"scraped": len(jobs), "judged": len(rows), "passed": len(passed),
+        "counts": {"scraped": breakdown["collected"], "judged": len(rows), "passed": len(passed),
                    "dropped": len(dropped), "sent_to_claude": len(top),
                    "failed": len(failures), "seen_earlier": len(repeats)},
+        # Why the rest of what was collected was not read, bucket by bucket.
+        "not_read": {k: breakdown[k] for k in ("repeat", "applied", "no_description", "too_old")},
         "top": top, "passed": passed, "dropped": dropped, "repeats": repeats,
     }, indent=2, ensure_ascii=False), encoding="utf-8")
 

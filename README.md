@@ -201,13 +201,13 @@ these pages from anywhere.
 | Your CVs and cover letters | `builder/applications/<date>/<Company>/` |
 | After **Erase everything** | moved to `builder/applications/archive/`, never deleted |
 | Jobs you applied to | `scraper/history/applied.csv` (date, company, title, link), kept forever |
-| Jobs collected in the last 30 days | `scraper/history/seen.csv` (title and company only). A job that comes back on a later day is skipped |
+| Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the local AI judged it). A job it already judged on an earlier day is skipped |
 
 **Erase everything and start fresh** (in the extension, under **More**) clears
 the collected jobs so the next collection starts from zero, and moves every
 built CV and letter into the archive. It never touches your applied list or the
-30-day job history, so jobs you applied to, and jobs already collected on an
-earlier day, still never come back.
+30-day job history, so jobs you applied to, and jobs the local AI already judged
+on an earlier day, still never come back.
 
 ---
 
