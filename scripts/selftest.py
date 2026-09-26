@@ -321,8 +321,7 @@ def pool_section(py: pathlib.Path, work: pathlib.Path) -> None:
     sc = work / "scraper"
     port = free_port()
     answering_ollama(port)
-    (sc / "config_local.py").write_text(f'OLLAMA_URL = "http://127.0.0.1:{port}"\n',
-                                        encoding="utf-8")
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
     for f in (sc / "inbox").glob("*.json"):
         f.unlink()
     (sc / "out" / "ollama_cache.json").unlink(missing_ok=True)
@@ -396,21 +395,34 @@ def pool_section(py: pathlib.Path, work: pathlib.Path) -> None:
                               "details": {"family": "nomic-bert"}},
                              {"name": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com"},
                              {"name": "qwen3:8b"}])
-    (sc / "config_local.py").write_text(f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n',
-                                        encoding="utf-8")
-    subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc, capture_output=True,
-                   timeout=300, env=dict(os.environ, PYTHONUTF8="1"))
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n')
+    r2 = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc,
+                        capture_output=True, text=True, encoding="utf-8", errors="replace",
+                        timeout=300, env=dict(os.environ, PYTHONUTF8="1"))
     rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8"))
     check(rank.get("model") == "qwen3:8b",
           "an installed model is used instead of downloading llama3.1 (not embedding, not cloud)",
-          str(rank.get("model")))
-    (sc / "config_local.py").write_text(f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n'
-                                        "OLLAMA_USE_INSTALLED = False\n", encoding="utf-8")
+          f"model {rank.get('model')}, exit {r2.returncode}: {(r2.stdout + r2.stderr)[-500:]}")
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n'
+                                        "OLLAMA_USE_INSTALLED = False\n")
     out = subprocess.run([str(py), "-c", "import config, ollama_model as m; "
                           "print(m.resolve(config))"], cwd=sc, capture_output=True, text=True,
                          timeout=60).stdout.strip()
     check(out == "None", "OLLAMA_USE_INSTALLED = False insists on llama3.1 (download needed)", out)
-    (sc / "config_local.py").unlink(missing_ok=True)
+    _write_local(sc, None)
+
+
+def _write_local(sc: pathlib.Path, text: str | None) -> None:
+    """Write (or remove) the copy's config_local.py, and drop its compiled
+    copy: Python checks that by size and a timestamp in whole seconds, so two
+    same-length rewrites within one second would load the old settings."""
+    f = sc / "config_local.py"
+    if text is None:
+        f.unlink(missing_ok=True)
+    else:
+        f.write_text(text, encoding="utf-8")
+    for pyc in (sc / "__pycache__").glob("config_local*.pyc"):
+        pyc.unlink(missing_ok=True)
 
 
 def _days_ago(n: int) -> str:
