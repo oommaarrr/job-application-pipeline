@@ -177,14 +177,81 @@ after installing it, run `start.bat` again: it adds Claude Code to your PATH.
 
 ## Chrome extension (optional)
 
-To collect from LinkedIn, Indeed and StepStone:
+The extension, **Job Collector**, collects jobs from LinkedIn, Indeed and
+StepStone and sends them to the pipeline. It reads only pages in your own
+Chrome, where you are already signed in, at a human pace. Without it the
+pipeline still works with Arbeitnow alone.
+
+![The extension's three tabs: This page, Saved searches and More](docs/screenshots/extension.png)
+
+**Install it once:**
 
 1. Open `chrome://extensions` in Chrome
 2. Turn on **Developer mode** (top right)
 3. Click **Load unpacked** and choose the `extension` folder inside this project
 4. Click the puzzle icon in the toolbar and pin **Job Collector**
 
-Every saved search shows which site it runs on.
+**At the top**, on every tab:
+
+- a green dot when the pipeline is running, with how many jobs came in today,
+  how many you applied to and how many were ranked (red means it is not
+  running; see [If something goes wrong](#if-something-goes-wrong))
+- how many jobs this browser has collected, and how many are on the page open now
+- **Dashboard**, **Applications** and **Fit ranking** open those pages
+
+### This page
+
+Open a job search on LinkedIn, Indeed or StepStone, then:
+
+- **Collect this page** reads every job on the results page and sends them to
+  the pipeline. Keep **Also capture descriptions** ticked: the local AI ranks
+  jobs by reading their descriptions.
+- **Auto-collect _N_ pages** does the same for the next few pages of results by
+  itself. **Stop** ends it at any time.
+- **Mark this job applied**: open a job you applied to and press it. That job
+  never comes back in a future batch. When a CV was already built for the job,
+  it says so above the button.
+
+### Saved searches
+
+Save the searches you run often, then collect all of them with one click.
+
+**To save a search:**
+
+1. On LinkedIn, Indeed or StepStone, search the way you normally would, and set
+   the filters you want (location, remote, date posted...)
+2. Open the extension, go to **Saved searches** and press **Add the page I am on**
+
+Or open **New search from keywords** at the bottom of the tab: type the job
+title and the city, choose the site, the distance and how recent, press
+**Open this search**, then **Add the page I am on**.
+
+Every saved search shows the site it runs on. Beside each one:
+
+- **edit** changes its name or its link
+- **on / off** skips it on the next run without deleting it
+- **remove** deletes it
+
+**Pages each** sets how many pages of results every search collects.
+
+**Run all searches now** opens each saved search in a background tab, one after
+the other, and collects it. Keep Chrome open while it runs; you can keep using
+it. If it gets interrupted, the button becomes **Resume now** and carries on
+where it stopped. The dashboard's **Run scrape** button starts the same run
+(Chrome picks it up within a minute). The line under the buttons shows when it
+last ran and what it found.
+
+**Export JSON** copies your list of searches; **Import JSON** replaces it. Use
+them to move your searches to another browser or computer.
+
+### More
+
+- **Resend everything to the pipeline**: sends every job this browser collected
+  again, for example if the pipeline was not running when you collected
+- **Export JSON (manual fallback)**: downloads the collected jobs as a file
+- **Erase everything and start fresh**: see [Where your files are](#where-your-files-are)
+- **Erase collected jobs only**: clears them here, while the pipeline still
+  remembers them as already seen
 
 ---
 
