@@ -39,7 +39,9 @@ async function tick(){
 
   // ---- stage tracker: where is the pipeline right now (or where the last run left it)
   const bpr=d.build_progress||{}, rnk=d.rank||{}, bld=d.build||{};
-  const scrapeDone = d.searches_total>0 && d.searches_done>=d.searches_total;
+  const anRun=(d.steps||{}).arbeitnow, be=d.before_erase||{};
+  const anOk=!!(anRun&&anRun.status==="ok");
+  const scrapeDone = (d.searches_total>0 && d.searches_done>=d.searches_total) || anOk;
   const rrr = (d.rank_run && d.rank_run.result) || null;
   const rankDone   = !!rnk.ran_at || !!rrr || (d.ranked_ready||0)>0;
   const buildDone  = !!bld.finished && (bpr.built||0)>0;
@@ -57,7 +59,9 @@ async function tick(){
   $("stScrape").textContent = (d.searches_total? (d.searches_done+"/"+d.searches_total+" searches"):"");
   $("stRank").textContent   = rrr? (rrr.buildable+" buildable")
     : (rnk.matches!=null? (rnk.matches+" passed"):"");
-  $("stBuild").textContent  = ((bpr.target? (bpr.built+"/"+bpr.target):"")||"");
+  // Only once something is building or built: "0/15" on an idle pipeline read
+  // as a build in progress, when 15 is only the size of the next one.
+  $("stBuild").textContent  = ((bld.running||(bpr.built||0)>0)&&bpr.target? (bpr.built+"/"+bpr.target):"");
   const sug=(d.suggested_build||bpr.target||15);
   const bn=$("buildN");
   if(document.activeElement!==bn && (bn.value===""||bn.value===String(window._sug))) bn.value=sug;
@@ -99,10 +103,12 @@ async function tick(){
     sub=(bpr.built||0)+"/"+(bpr.target||0)+" built · "+poolN+" to judge"; }
   else if(rrr && !buildDone){ head="Ranked — ready to build";
     sub=rrr.buildable+" buildable · "+(d.suggested_build||rrr.strong)+" suggested to build · verdict "+rrr.verdict; }
+  else if(poolN>0 && !rankDone){ head="Idle — "+poolN+" job"+(poolN===1?"":"s")+" waiting to be ranked";
+    sub="collected"+(d.erased_at?" since the erase":"")+(anOk&&!d.searches_done?" from Arbeitnow":"")+" · press Rank pool"; }
   else { head="Idle — nothing running";
-    sub = scrapeDone? ("last run: "+(d.searches_done)+" searches, "+poolN+" to judge"
+    sub = scrapeDone? ("last run: "+(d.searches_done?d.searches_done+" searches, ":"")+poolN+" to judge"
                        +(rnk.matches!=null?(", "+rnk.matches+" passed"):"")+(buildDone?(", "+(bpr.built)+" built"):""))
-                    : "waiting for a scrape"; }
+                    : (d.erased_at?"nothing collected since the erase":"waiting for a scrape"); }
   $("stageline").style.color=LC[ph]||"var(--ink)";
   $("stageline").innerHTML=esc(head)+'<span class="sub" style="color:var(--dim)">'+esc(sub)+"</span>";
 
@@ -141,7 +147,8 @@ async function tick(){
   $("scrDone").textContent=d.searches_done||0; $("scrTotal").textContent=d.searches_total||0;
   const pct=d.searches_total?Math.round(100*(d.searches_done)/d.searches_total):0;
   $("scrBar").style.width=pct+"%";
-  $("scrState").textContent=sc.running?("scraping… "+(sc.done||0)+"/"+(sc.total||0)):(d.searches_done?"finished":"idle");
+  $("scrState").textContent=sc.running?("scraping… "+(sc.done||0)+"/"+(sc.total||0))
+    :(d.searches_done?"finished":anOk?"Arbeitnow done":"idle");
   // Per source, driven by what actually landed in the pool rather than a
   // hardcoded list of sites. Adding a fetcher shows up here for free; the old
   // version named LinkedIn and Indeed in the markup and still said "Indeed 0
@@ -159,22 +166,36 @@ async function tick(){
   }
   $("scrHealth").innerHTML=chips?('<div class="src-row">'+chips+'</div>')
     :'<span class="muted">nothing collected yet</span>';
-  $("scrTable").querySelector("tbody").innerHTML=(d.searches||[]).map(x=>{
+  // Arbeitnow is a source too: its last run this round is a row, so the card
+  // no longer says "0 of 0 searches" beside a pool Arbeitnow just filled.
+  let anRow="";
+  if(anRun&&(anRun.status==="ok"||anRun.status==="failed")){
+    const m=/(\d+) jobs kept, (\d+) new/.exec(anRun.message||"")||[];
+    const kept=anRun.kept!=null?anRun.kept:(m[1]||"–"), nw=anRun.new!=null?anRun.new:(m[2]||"–");
+    anRow="<tr><td>Whole feed, matched by meaning</td><td>Arbeitnow</td><td class=n>"+(anRun.read!=null?anRun.read:"–")+
+      "</td><td class=n>"+(anRun.status==="ok"?kept:"–")+"</td><td class=n>"+(anRun.status==="ok"?nw:"–")+
+      "</td><td><span class=pill style=background:"+(anRun.status==="ok"?"var(--green)>done":"var(--red)>failed")+"</span></td></tr>";
+  }
+  $("scrPrev").innerHTML=(d.erased_at&&!d.searches_done&&be.scrape)?lastTime(be.scrape).replace("Before the erase","Extension, before the erase"):"";
+  $("scrTable").querySelector("tbody").innerHTML=anRow+(d.searches||[]).map(x=>{
     const [col,lab]=SST[x.status]||["var(--gray)",x.status];
     return "<tr><td>"+esc(x.label)+"</td><td>"+esc(siteName(x.host))+
       "</td><td class=n>"+x.found+"</td><td class=n>"+x.loaded+"</td><td class=n>"+x.added+
       "</td><td><span class=pill style=background:"+col+">"+lab+"</span>"+
       (x.userScrolled?' <span class=muted title="'+esc(x.why)+'">manual?</span>':"")+"</td></tr>";
-  }).join("")||'<tr><td colspan=6 class=muted>no searches reported yet</td></tr>';
+  }).join("")||(anRow?"":'<tr><td colspan=6 class=muted>'+(d.erased_at?"nothing collected since the erase":"no searches reported yet")+'</td></tr>');
 
   // rank — prefer the local ranker's own result; fall back to the run.py rerank
   const rk=d.rank||{};
   const passed = rrr? rrr.buildable : rk.matches;
   $("rkMatch").textContent=(passed!=null?passed:"–");
   $("rkColl").textContent=(rk.collected!=null?rk.collected:(d.collected_today||"–"));
-  $("rkAt").textContent = (d.rank_run&&d.rank_run.running)? "ranking now…"
+  const rankingNow=!!(d.rank_run&&d.rank_run.running);
+  $("rkAt").textContent = rankingNow? "ranking now…"
     : rrr? ("ranked locally · "+rrr.strong+" strong · verdict "+rrr.verdict)
-    : rk.ran_at?("ranked "+new Date(rk.ran_at).toLocaleTimeString()):"not run yet";
+    : rk.ran_at?("ranked "+when(rk.ran_at))
+    : (d.erased_at?"not run since the erase":"not run yet")+(poolN>0?(" · "+poolN+" waiting, press Rank pool"):"");
+  $("rkPrev").innerHTML=(passed==null&&!rankingNow&&d.erased_at&&be.rank)?lastTime(be.rank):"";
   $("rkErr").innerHTML=rk.error?'<span style="color:var(--red)">'+esc(rk.error)+"</span>":"";
 
   // build — structured, replacing the raw-log-only view
@@ -182,7 +203,11 @@ async function tick(){
   $("bdBuilt").textContent=bp.built||0; $("bdTarget").textContent=bp.target||0;
   $("bdRejected").textContent=(bp.rejected>0?("· "+bp.rejected+" rejected"):"");
   $("bdBar").style.width=(bp.target?Math.round(100*(bp.built||0)/bp.target):0)+"%";
-  $("bdState").textContent=b.running?("building… "+(b.reason||"")):(b.finished?("finished "+new Date(b.finished).toLocaleTimeString()):"idle");
+  const builtNone=!b.running&&!(bp.built>0);
+  $("bdState").textContent=b.running?("building… "+(b.reason||"")):(b.finished?("finished "+when(b.finished))
+    :(d.erased_at&&builtNone?"nothing built since the erase":"idle"));
+  $("bdPrev").innerHTML=(d.erased_at&&builtNone&&be.build)
+    ?lastTime(be.build)+(be.build.status==="ok"?" · those documents are in applications/archive":""):"";
   $("btnStop").style.display=b.running?"inline-block":"none";
   // A standalone ranking only; inside a build, Stop build is the one to press.
   $("btnStopRank").style.display=(d.rank_run&&d.rank_run.running&&!b.running)?"inline-block":"none";
@@ -234,11 +259,24 @@ const STEP_NAME={scrape:"Extension",arbeitnow:"Arbeitnow",collect:"Collect",rank
   build:"Build",reset:"Erase",applied:"Applied",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model"};
 const WORD={failed:"Failed",stopped:"Stopped",ok:"Done",info:"Note",started:"Running"};
 const hhmm=s=>{try{return new Date(s).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}catch(e){return "";}};
+const sameDay=(a,b)=>a.toDateString()===b.toDateString();
+// A time for today, a date and time for anything older. A bare "05:53 PM" on
+// a result from three days ago read as today's (28 September 2026).
+function when(s){ try{ const d=new Date(s);
+  return sameDay(d,new Date())?hhmm(s):d.toLocaleDateString([],{month:"short",day:"numeric"})+", "+hhmm(s);
+}catch(e){ return ""; } }
+function dayLabel(s){ const d=new Date(s), now=new Date(), y=new Date(); y.setDate(now.getDate()-1);
+  return sameDay(d,now)?"Today":sameDay(d,y)?"Yesterday":d.toLocaleDateString([],{weekday:"short",day:"numeric",month:"short"}); }
+// The last outcome of a step from before the erase, as one dated line. "today"
+// is dropped from its message: it was today when it was written.
+function lastTime(e){ if(!e) return "";
+  const msg=(e.built!=null&&e.step==="build")?(e.built+" application(s) built"):String(e.message||"").replace(/ today$/,"");
+  return 'Before the erase, <b>'+esc(when(e.at))+'</b>: '+esc(msg); }
 function outcomeHTML(e,withRetry,noTime){
   const retry=(withRetry&&(e.status==="failed"||e.status==="stopped")&&ACT[e.step])
     ?'<button class="go sm" type="button" data-retry="'+esc(e.step)+'">&#8635; Retry</button>':"";
   return '<span class="st-word">'+(WORD[e.status]||esc(e.status))+'</span> '+
-    (noTime?'':'<span class="muted">'+hhmm(e.at)+'</span> · ')+esc(e.message)+
+    (noTime?'':'<span class="muted">'+when(e.at)+'</span> · ')+esc(e.message)+
     (e.fix&&(e.status==="failed"||e.status==="stopped"||e.status==="info")
       ?'<div class="fix-line">&#8594; '+esc(e.fix)+'</div>':"")+retry;
 }
@@ -263,9 +301,15 @@ async function loadEvents(){
   let r; try{ r=await fetch("/events",{cache:"no-store"}).then(x=>x.json()); }catch(e){ return; }
   const ev=(r.events||[]).slice(0,25);
   const latest={}; Object.values(r.steps||{}).forEach(e=>latest[e.step]=e.at+e.status);
-  const html=ev.map(e=>'<li class="act-item '+esc(e.status)+'"><time>'+hhmm(e.at)+'</time>'+
+  // Grouped under a heading per day: without one, today's 4:55 PM sat right
+  // above Saturday's 5:42 PM and the list looked out of order.
+  let day="";
+  const html=ev.map(e=>{
+    const dl=dayLabel(e.at), head=dl!==day?'<li class="act-day">'+esc(dl)+'</li>':"";
+    day=dl;
+    return head+'<li class="act-item '+esc(e.status)+'"><time>'+hhmm(e.at)+'</time>'+
     '<span class="act-step">'+esc(STEP_NAME[e.step]||e.step)+'</span><span class="act-msg">'+
-    outcomeHTML(e,latest[e.step]===e.at+e.status,true)+'</span></li>').join("");
+    outcomeHTML(e,latest[e.step]===e.at+e.status,true)+'</span></li>';}).join("");
   const list=$("actList"); if(!list) return;
   if(list.dataset.html===html) return;
   list.dataset.html=html;
@@ -438,7 +482,7 @@ async function loadFunnel(){
     // showing its numbers as if they were this pool's.
     card.classList.remove("hide");
     $("funnel").innerHTML='<p class="muted">Nothing yet since the erase'+
-      (f.erased_at?' ('+esc(f.erased_at.replace("T"," "))+')':'')+
+      (f.erased_at?' ('+esc(when(f.erased_at))+')':'')+
       '. The funnel fills again after the next scrape and rank.</p>';
     $("funnelWhy").textContent="";
     $("funnelDrops").innerHTML="";

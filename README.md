@@ -357,7 +357,9 @@ these pages from anywhere.
 the collected jobs so the next collection starts from zero, and moves every
 built CV and letter into the archive. It never touches your applied list or the
 30-day job history, so jobs you applied to, and jobs the local AI already judged
-on an earlier day, still never come back.
+on an earlier day, still never come back. The dashboard then starts a new round:
+each step shows only what has happened since the erase, and until a step runs
+again its card says so and shows its last result, dated, as "before the erase".
 
 ---
 

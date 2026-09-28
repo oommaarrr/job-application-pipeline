@@ -791,6 +791,15 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     dash = dash.decode("utf-8", "replace") if isinstance(dash, bytes) else str(dash)
     check('id="anDlg"' in dash and e.get("/web/arbeitnow.js")[0] == 200,
           "the dashboard has the Arbeitnow dialog")
+    # After an erase the step lines start empty, and each step's last result
+    # is kept separately as "before the erase", so the page never shows a
+    # three-day-old result as the current one over empty cards.
+    e.post("/reset", {})
+    pg = e.get("/progress")[1]
+    check(pg.get("erased_at") and "build" not in pg.get("steps", {})
+          and (pg.get("before_erase") or {}).get("build", {}).get("status") == "ok",
+          "after an erase, results from before it are shown as such, not as current",
+          json.dumps({k: pg.get(k) for k in ("erased_at", "steps", "before_erase")})[:400])
     e.post("/arbeitnow/settings", {"settings": {"searches": []}})
     code, log3 = run()
     check(code == 1 and "no Arbeitnow search" in log3, "no search set: a clear failure",

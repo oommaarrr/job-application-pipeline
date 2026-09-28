@@ -239,14 +239,34 @@ def recent_events(n: int = 60) -> list[dict]:
     return out[::-1]          # newest first
 
 
-def _step_state() -> dict:
+def _event_ts(e: dict) -> float:
+    try:
+        return dt.datetime.fromisoformat(e.get("at") or "").timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _step_state(before_erase: bool = False) -> dict:
     """
     The latest outcome of each step, so the dashboard can show one line per
     step ("Build: failed at 14:02 — Claude is signed out. [Retry]") instead of
     making anyone read a log. A later success clears an earlier failure.
+
+    Only since the last erase: an erase starts a new round, and the cards below
+    already show nothing from before it. Showing "ranked: 28 passed" from three
+    days earlier over an empty Ranking card (28 September 2026) made the page
+    contradict itself. before_erase=True gives the last outcome of each step
+    from BEFORE the erase instead, which the cards show as "last time".
     """
     state: dict[str, dict] = {}
+    cut = _reset_at
     for e in reversed(recent_events(400)):          # oldest first
+        if cut is not None and (_event_ts(e) <= cut) != before_erase:
+            continue
+        if cut is None and before_erase:
+            continue
+        if before_erase and e.get("status") == "started":
+            continue                                 # an outcome, not a start
         if e.get("status") in ("ok", "failed", "stopped", "started") or (
                 e.get("status") == "info" and e.get("step") in RETRY):
             state[e["step"]] = e
@@ -834,9 +854,12 @@ def arbeitnow_running() -> bool:
     seg = seg.rsplit("=== arbeitnow started", 1)[-1]
     kept = re.findall(r"(\d+) kept", seg)
     new = re.findall(r"bridge: (\d+) new", seg)
+    read = re.findall(r"(\d+) jobs from the last \d+ days on disk", seg)
     if proc.returncode == 0:
-        _event("arbeitnow", "ok", f"Arbeitnow: {kept[-1] if kept else 0} jobs kept, "
-               f"{new[-1] if new else 0} new")
+        k, n = int(kept[-1]) if kept else 0, int(new[-1]) if new else 0
+        # The numbers as fields too, for the Scrape card's Arbeitnow row.
+        _event("arbeitnow", "ok", f"Arbeitnow: {k} jobs kept, {n} new",
+               kept=k, new=n, read=int(read[-1]) if read else None)
     else:
         last = next((l.strip() for l in reversed(seg.splitlines()) if l.strip()), "")
         _event("arbeitnow", "failed", f"Arbeitnow failed: {last[:200]}",
@@ -1487,6 +1510,9 @@ def progress() -> dict:
 
     return {
         "steps": _step_state(),
+        "before_erase": _step_state(before_erase=True),
+        "erased_at": (dt.datetime.fromtimestamp(_reset_at).isoformat(timespec="seconds")
+                      if _reset_at is not None else None),
         "build_outcome": _build_outcome(),
         "arbeitnow_running": _arbeitnow.get("proc") is not None,
         "health": health,

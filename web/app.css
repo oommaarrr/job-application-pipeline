@@ -527,6 +527,7 @@ pre.log .err{color:var(--log-err)}
 :root{
   --i-sliders:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1'/%3E%3Ccircle cx='15' cy='6' r='2'/%3E%3Ccircle cx='9' cy='12' r='2'/%3E%3Ccircle cx='17' cy='18' r='2'/%3E%3C/svg%3E");
 }
+.an-pair{display:inline-flex;align-items:center;gap:2px;white-space:nowrap}
 .go.gear{font-size:0}
 .go.gear::before{content:"";width:16px;height:16px;background:currentColor;
   -webkit-mask:var(--i-sliders) center/contain no-repeat;mask:var(--i-sliders) center/contain no-repeat}
@@ -596,3 +597,12 @@ pre.log .err{color:var(--log-err)}
   .an-seg label{padding:6px 10px}
   .an-list li{grid-template-columns:1fr}
 }
+
+
+/* "Last time" lines on the cards: the previous round's result, dated, shown
+ * while a step has not run since the last erase. Quieter than the live numbers. */
+.kpi-sub.prev{font-size:var(--fs-xs)}
+.kpi-sub.prev b{color:var(--ink);font-weight:var(--fw-medium)}
+.act-day{padding:var(--sp-3) 0 var(--sp-1);font-size:var(--fs-2xs);font-weight:var(--fw-semi);
+  color:var(--dim);text-transform:uppercase;letter-spacing:var(--track-caps);border-top:0}
+.act-day + .act-item{border-top:0}

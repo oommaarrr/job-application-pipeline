@@ -134,6 +134,12 @@ built CV and cover letter** from `builder/applications/` into
 `builder/applications/archive/`. Nothing is deleted. Your applied list and saved
 searches are not touched, and jobs you already built still never come back.
 
+An erase starts a new round on the dashboard. The line under each step, the
+cards and the funnel all count only what happened after it (the time is kept in
+`scraper/out/.cycle_reset`). A step that has not run since shows its last
+outcome from before the erase, dated. The Activity list keeps everything, grouped
+by day.
+
 > **Two copies of the extension?** Chrome identifies an unpacked extension by its
 > folder. Loading this project's `extension` folder next to an older copy gives
 > you two extensions with separate saved searches. Remove the old one.

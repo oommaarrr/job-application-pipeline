@@ -68,11 +68,13 @@
         <div class="step-top"><i>1</i><b>Scrape</b><small id="stScrape"></small></div>
         <div class="step-acts">
           <button class="go" id="btnScrape" type="button" data-act="scrape">&#9654; Run scrape</button>
-          <button class="go quiet" id="btnArbeitnow" type="button" data-act="arbeitnow"
-            title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
-          <button class="go quiet icon gear" id="btnAnSettings" type="button"
-            title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"
-            aria-haspopup="dialog"></button>
+          <span class="an-pair">
+            <button class="go quiet" id="btnArbeitnow" type="button" data-act="arbeitnow"
+              title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
+            <button class="go quiet icon gear" id="btnAnSettings" type="button"
+              title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"
+              aria-haspopup="dialog"></button>
+          </span>
         </div>
         <div class="step-status" id="ssScrape" aria-live="polite"></div>
       </li>
@@ -158,6 +160,7 @@
       </div>
       <div class="kpi-sub">from <span id="rkColl" class="num">–</span> collected · <span id="rkAt">not run yet</span></div>
       <div id="rkErr" class="kpi-sub"></div>
+      <div id="rkPrev" class="kpi-sub prev"></div>
     </section>
 
     <section class="card card-build" aria-labelledby="buildTitle">
@@ -174,6 +177,7 @@
         <div class="card-note" id="bdState"></div>
       </div>
       <div class="bar"><span id="bdBar" style="width:0;background:var(--green)"></span></div>
+      <div id="bdPrev" class="kpi-sub prev"></div>
       <div id="bdNow" class="bd-sect"></div>
       <div id="bdBuiltList" class="bd-sect"></div>
       <div id="bdDropped" class="bd-sect"></div>
@@ -196,6 +200,7 @@
       </div>
       <div class="bar"><span id="scrBar" style="width:0;background:var(--blue)"></span></div>
       <div id="scrHealth" class="scr-health"></div>
+      <div id="scrPrev" class="kpi-sub prev"></div>
       <div class="table-scroll"><table id="scrTable"><thead><tr>
         <th>Search</th><th>Site</th><th class="n">Found</th><th class="n">Loaded</th><th class="n">New</th><th>Status</th>
       </tr></thead><tbody></tbody></table></div>
