@@ -315,8 +315,6 @@ the popup says so, and the search opens without the exact city filter.
 
 ### More
 
-- **Resend everything to the pipeline**: sends every job this browser collected
-  again, for example if the pipeline was not running when you collected
 - **Export JSON (manual fallback)**: downloads the collected jobs as a file
 - **Erase everything and start fresh**: see [Where your files are](#where-your-files-are)
 - **Erase collected jobs only**: clears them here, while the pipeline still

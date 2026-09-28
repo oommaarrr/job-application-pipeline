@@ -39,8 +39,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg?.type === "bridge:push") {
-    call("/ingest", { jobs: msg.jobs || [] }).then((r) => {
+    call("/ingest", { jobs: msg.jobs || [] }).then(async (r) => {
       if (r.ok) chrome.storage.local.set({ lastPush: { at: Date.now(), ...r } });
+      // The jobs are kept here either way; remember that the pipeline has not
+      // seen them, and checkTrigger sends everything once it answers again.
+      else await chrome.storage.local.set({ unsentJobs: true });
       sendResponse(r);
     });
     return true;
@@ -346,7 +349,8 @@ async function flushToBridge(where) {
     const all = Object.values(jobs);
     if (!all.length) return;
     const r = await call("/ingest", { jobs: all });
-    if (!r.ok) console.warn(`[job collector] flush (${where}) failed: ${r.error}`);
+    if (r.ok) await chrome.storage.local.remove("unsentJobs");
+    else console.warn(`[job collector] flush (${where}) failed: ${r.error}`);
   } catch { /* never let a flush stop a run */ }
 }
 
@@ -781,6 +785,14 @@ async function checkTrigger() {
   if (checking) return;
   checking = true;
   try {
+    // Anything the pipeline missed while it was off (jobs collected, jobs
+    // marked applied) goes to it as soon as it answers again. This replaced
+    // the popup's "Resend everything" button, 28 September 2026: nobody
+    // should have to remember to press it.
+    const { unsentJobs, pendingApplied = [] } =
+      await chrome.storage.local.get(["unsentJobs", "pendingApplied"]);
+    if ((unsentJobs || pendingApplied.length) && (await call("/status", null, 4000)).ok)
+      await flushToBridge("bridge is back");
     const s = await getSched();
     if (!s.searches.length) return;
     // A stuck running flag blocks every future run, silently and forever.
@@ -794,10 +806,6 @@ async function checkTrigger() {
     // changed. Otherwise the launcher has nothing to open on a fresh profile.
     call("/searches", { searches: activeSearches(s.searches), all: s.searches }).catch(() => {});
     const r = await call("/trigger", null, 4000);
-    if (r.ok) {
-      const { pendingApplied = [] } = await chrome.storage.local.get("pendingApplied");
-      if (pendingApplied.length) await flushToBridge("bridge is back");
-    }
     if (!r.ok || !r.run) return;
 
     /*

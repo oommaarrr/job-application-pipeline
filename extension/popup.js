@@ -117,7 +117,6 @@ async function refresh() {
   $("stored").textContent = all.length;
   $("export").disabled = all.length === 0;
   $("clear").disabled = all.length === 0;
-  $("resend").disabled = all.length === 0;
   refreshBridge();
 
   // An auto-collect keeps running after the popup closes (state is in
@@ -201,7 +200,7 @@ chrome.runtime.onMessage.addListener((m) => {
 // for when a run is misbehaving, and disabling them while it runs is what left
 // you with no way out mid-collect.
 function busy(on) {
-  for (const id of ["collect", "auto", "export", "resend", "applied"])
+  for (const id of ["collect", "auto", "export", "applied"])
     $(id).disabled = on;
 }
 
@@ -348,19 +347,6 @@ $("applied").onclick = async () => {
                           : `pipeline offline — not recorded`)
             : r.added ? `marked applied · ${r.total} total · ${r.matches} still ranked`
                       : `already on the applied list`);
-  refresh();
-};
-
-// Everything collected while the bridge was down still lives in chrome.storage,
-// so one button is enough to catch the pipeline up rather than re-scraping.
-$("resend").onclick = async () => {
-  const { jobs = {} } = await chrome.storage.local.get("jobs");
-  const all = Object.values(jobs);
-  busy(true); msg(`sending ${all.length}…`);
-  const r = await bridge({ type: "bridge:push", jobs: all });
-  busy(false);
-  msg(!r?.ok ? `pipeline offline — ${START_HINT}, then retry`
-             : `sent ${all.length} · +${r.added} new · ${r.matches} ranked`);
   refresh();
 };
 
