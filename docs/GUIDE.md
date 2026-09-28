@@ -83,7 +83,8 @@ refused from a script succeeds when the page you already have open makes it,
 with your real login. The extension only reads pages you can see, at human pace.
 
 Click the toolbar icon. The top row has **Dashboard**, **Applications** and
-**Fit ranking**, which open those pages from anywhere. Below that are three tabs.
+**Fit ranking**, which open those pages from anywhere. Below that is what you
+can do on the page you are on.
 
 ### This page
 
@@ -94,6 +95,8 @@ Click the toolbar icon. The top row has **Dashboard**, **Applications** and
   moment you scroll or type, so you can take the tab back any time.
 - **Mark this job applied**: press it on a job's page after applying. That job
   never comes back in a batch.
+- **Add the page I am on** saves the open search to your saved searches, and
+  **Manage searches** opens them on the dashboard.
 
 Each site is read its own way:
 
@@ -106,33 +109,61 @@ Each site is read its own way:
 
 ### Saved searches
 
-Your list of searches, each with **edit** (change its name or URL), **on / off**
-(skip it without deleting) and **remove**.
+The list lives in the pipeline, in `scraper/out/searches.json`, and is edited on
+the dashboard (the settings button attached to **Run scrape**). The extension pulls a copy
+about once a minute, on every wake of its background worker, and a run always
+uses the copy from its last pull. The popup only adds to it: **Add the page I am
+on** sends the open search to the pipeline, which refuses a duplicate (same
+site, place and keywords) and strips LinkedIn's tracking parameters.
 
-- **Run all searches now** opens each search in a background tab, collects it and
-  closes it. An interrupted run picks up where it stopped. Editing the list
-  resets that resume point, so an edit is never ignored.
-- **Export** copies the whole list to your clipboard as text; **Import** replaces
-  the list from pasted text. This is how you share a good set of searches.
-- **Build a search URL** makes a search for LinkedIn, Indeed or StepStone from a
-  keyword, a location, a radius, a date range and a remote-only switch. Each site
-  spells these differently; this does it for you.
+- The window has three tabs: **Searches**, **Add a search** and **Share**. Each
+  search can be switched **off** (skipped, not deleted), renamed or have its
+  address edited (the pencil), opened on its site, or removed. Nothing changes
+  until **Save**.
+- **Run scrape** opens each search that is on in a background tab, collects it
+  and closes it, dealing the sites in turn so one site is never hit twice in a
+  row. A run that is cut off continues where it stopped the next time **Run
+  scrape** (or **Retry**) is pressed, within six hours. Changing the list drops
+  that resume point, so an edit is never ignored. With no search switched on,
+  **Run scrape** says so instead of queuing a run nothing would pick up.
+- **Copy the list** puts the whole list on your clipboard as JSON; **Replace
+  from a copied list** takes it back. This is how you share a good set of
+  searches.
+- **New search** builds the link for LinkedIn, Indeed (any country's Indeed
+  site) or StepStone from a keyword, a place, a radius, a date range and a
+  remote-only switch. Each site spells these differently; this does it for you.
 
 **Locations on LinkedIn:** LinkedIn pins a search to a place with an internal id,
 not the words you type, and falls back to your profile's country when the words
-are ambiguous. Open a place once on LinkedIn and the popup remembers its id.
+are ambiguous. Whenever a LinkedIn search is open, the extension sends the place
+and its id to the pipeline, and the builder uses it.
 
-Three example searches are added on first install, one each for LinkedIn,
-Indeed and StepStone. Edit or delete them freely; a search you delete does not
-come back.
+**Is the extension connected?** It checks in with the pipeline about once a
+minute while Chrome is open. The Searches window and the Scrape card say when it
+last did; after three minutes of silence they say it is not connected, and
+**Run scrape** warns that the run will wait for Chrome.
 
-### More
+**Updating from an extension that kept its own list** (before 28 September
+2026): the first time the new extension reaches the pipeline, it sends the list
+it held and the pipeline adds every search it did not have. Nothing is lost, and
+it happens once. Reload the extension at `chrome://extensions` after updating;
+until then the old one keeps its own list and the pipeline ignores it.
 
-**Erase everything and start fresh** clears every collected job, here and in the
-pipeline, so the next collection returns everything again, and moves **every
-built CV and cover letter** from `builder/applications/` into
+Three example searches are added on a new install, one each for LinkedIn,
+Indeed and StepStone. Edit or delete them freely.
+
+### Start over
+
+On the dashboard. **Erase everything and start fresh** clears every collected
+job, so the next collection returns everything again, and moves **every built
+CV and cover letter** from `builder/applications/` into
 `builder/applications/archive/`. Nothing is deleted. Your applied list and saved
 searches are not touched, and jobs you already built still never come back.
+**Erase collected jobs only** clears them but keeps them marked as seen.
+
+The extension keeps its own copy of what it collected, to resend if the
+pipeline was down. After an erase it clears that copy at its next check-in, and
+the pipeline refuses a resend of the erased jobs in the meantime.
 
 An erase starts a new round on the dashboard. The line under each step, the
 cards and the funnel all count only what happened after it (the time is kept in
@@ -142,7 +173,7 @@ by day.
 
 > **Two copies of the extension?** Chrome identifies an unpacked extension by its
 > folder. Loading this project's `extension` folder next to an older copy gives
-> you two extensions with separate saved searches. Remove the old one.
+> you two extensions running the same searches twice. Remove the old one.
 
 ---
 
@@ -150,7 +181,7 @@ by day.
 
 | Source | Needs | Notes |
 |---|---|---|
-| **Arbeitnow** | Ollama | free public API, full descriptions, Germany-focused. The **+ Arbeitnow** button; searches set in its panel. |
+| **Arbeitnow** | Ollama | free public API, full descriptions, Germany-focused. The **+ Arbeitnow** button; searches set with the settings button attached to it. |
 | **LinkedIn** | Chrome + login | the richest source |
 | **Indeed** | Chrome + login | sometimes challenges automated reading; fine at human pace |
 | **StepStone** | Chrome | German market |

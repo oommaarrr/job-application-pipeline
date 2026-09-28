@@ -176,6 +176,21 @@ async function tick(){
       "</td><td class=n>"+(anRun.status==="ok"?kept:"–")+"</td><td class=n>"+(anRun.status==="ok"?nw:"–")+
       "</td><td><span class=pill style=background:"+(anRun.status==="ok"?"var(--green)>done":"var(--red)>failed")+"</span></td></tr>";
   }
+  // LinkedIn, Indeed and StepStone only run through the extension, so say when
+  // it is not there rather than let Run scrape look broken.
+  const ext=d.extension||{}, ss=d.saved_searches||{};
+  const extEl=$("scrExt");
+  if(extEl){
+    const show=ss.on>0 && !ext.connected;
+    extEl.classList.toggle("hide",!show);
+    const html=show?((ext.seen_at?"The Chrome extension has not checked in since "+esc(when(ext.seen_at))+". ":"No Chrome extension has connected yet. ")+
+      "Your "+ss.on+" saved search"+(ss.on===1?"":"es")+" on LinkedIn, Indeed and StepStone run through it. "+
+      '<button class="linkish" type="button" data-open-searches>How to set it up</button>'):"";
+    if(extEl.dataset.html!==html){       // unchanged: keep focus and hover
+      extEl.dataset.html=html; extEl.innerHTML=html;
+      const b=extEl.querySelector("[data-open-searches]"); if(b) b.onclick=()=>window.openSearches&&window.openSearches();
+    }
+  }
   $("scrPrev").innerHTML=(d.erased_at&&!d.searches_done&&be.scrape)?lastTime(be.scrape).replace("Before the erase","Extension, before the erase"):"";
   $("scrTable").querySelector("tbody").innerHTML=anRow+(d.searches||[]).map(x=>{
     const [col,lab]=SST[x.status]||["var(--gray)",x.status];
@@ -256,7 +271,7 @@ async function tick(){
  * searches already done, ranking reuses its cache, and a build skips every
  * application already on disk. */
 const STEP_NAME={scrape:"Extension",arbeitnow:"Arbeitnow",collect:"Collect",rank:"Rank",
-  build:"Build",reset:"Erase",applied:"Applied",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model"};
+  build:"Build",reset:"Erase",applied:"Applied",searches:"Searches",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model"};
 const WORD={failed:"Failed",stopped:"Stopped",ok:"Done",info:"Note",started:"Running"};
 const hhmm=s=>{try{return new Date(s).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}catch(e){return "";}};
 const sameDay=(a,b)=>a.toDateString()===b.toDateString();
@@ -342,6 +357,7 @@ async function doAct(k){
     if(!confirm(cmsg)) return;
   } else if(a.confirm && !confirm(a.confirm)) return;
   const r=await post(a.path,body);
+  if(k==="scrape" && r && r.ok!==false && window.scrapeQueued) return window.scrapeQueued(r);
   if(r && r.ok!==false) toast(a.ok); else toast((r&&r.why)?("Couldn\u2019t start: "+r.why):"Failed to start",false);
   tick(); loadEvents();
 }
@@ -402,6 +418,33 @@ if($("themeBtn")) $("themeBtn").onclick=()=>{
   theme=THEMES[(THEMES.indexOf(theme)+1)%THEMES.length]; applyTheme(theme);
 };
 
+/* ==================================================================== tabs
+ * Tabs inside a settings window (Saved searches, Arbeitnow). The WAI-ARIA tab
+ * pattern: one tab in the Tab order, arrow keys, Home and End move between
+ * them, and each tab shows its own panel. onShow gets the shown tab's id. */
+function dlgTabs(list,onShow){
+  const tabs=[...list.querySelectorAll('[role="tab"]')];
+  const body=list.parentElement.querySelector(".an-body");
+  function show(t,focus){
+    tabs.forEach(x=>{ const on=x===t;
+      x.setAttribute("aria-selected",String(on)); x.tabIndex=on?0:-1;
+      document.getElementById(x.getAttribute("aria-controls")).hidden=!on; });
+    if(body) body.scrollTop=0;
+    if(focus) t.focus();
+    if(onShow) onShow(t.id);
+  }
+  tabs.forEach((t,i)=>{
+    t.addEventListener("click",()=>show(t));
+    t.addEventListener("keydown",e=>{
+      const n=tabs.length, j=e.key==="ArrowRight"?(i+1)%n:e.key==="ArrowLeft"?(i-1+n)%n:
+        e.key==="Home"?0:e.key==="End"?n-1:-1;
+      if(j<0) return; e.preventDefault(); show(tabs[j],true);
+    });
+  });
+  return {show:id=>show(document.getElementById(id)),
+          current:()=>(tabs.find(t=>t.getAttribute("aria-selected")==="true")||tabs[0]).id};
+}
+
 /* Friendly name for a search host, for the scrape table. */
 function siteName(host){
   const h=(host||"").toLowerCase();
@@ -425,10 +468,6 @@ async function loadDoctor(){
   let d;
   try{ d=await fetch("/doctor").then(r=>r.json()); }catch(e){ return; }
   window._doctor=d;
-  // Until the extension has sent a single job, the only first step that works
-  // is the Arbeitnow feed, so it gets the primary button, not Run scrape.
-  const ext=(d.checks||[]).find(c=>c.id==="extension");
-  document.documentElement.classList.toggle("no-extension", !!ext && !ext.ok);
   const card=$("setupCard"); if(!card) return;
   const failing=d.checks.filter(c=>!c.ok);
 

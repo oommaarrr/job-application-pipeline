@@ -26,10 +26,17 @@ function setDirty(v){ dirty=v; status(v?"Not saved yet":""); syncButtons(); }
 function syncButtons(){ const ok=usable(); $("anSave").disabled=!ok; $("anSavePull").disabled=!ok; }
 
 /* ------------------------------------------------------------------ open */
+// The footer count links to the Preview tab, so it hides while that is open.
+const tabs=dlgTabs(dlg.querySelector(".dlg-tabs"),id=>$("anFootCount").classList.toggle("hide",id==="anTabP"));
+$("anHowBtn").onclick=()=>{ const h=$("anHow"), show=h.classList.toggle("hide")===false;
+  $("anHowBtn").setAttribute("aria-expanded",String(show)); };
+$("anFootCount").onclick=()=>tabs.show("anTabP");
+function foot(text){ $("anFootCount").textContent=text||""; }
 async function open(){
   note(""); status(""); lastPreview=null;
   $("anExamples").innerHTML=""; $("anNear").innerHTML=""; $("anNearWrap").classList.add("hide");
   $("anSummary").textContent=""; $("anCount").textContent="Preview"; $("anFeed").textContent="";
+  foot(""); $("anTabN").textContent=""; tabs.show("anTabS");
   $("anSearches").innerHTML='<p class="muted">Loading your searches\u2026</p>';
   if(!dlg.open) dlg.showModal();
   await load(true);
@@ -89,8 +96,8 @@ function render(){
     '<div class="an-search'+(s.on?"":" off")+'" data-i="'+i+'">'+
       '<div class="an-search-top">'+
         '<input class="an-name" type="text" maxlength="60" placeholder="Job title, e.g. Product Designer" aria-label="Search '+(i+1)+' name" value="'+esc(s.name)+'">'+
-        '<label class="an-check"><input type="checkbox" class="an-on"'+(s.on?" checked":"")+'><span>On</span></label>'+
-        '<button type="button" class="go quiet sm an-del" aria-label="Remove search '+(i+1)+'">Remove</button>'+
+        '<span class="toggle" title="'+(s.on?"On":"Off: kept, not used")+'"><input type="checkbox" class="an-on" aria-label="Use search '+(i+1)+'"'+(s.on?" checked":"")+'><i aria-hidden="true"></i></span>'+
+        '<button type="button" class="icon-btn danger an-del" title="Remove"><span class="ico i-trash" aria-hidden="true"></span><span class="sr-only">Remove search '+(i+1)+'</span></button>'+
       '</div>'+
       '<textarea class="an-text" maxlength="400" rows="2" aria-label="Search '+(i+1)+': what the job is" '+
         'placeholder="The role, what the work is, the field and the main tools. For example: Designer for a B2B SaaS product, owning user research, flows and UI in Figma.">'+esc(s.looking_for)+'</textarea>'+
@@ -148,7 +155,7 @@ $("anAdd").onclick=()=>{ if(state.searches.length>=(meta.max_searches||8)) retur
 function schedulePreview(ms){ clearTimeout(prevTimer); prevTimer=setTimeout(preview, ms==null?900:ms); }
 async function preview(){
   if(!dlg.open || !state) return;
-  if(!usable()){ $("anCount").textContent="Preview"; $("anSummary").textContent="Describe at least one search to see what it would keep.";
+  if(!usable()){ foot(""); $("anTabN").textContent=""; $("anCount").textContent="Preview"; $("anSummary").textContent="Describe at least one search to see what it would keep.";
     $("anExamples").innerHTML=""; $("anNearWrap").classList.add("hide"); return; }
   const seq=++prevSeq;
   $("anFeed").textContent="updating…";
@@ -158,6 +165,7 @@ async function preview(){
   if(r.preparing){
     const p=r.preparing;
     $("anCount").textContent="Getting this week’s jobs";
+    foot("Getting this week’s jobs\u2026"); $("anTabN").textContent="";
     $("anFeed").textContent="";
     $("anSummary").textContent=(p.stage?p.stage.charAt(0).toUpperCase()+p.stage.slice(1):"Starting")+
       (p.total?(": "+p.done+" of "+p.total):"")+". The first time takes a few minutes; after that it is quick.";
@@ -173,6 +181,8 @@ function renderPreview(p){
     const n=(p.levels||{})[el.dataset.level]; el.textContent=(n==null?" ":n+" jobs"); });
   const lvl=state.strictness, kept=(p.levels||{})[lvl]!=null?p.levels[lvl]:p.kept;
   $("anCount").textContent=kept.toLocaleString()+" job"+(kept===1?"":"s")+" would be kept";
+  foot(kept.toLocaleString()+" job"+(kept===1?"":"s")+" would be kept");
+  $("anTabN").textContent=kept.toLocaleString();
   const d=p.dropped||{};
   const parts=[];
   if(d.location) parts.push(d.location.toLocaleString()+" in other places");

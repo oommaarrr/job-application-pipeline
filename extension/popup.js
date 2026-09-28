@@ -115,8 +115,6 @@ async function refresh() {
   const all = Object.values(jobs);
   const withDesc = all.filter((j) => j.description).length;
   $("stored").textContent = all.length;
-  $("export").disabled = all.length === 0;
-  $("clear").disabled = all.length === 0;
   refreshBridge();
 
   // An auto-collect keeps running after the popup closes (state is in
@@ -196,11 +194,10 @@ chrome.runtime.onMessage.addListener((m) => {
   }
 });
 
-// Stop and Erase are deliberately absent: those are the two things you reach
-// for when a run is misbehaving, and disabling them while it runs is what left
-// you with no way out mid-collect.
+// Stop is deliberately absent: it is what you reach for when a run is
+// misbehaving, and disabling it while it runs left no way out mid-collect.
 function busy(on) {
-  for (const id of ["collect", "auto", "export", "applied"])
+  for (const id of ["collect", "auto", "applied"])
     $(id).disabled = on;
 }
 
@@ -217,105 +214,7 @@ $("navApps").onclick = () => openPage("/report/");
 $("navRank").onclick = () => openPage("/ranking");
 $("openReport").onclick = () => openPage("/ranking");
 $("openArbeitnow").onclick = (e) => { e.preventDefault(); openPage("/dashboard#arbeitnow"); };
-
-/*
- * Search builder.
- *
- * Widening a search used to mean hand-editing a URL, which is why the same
- * twelve terms kept getting scraped. Each site spells the same four ideas
- * differently, so the mapping lives here rather than in your head:
- * radius, recency and remote are named differently on all three.
- */
-const SEARCH = {
-  /*
-   * LinkedIn resolves a free-text location itself, and not the way you expect:
-   * "berlin" comes back as "Berlin, Berlin, Germany", and an empty location
-   * falls back to the country on your profile, which is why a blank search
-   * reads "Germany" and quietly returns the whole country.
-   *
-   * The parameter that actually pins a search to a place is geoId, not
-   * location. Rather than hardcode ids that would rot, the popup learns them:
-   * every time you are on a LinkedIn search page it records the geoId that page
-   * is using against the location text, and reuses it next time you type that
-   * location. See learnGeo().
-   */
-  linkedin(kw, loc, radius, posted, remote, geoId) {
-    const p = new URLSearchParams({ keywords: kw.trim() });
-    if (loc.trim()) p.set("location", loc.trim());
-    if (geoId) p.set("geoId", geoId);
-    if (radius) p.set("distance", String(Math.round(radius * 0.621371))); // miles
-    if (posted) p.set("f_TPR", `r${posted * 86400}`);
-    if (remote) p.set("f_WT", "2");
-    return "https://www.linkedin.com/jobs/search/?" + p.toString();
-  },
-  /*
-   * StepStone. German-market, so the parameters are German too: `what`/`where`,
-   * `radius` in km (not miles, unlike LinkedIn), `ag` is an age-in-days filter.
-   * Restored on 24 September 2026 — the author stopped using it, but an
-   * open-source user hiring in the DACH region should not have it hidden.
-   */
-  stepstone(kw, loc, radius, posted, remote) {
-    const p = new URLSearchParams({ what: kw.trim() });
-    if (loc.trim()) p.set("where", loc.trim());
-    if (radius) p.set("radius", String(radius));
-    if (posted) p.set("ag", String(posted));
-    if (remote) p.set("wt", "home-office");
-    return "https://www.stepstone.de/jobs?" + p.toString();
-  },
-  indeed(kw, loc, radius, posted, remote) {
-    const p = new URLSearchParams({ q: kw.trim() });
-    if (loc.trim()) p.set("l", loc.trim());
-    if (radius) p.set("radius", String(radius));
-    if (posted) p.set("fromage", String(posted));
-    if (remote) p.set("sc", "0kf:attr(DSQF7);");
-    return "https://de.indeed.com/jobs?" + p.toString();
-  },
-};
-
-async function saveSearch() {
-  await chrome.storage.local.set({ search: {
-    kw: $("kw").value, loc: $("loc").value, radius: $("radius").value,
-    site: $("siteSel").value, posted: $("posted").value, remote: $("remote").checked,
-  }});
-}
-
-/*
- * Learn geoId from whatever LinkedIn search page is open.
- *
- * LinkedIn's own URLs carry the resolved geoId, so browsing to the right place
- * once teaches the popup that location for good. Nothing is guessed and nothing
- * hardcoded goes stale.
- */
-async function learnGeo() {
-  const t = await tab();
-  const url = t?.url || "";
-  if (!/linkedin\.com\/jobs\/search/.test(url)) return;
-  const q = new URL(url).searchParams;
-  const geo = q.get("geoId");
-  const loc = (q.get("location") || $("loc").value || "").trim().toLowerCase();
-  if (!geo || !loc) return;
-  const { geoByLoc = {} } = await chrome.storage.local.get("geoByLoc");
-  if (geoByLoc[loc] === geo) return;
-  geoByLoc[loc] = geo;
-  await chrome.storage.local.set({ geoByLoc });
-}
-
-$("go").onclick = async () => {
-  const kw = $("kw").value.trim();
-  if (!kw) { msg("type something to search for"); return; }
-  const loc = $("loc").value;
-  const { geoByLoc = {} } = await chrome.storage.local.get("geoByLoc");
-  const geoId = geoByLoc[loc.trim().toLowerCase()];
-  if ($("siteSel").value === "linkedin" && loc.trim() && !geoId)
-    msg("no geoId learned for that location yet — open it once on LinkedIn and it is remembered");
-  const url = SEARCH[$("siteSel").value](
-    kw, loc, +$("radius").value, +$("posted").value, $("remote").checked, geoId);
-  await saveSearch();
-  chrome.tabs.create({ url });
-};
-
-for (const id of ["kw", "loc", "radius", "siteSel", "posted", "remote"])
-  $(id).addEventListener("change", saveSearch);
+$("openSearches").onclick = () => openPage("/dashboard#searches");
 
 $("collect").onclick = async () => {
   busy(true); msg("collecting…");
@@ -374,270 +273,50 @@ $("stop").onclick = async () => {
 // popup to be reopened and the counter does not freeze mid-run.
 setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 1500);
 
-$("export").onclick = async () => {
-  const { jobs = {} } = await chrome.storage.local.get("jobs");
-  const payload = {
-    exported_at: new Date().toISOString(),
-    count: Object.keys(jobs).length,
-    jobs: Object.values(jobs),
-  };
-  const url = "data:application/json;charset=utf-8," +
-    encodeURIComponent(JSON.stringify(payload, null, 2));
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-  await chrome.downloads.download({
-    url,
-    filename: `job-collector-${stamp}.json`,
-    saveAs: true,
-  });
-  msg("saved — only needed if the pipeline is offline");
-};
-
-// Clearing only chrome.storage used to leave every job sitting in the
-// pipeline's inbox, so the next rank still showed them and "cleared" was a lie.
-// This wipes both sides. The bridge archives rather than deletes, so nothing is
-// actually destroyed.
-$("clear").onclick = async () => {
-  const { jobs = {} } = await chrome.storage.local.get("jobs");
-  const n = Object.keys(jobs).length;
-  if (!confirm(`Erase all ${n} collected jobs, here and in the pipeline?\n\n` +
-               `Your applied list is not touched.`)) return;
-  busy(true);
-  await chrome.storage.local.set({ jobs: {} });
-  const r = await bridge({ type: "bridge:reset" });
-  busy(false);
-  msg(r?.ok ? `erased ${n} here, ${r.archived ?? 0} in the pipeline`
-            : `erased ${n} here, pipeline offline so its copy remains`);
-  refresh();
-};
-
-// Restore the last search so widening one term does not mean retyping the rest.
-(async () => {
-  const { search } = await chrome.storage.local.get("search");
-  if (!search) return;
-  $("kw").value = search.kw || "";
-  $("loc").value = search.loc || "";
-  if (search.radius) $("radius").value = search.radius;
-  if (search.site) $("siteSel").value = search.site;
-  if (search.posted) $("posted").value = search.posted;
-  $("remote").checked = !!search.remote;
-})();
-
 refresh();
 
 /* ------------------------------------------------------------------ searches
  *
- * A saved list of searches, run on demand in this browser, in your own
- * session. The daily schedule was removed on 18 September 2026: it never fired
- * reliably here, and every run was started by hand anyway.
+ * The saved searches are kept by the pipeline and edited on the dashboard
+ * (28 September 2026). What stays here is the one thing only the browser can
+ * do well: save the search page you are looking at, which guarantees the saved
+ * search is one that works, because you are looking at its results.
  */
 const sched = (m) => chrome.runtime.sendMessage(m).catch(() => null);
-
-function siteOf(url) {
-  let h = "";
-  try { h = new URL(url).hostname.toLowerCase(); } catch { return "?"; }
-  if (h.includes("linkedin")) return "LinkedIn";
-  if (h.includes("stepstone")) return "StepStone";
-  if (h.includes("indeed")) return "Indeed";
-  return h.replace(/^www\./, "");
-}
 
 async function refreshSched() {
   const s = await sched({ type: "sched:get" });
   if (!s) return;
-  $("schedPages").value = s.pages;
-
-  const list = $("schedList");
-  list.innerHTML = "";
-  if (!s.searches.length) {
-    const li = document.createElement("li");
-    li.innerHTML = "<span>no searches saved yet</span>";
-    list.appendChild(li);
-  }
-  s.searches.forEach((q, i) => {
-    const li = document.createElement("li");
-    const span = document.createElement("span");
-    // Every saved search says which site it runs on: a label alone ("ML
-    // Engineer Berlin") reads the same for LinkedIn, Indeed and StepStone.
-    const site = document.createElement("b");
-    site.className = "site";
-    site.textContent = siteOf(q.url);
-    span.append(site, " ", q.label);
-    span.title = q.url;
-    /*
-     * Edit in place.
-     *
-     * Before this the only way to change a saved search was to delete it and
-     * rebuild it from the URL builder, so nobody ever adjusted one — they just
-     * accumulated. Editing the URL directly is the honest interface here: the
-     * URL *is* the search, and anyone running this can read a query string.
-     */
-    const ed = document.createElement("button");
-    ed.textContent = "edit";
-    ed.title = "change the label or the URL";
-    ed.onclick = async () => {
-      const label = prompt("Label for this search:", q.label);
-      if (label === null) return;
-      const url = prompt("Search URL:", q.url);
-      if (url === null) return;
-      if (!/^https?:\/\//i.test(url.trim())) { msg("that is not a URL"); return; }
-      const cur = await sched({ type: "sched:get" });
-      cur.searches[i] = { ...cur.searches[i], label: label.trim() || q.label,
-                          url: url.trim() };
-      await sched({ type: "sched:set", patch: { searches: cur.searches } });
-      msg("updated");
-      refreshSched();
-    };
-
-    // Off rather than deleted: a search you want back next week should not have
-    // to be rebuilt. background.js skips anything with enabled === false.
-    const off = document.createElement("button");
-    const isOn = q.enabled !== false;
-    off.textContent = isOn ? "on" : "off";
-    off.title = isOn ? "click to skip this search on the next run"
-                     : "click to include it again";
-    if (!isOn) { span.style.opacity = ".45"; span.style.textDecoration = "line-through"; }
-    off.onclick = async () => {
-      const cur = await sched({ type: "sched:get" });
-      cur.searches[i] = { ...cur.searches[i], enabled: !isOn };
-      await sched({ type: "sched:set", patch: { searches: cur.searches } });
-      refreshSched();
-    };
-
-    const rm = document.createElement("button");
-    rm.textContent = "remove";
-    rm.onclick = async () => {
-      const cur = await sched({ type: "sched:get" });
-      cur.searches.splice(i, 1);
-      await sched({ type: "sched:set", patch: { searches: cur.searches } });
-      refreshSched();
-    };
-    li.append(span, ed, off, rm);
-    list.appendChild(li);
-  });
-
+  const on = s.searches.filter((q) => q.enabled !== false).length;
+  $("schedCount").textContent = s.searches.length
+    ? `${s.searches.length} saved · ${on} switched on`
+    : "no saved searches yet";
   const r = s.lastResult;
   const rs = s.runState;
-  // An unfinished run is the thing worth surfacing: it says the work is not
-  // lost, it is waiting to pick up, which is otherwise indistinguishable from
-  // the run having silently failed.
-  const stalled = rs && rs.index < s.searches.length
-    ? `paused at ${rs.index + 1}/${s.searches.length} — press resume. `
+  // A cut-off run is worth saying: it is waiting to continue, which otherwise
+  // looks the same as having failed.
+  const stalled = !s.running && rs && Array.isArray(rs.order) && rs.index > 0 && rs.index < rs.order.length
+    ? `stopped at ${rs.index + 1} of ${rs.order.length}; Run scrape on the dashboard continues it. `
     : "";
-  $("schedLast").textContent = stalled + (!r
-    ? "never run"
-    : `last run ${new Date(r.at).toLocaleString()} · ` + r.lines.join(" · "));
-  $("schedRun").textContent = stalled ? "Resume now" : "Run all searches now";
+  $("schedLast").textContent = stalled + (r ? `last run ${new Date(r.at).toLocaleString()}` : "");
 }
 
-$("schedPages").addEventListener("change", async () => {
-  await sched({ type: "sched:set", patch: { pages: +$("schedPages").value } });
-  refreshSched();
-});
-
-// Saving the page you are on beats retyping a URL, and it guarantees the saved
-// search is one that actually works: you are looking at its results.
 $("schedAdd").onclick = async () => {
   const t = await tab();
   const url = t?.url || "";
-  if (!/linkedin\.com|indeed\.com|stepstone\.de/.test(url)) {
-    msg("open a job search page first, then add it");
+  if (!/^https:\/\/(www\.linkedin\.com\/jobs\/|[^/]*indeed\.com\/|www\.stepstone\.de\/)/.test(url)) {
+    msg("open a job search page on LinkedIn, Indeed or StepStone first, then add it");
     return;
   }
-  const s = await sched({ type: "sched:get" });
-  if (s.searches.some((q) => q.url === url)) { msg("already saved"); return; }
-  const host = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
-  const kw = new URLSearchParams(new URL(url).search).get("keywords") ||
-             new URLSearchParams(new URL(url).search).get("q") ||
-             new URLSearchParams(new URL(url).search).get("what") ||
-             decodeURIComponent(new URL(url).pathname.split("/")[2] || "").replace(/-/g, " ");
-  s.searches.push({ label: `${host}: ${kw || "search"}`, url });
-  await sched({ type: "sched:set", patch: { searches: s.searches } });
-  msg(`saved · ${s.searches.length} scheduled`);
+  $("schedAdd").disabled = true;
+  const r = await sched({ type: "searches:add", url });
+  $("schedAdd").disabled = false;
+  msg(!r ? "the extension did not answer, try again"
+      : r.ok === false && !r.why ? `pipeline offline, so nothing was saved. Start it: ${START_HINT}`
+      : r.ok === false ? `not saved: ${r.why}`
+      : r.outcome === "duplicate" ? r.why
+      : `saved · ${r.count} saved searches · rename or switch it off on the dashboard`);
   refreshSched();
-};
-
-$("schedRun").onclick = async () => {
-  const s = await sched({ type: "sched:get" });
-  const resuming = s?.runState && s.runState.index < s.searches.length;
-  await sched({ type: resuming ? "sched:resume" : "sched:runNow" });
-  msg(resuming ? `resuming at search ${s.runState.index + 1}…`
-               : "running the saved searches in background tabs…");
 };
 
 refreshSched();
-learnGeo();
-
-/*
- * Erase everything and start fresh.
- *
- * The Maintenance "erase" clears the collected jobs but deliberately keeps the
- * seen-before history, which is right for tidying up and wrong for starting
- * over: every posting from an earlier day comes straight back as a duplicate
- * and a "fresh" run returns almost nothing. This one forgets the history too,
- * and clears the schedule's own state so a half-finished run cannot block the
- * next one.
- *
- * What it never touches: applied.json, the built CVs, and the saved searches.
- */
-$("freshStart").onclick = async () => {
-  const { jobs = {} } = await chrome.storage.local.get("jobs");
-  const n = Object.keys(jobs).length;
-  if (!confirm(
-      `Start completely fresh?\n\n` +
-      `Erases ${n} collected jobs here and in the pipeline, and forgets that ` +
-      `they were seen, so the next scrape collects them again.\n\n` +
-      `Every built CV and cover letter moves to applications/archive, so the ` +
-      `Applications page starts empty. Nothing is deleted, and already-built ` +
-      `jobs still never come back into a batch.\n\n` +
-      `Your applied list, your 30-day job history (jobs from earlier days stay skipped) and your saved searches are NOT touched.`)) return;
-
-  busy(true);
-  msg("erasing…");
-  await chrome.storage.local.set({ jobs: {} });
-  await chrome.storage.local.remove(["autoRun", "autoStatus"]);
-  // A stuck runState or running flag would silently block the next scrape.
-  await sched({ type: "sched:set", patch: {
-    runState: null, running: false, lastResult: null } });
-  const r = await bridge({ type: "bridge:reset", hard: true });
-  busy(false);
-
-  msg(r?.ok
-    ? `erased ${n} here, ${r.archived ?? 0} archived in the pipeline` +
-      (r.build_archived ? `, ${r.build_archived} day(s) of CVs moved to applications/archive` : "") +
-      ` — ready for a fresh run`
-    : `erased ${n} here, but the pipeline is offline so its copy remains`);
-  refresh();
-  refreshSched();
-};
-
-
-/* ----------------------------------------------------------- share searches
- *
- * A set of searches is the most valuable thing a user of this project builds,
- * and the whole reason to open source it is that people can hand each other a
- * good one. JSON through the clipboard needs no server and no account.
- */
-$("schedExport").onclick = async () => {
-  const s = await sched({ type: "sched:get" });
-  const text = JSON.stringify(
-    (s?.searches || []).map(({ label, url, enabled }) => ({ label, url, enabled })), null, 2);
-  try { await navigator.clipboard.writeText(text); msg(`copied ${(s?.searches || []).length} searches`); }
-  catch (e) { msg("could not reach the clipboard"); }
-};
-
-$("schedImport").onclick = async () => {
-  const raw = prompt("Paste an exported search list (JSON). This REPLACES the saved list.");
-  if (raw === null) return;
-  let rows;
-  try { rows = JSON.parse(raw); } catch (e) { msg("that is not valid JSON"); return; }
-  if (!Array.isArray(rows)) { msg("expected a JSON array"); return; }
-  const clean = rows
-    .filter((r) => r && typeof r.url === "string" && /^https?:\/\//i.test(r.url))
-    .map((r) => ({ label: String(r.label || r.url).slice(0, 120), url: r.url,
-                   enabled: r.enabled !== false }));
-  if (!clean.length) { msg("no usable searches in that JSON"); return; }
-  if (!confirm(`Replace the saved list with ${clean.length} search(es)?`)) return;
-  await sched({ type: "sched:set", patch: { searches: clean } });
-  msg(`imported ${clean.length}`);
-  refreshSched();
-};

@@ -7,8 +7,8 @@
  * what the page allows.
  *
  * Everything is best-effort. If the bridge is not running, collecting still
- * works and still stores to chrome.storage, and the popup's manual JSON export
- * remains the fallback path.
+ * works and still stores to chrome.storage, and everything kept there is sent
+ * once the bridge answers again (see checkTrigger).
  */
 
 const BRIDGE = "http://127.0.0.1:8765";
@@ -66,11 +66,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     call("/built", null, 4000).then(sendResponse);
     return true;
   }
-  if (msg?.type === "bridge:reset") {
-    // hard also clears the seen-before history, so a fresh start really is one.
-    call("/reset", { hard: !!msg.hard }).then(sendResponse);
-    return true;
-  }
   return false;
 });
 
@@ -100,7 +95,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 const SCHED = "schedule";
 const DEFAULT_SCHED = {
   pages: 1,
-  searches: [],         // [{ label, url }]
+  searches: [],         // [{ id, label, url, enabled }], a copy of the pipeline's list
   lastResult: null,
   // Progress within the current run, so a dropped connection or a killed
   // service worker resumes instead of starting over. { index, done[], tries{} }
@@ -111,142 +106,80 @@ const DEFAULT_SCHED = {
 const MAX_TRIES = 2;
 
 /*
- * Starter searches, seeded once on first install so a new user has something to
- * run straight away. They are EXAMPLES that match the example profile. Edit,
- * switch off or delete them in the popup's "Saved searches" tab; nothing here
- * needs to change for that, and a search you delete does not come back.
+ * A search switched off on the dashboard is skipped, not deleted.
  *
- * All searches: last 7 days (f_TPR=r604800). The location is pinned by geoId,
- * not by the location text, because LinkedIn falls back to the country on your
- * profile when the text is ambiguous.
- *
- * Two things learned the hard way:
- *   - A COUNTRY geoId ignores a radius. 101282230 is Germany, the whole country,
- *     not Berlin; adding distance=19 to it does nothing. For a city, open the
- *     city once on LinkedIn and the popup learns its geoId.
- *   - f_WT=2 (remote) plus a country geoId means "remote roles open to that
- *     country", which is mostly pan-regional listings, not jobs located there.
- */
-const GEO = { germany: "101282230" };
-// Germany, whole country, all work types, last 7 days.
-const li = (kw) =>
-  `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(kw)}` +
-  `&location=Germany&geoId=${GEO.germany}&f_TPR=r604800`;
-
-// One per site, so a new user sees all three working and can copy the pattern.
-const RECOMMENDED = [
-  { label: "Example: Machine Learning Engineer", url: li("Machine Learning Engineer") },
-  { label: "Example: Applied AI Engineer",
-    url: "https://de.indeed.com/jobs?q=Applied+AI+Engineer&l=Deutschland&fromage=7" },
-  { label: "Example: MLOps Engineer",
-    url: "https://www.stepstone.de/jobs?what=MLOps+Engineer&ag=7" },
-];
-
-// Bump to re-seed. The seed is one-time (guarded by this), so a search the user
-// deletes by hand does not reappear on the next reload.
-const SEED_VERSION = 1;
-
-// The keyword carried by a saved-search URL, however it was built. Used to
-// dedupe the seed against searches already saved, so reloading twice or seeding
-// on top of the user's own search does not create a near-duplicate.
-//
-// The geoId is part of the key, not just the keyword: the same title searched
-// in two countries is two searches, and without the geoId they would collapse
-// to one and the seed would silently keep only the first.
-function searchKey(url) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "").split(".")[0];
-    const kw = u.searchParams.get("keywords") || u.searchParams.get("q") || u.searchParams.get("what") ||
-               decodeURIComponent(u.pathname.split("/")[2] || "").replace(/-/g, " ");
-    const geo = u.searchParams.get("geoId") || u.searchParams.get("location") || "";
-    return `${host}:${geo}:${kw.trim().toLowerCase()}`;
-  } catch { return url; }
-}
-
-/*
- * Reconcile the saved list with the two decisions above, on reload.
- *
- * This is what makes a change reach the list already sitting in the browser
- * rather than only a fresh install: on reload, the recommended searches are
- * merged in once and any corrupt URL is repaired. It never removes a search
- * because of which site it points at — see the note below. Runs before any
- * scheduled run reads the list.
- */
-/*
- * A search switched off in the popup is skipped, not deleted.
- *
- * `enabled` is absent on every search saved before 24 September 2026, so the
- * test is `!== false` rather than `=== true`: an old search with no flag stays
- * on. Filtering happens where a RUN ORDER is built, never in migrateSched, so
- * turning one off can never lose it.
+ * `enabled` is absent on searches saved before 24 September 2026, so the test
+ * is `!== false` rather than `=== true`: an old search with no flag stays on.
  */
 const isEnabled = (q) => q && q.enabled !== false;
 const activeSearches = (list) => (list || []).filter(isEnabled);
 
-async function migrateSched() {
-  const s = { ...DEFAULT_SCHED, ...(await chrome.storage.local.get(SCHED))[SCHED] };
-  const before = JSON.stringify(s);
-  /*
-   * Nothing is blocked by site.
-   *
-   * Every site the extension can parse stays available, and the user decides
-   * by adding or deleting searches in the popup. StepStone is German-market
-   * only and Indeed sometimes challenges scripted requests, but a human-paced
-   * scrape from a logged-in browser works on both, and someone hiring in the
-   * DACH region wants StepStone. Which sites to use is a preference, not
-   * something the code should decide.
-   *
-   * One narrow exception survives, and only because it repairs corrupt data
-   * rather than expressing a preference: German searches seeded before
-   * 22 September 2026 pinned a COUNTRY geoId together with a radius, which
-   * LinkedIn ignores, under a label that wrongly said "Berlin". Same geoId and
-   * keyword means the same dedupe key, so without this the broken URL wins and
-   * keeps its meaningless distance parameter forever.
-   */
-  const isStaleDE = (url) =>
-    /linkedin\.com/i.test(url || "") && /geoId=101282230/.test(url || "")
-    && /[?&]distance=/.test(url || "");
-  const dropped = (url) => isStaleDE(url);
-
-  s.searches = (s.searches || []).filter((q) => !dropped(q.url));
-
-  if (s.runState && Array.isArray(s.runState.order)
-      && s.runState.order.some((q) => dropped(q.url))) {
-    delete s.runState;
-  }
-
-  if ((s.seedVersion || 0) < SEED_VERSION) {
-    const have = new Set(s.searches.map((q) => searchKey(q.url)));
-    // A reinstall (or a second copy of the extension) starts with an empty
-    // list. The pipeline keeps a copy of the last list it was sent, so restore
-    // that before falling back to the examples: removing and re-adding the
-    // extension should never cost someone their searches.
-    let seed = RECOMMENDED;
-    if (!s.searches.length) {
-      const saved = await call("/searches/saved", null, 4000);
-      if (saved.ok && Array.isArray(saved.searches) && saved.searches.length) {
-        seed = saved.searches.filter((q) => q && q.url);
-      }
-    }
-    for (const rec of seed) {
-      if (!have.has(searchKey(rec.url))) { s.searches.push(rec); have.add(searchKey(rec.url)); }
-    }
-    s.seedVersion = SEED_VERSION;
-  }
-
-  if (JSON.stringify(s) !== before) {
-    await chrome.storage.local.set({ [SCHED]: s });
-  }
-}
-migrateSched();
-
-const getSched = async () => {
-  await migrateSched();
-  return { ...DEFAULT_SCHED, ...(await chrome.storage.local.get(SCHED))[SCHED] };
-};
+const getSched = async () =>
+  ({ ...DEFAULT_SCHED, ...(await chrome.storage.local.get(SCHED))[SCHED] });
 const setSched = async (patch) =>
   chrome.storage.local.set({ [SCHED]: { ...(await getSched()), ...patch } });
+
+/*
+ * The saved searches belong to the pipeline. Decision, 28 September 2026.
+ *
+ * They used to live here and be edited in the popup, with the pipeline keeping
+ * a mirror. Now the dashboard edits them and this pulls a copy on every wake:
+ * the one-minute alarm, a job page loading, browser start. A run always uses
+ * the copy from its last successful pull, so a pipeline that is briefly down
+ * does not stop one.
+ *
+ * Two more things ride on the same pull:
+ *   - Moving the list. The first pull after this change sends the list this
+ *     browser still holds, and the pipeline adds whatever it does not have, so
+ *     updating the extension never loses a search. It happens once.
+ *   - Erasing. When the jobs are erased on the dashboard, the copies this
+ *     browser keeps (to resend if the pipeline was down) are erased too;
+ *     otherwise the next resend would bring the whole erased pool back.
+ */
+async function syncSearches() {
+  let r = await call("/searches/sync", null, 4000);
+  if (!r.ok || !Array.isArray(r.searches)) return false;
+  const st = await chrome.storage.local.get(["searchesMoved", "resetSeen"]);
+
+  if (!st.searchesMoved) {
+    const mine = (await getSched()).searches || [];
+    if (mine.length) {
+      const m = await call("/searches/merge", { searches: mine });
+      if (!m.ok) return false;
+      const again = await call("/searches/sync", null, 4000);
+      if (!again.ok || !Array.isArray(again.searches)) return false;
+      r = again;
+    }
+    await chrome.storage.local.set({ searchesMoved: true });
+  }
+
+  const resetAt = typeof r.reset_at === "number" ? r.reset_at : 0;
+  if (st.resetSeen === undefined) {
+    // First pull: whatever was erased before this browser knew about erasing
+    // is not this browser's to act on.
+    await chrome.storage.local.set({ resetSeen: resetAt });
+  } else if (resetAt > st.resetSeen) {
+    await chrome.storage.local.set({ jobs: {}, resetSeen: resetAt });
+    await chrome.storage.local.remove(["unsentJobs", "autoStatus"]);
+    const cur = await getSched();
+    if (!cur.running) await setSched({ runState: null, lastResult: null });
+  }
+
+  const s = await getSched();
+  const searches = r.searches.map(({ id, label, url, enabled }) =>
+    ({ id, label, url, enabled: enabled !== false }));
+  const patch = {};
+  if (JSON.stringify(searches) !== JSON.stringify(s.searches)) {
+    patch.searches = searches;
+    // An interrupted run replays the order it froze, so after an edit it would
+    // re-run the OLD list. Drop the resume point when the list changes between
+    // runs; during a run, leave it alone (the run resets it when done).
+    if (!s.running) patch.runState = null;
+  }
+  if (r.pages && r.pages !== s.pages) patch.pages = r.pages;
+  if (Object.keys(patch).length) await setSched(patch);
+  return true;
+}
 
 const today = () => new Date().toLocaleDateString("en-CA");   // YYYY-MM-DD, local
 const jitter = (a, b) => a + Math.random() * (b - a);
@@ -348,8 +281,11 @@ async function flushToBridge(where) {
     const { jobs = {} } = await chrome.storage.local.get("jobs");
     const all = Object.values(jobs);
     if (!all.length) return;
-    const r = await call("/ingest", { jobs: all });
+    const { resetSeen } = await chrome.storage.local.get("resetSeen");
+    const r = await call("/ingest", { jobs: all, reset_seen: resetSeen });
     if (r.ok) await chrome.storage.local.remove("unsentJobs");
+    // Erased on the dashboard since the last pull: the pull clears the copy.
+    if (r.stale) await syncSearches();
     else console.warn(`[job collector] flush (${where}) failed: ${r.error}`);
   } catch { /* never let a flush stop a run */ }
 }
@@ -673,43 +609,40 @@ async function runSchedule() {
 }
 
 chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
-  if (msg?.type === "sched:get") { getSched().then(sendResponse); return true; }
-  if (msg?.type === "sched:set") {
-    (async () => {
-      const patch = { ...msg.patch };
-      // Editing, switching off, removing or importing searches must not be
-      // undone by a stale resume. An interrupted run freezes its order in
-      // runState and replays it, so after an edit it would re-run the OLD list.
-      // Drop the resume point when the list changes between runs; during a
-      // run, leave it alone (the run owns runState and resets it when done).
-      if (patch.searches) {
-        const cur = await getSched();
-        if (!cur.running) patch.runState = null;
-      }
-      await setSched(patch);
-    })().then(async () => {
-      // The launcher needs a real search URL to open, and only the extension
-      // knows them. Mirroring them to the bridge is what lets a shell script
-      // open the right page instead of guessing one. Only searches that are
-      // switched on, so the dashboard's "of N" counts what will actually run.
-      const s = await getSched();
-      await call("/searches", { searches: activeSearches(s.searches), all: s.searches });
-      sendResponse({ ok: true });
-    });
+  if (msg?.type === "sched:get") {
+    // The popup shows the pipeline's list, so pull it first when it answers.
+    syncSearches().catch(() => {}).finally(() => getSched().then(sendResponse));
     return true;
   }
-  if (msg?.type === "sched:runNow") {
-    // A fresh progress record, so an interruption resumes rather than restarts.
-    setSched({ runState: { index: 0, done: [], tries: {} }, running: false })
-      .then(() => { runSchedule().catch(() => {}); sendResponse({ ok: true }); });
-    return true;
-  }
-  if (msg?.type === "sched:resume") {
-    runSchedule().catch(() => {});
-    sendResponse({ ok: true });
+  if (msg?.type === "searches:add") {
+    // The popup's "Add the page I am on". Saved by the pipeline, then pulled
+    // back, so the popup's count is the pipeline's.
+    call("/searches/add", { url: msg.url, label: msg.label || "", from: "extension" })
+      .then(async (r) => { if (r.ok) await syncSearches(); sendResponse(r); });
     return true;
   }
   return false;
+});
+
+/*
+ * Learn LinkedIn place ids from the searches you open.
+ *
+ * LinkedIn pins a search to a place by geoId, not by the location text, and
+ * falls back to the country on your profile when the text is vague. Its own
+ * search URL carries the resolved geoId, so whenever a LinkedIn search is open
+ * the place and its id go to the pipeline, and the dashboard's search builder
+ * reuses them. Nothing is guessed and no id is hardcoded.
+ */
+const geoSent = new Set();
+chrome.tabs.onUpdated.addListener((_id, info, tab) => {
+  const url = info.url || (info.status === "complete" ? tab?.url : "");
+  if (!url || !/^https:\/\/www\.linkedin\.com\/jobs\/search/.test(url)) return;
+  let q;
+  try { q = new URL(url).searchParams; } catch { return; }
+  const geoId = q.get("geoId"), location = (q.get("location") || "").trim();
+  if (!geoId || !location || geoSent.has(location + "|" + geoId)) return;
+  geoSent.add(location + "|" + geoId);
+  call("/searches/geo", { location, geoId }, 4000);
 });
 
 
@@ -770,6 +703,7 @@ function alert_(title, message) {
  * again until the profile is wiped.
  */
 const RUN_MAX_MS = 60 * 60 * 1000;
+const RESUME_MAX_MS = 6 * 60 * 60 * 1000;
 
 async function staleRunning(s) {
   const started = s.runState?.startedAt || 0;
@@ -787,9 +721,12 @@ async function checkTrigger() {
     // marked applied) goes to it as soon as it answers again. This replaced
     // the popup's "Resend everything" button, 28 September 2026: nobody
     // should have to remember to press it.
+    // The pull comes first: an erase on the dashboard must clear this
+    // browser's copy of the jobs before anything resends them.
+    const synced = await syncSearches();
     const { unsentJobs, pendingApplied = [] } =
       await chrome.storage.local.get(["unsentJobs", "pendingApplied"]);
-    if ((unsentJobs || pendingApplied.length) && (await call("/status", null, 4000)).ok)
+    if (synced && (unsentJobs || pendingApplied.length))
       await flushToBridge("bridge is back");
     const s = await getSched();
     if (!s.searches.length) return;
@@ -800,9 +737,6 @@ async function checkTrigger() {
     // just prints "pool is empty". See clearStaleRunning: a flag older than the
     // longest possible run cannot belong to anything still going.
     if (s.running && !(await staleRunning(s))) return;
-    // Keep the bridge's copy current on every wake, not only when a setting is
-    // changed. Otherwise the launcher has nothing to open on a fresh profile.
-    call("/searches", { searches: activeSearches(s.searches), all: s.searches }).catch(() => {});
     const r = await call("/trigger", null, 4000);
     if (!r.ok || !r.run) return;
 
@@ -816,6 +750,21 @@ async function checkTrigger() {
       only ? s.searches.filter((q) => hostOf(q.url).includes(only)) : s.searches);
     if (only && !picked.length) {
       alert_("Job collector", `No saved search matches “${only}”`);
+      return;
+    }
+
+    /*
+     * A run that was cut off (Chrome closed, the laptop slept, the worker was
+     * reclaimed) continues where it stopped instead of repeating the searches
+     * already done. That used to be the popup's "Resume" button; now pressing
+     * Run scrape or Retry on the dashboard does it. Only within a few hours,
+     * and only for the full list: a run narrowed to one site starts fresh.
+     */
+    const rs = s.runState;
+    if (!only && rs && Array.isArray(rs.order) && rs.index > 0 && rs.index < rs.order.length
+        && Date.now() - (rs.startedAt || 0) < RESUME_MAX_MS) {
+      alert_("Job collector", `Continuing at search ${rs.index + 1} of ${rs.order.length}…`);
+      runSchedule().catch(() => {});
       return;
     }
 

@@ -41,7 +41,7 @@ flowchart LR
 
 | Step | You do | It does |
 |---|---|---|
-| **Collect** | press **+ Arbeitnow**, or run your saved LinkedIn, Indeed and StepStone searches from the Chrome extension | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
+| **Collect** | press **+ Arbeitnow**, and **Run scrape** for your saved LinkedIn, Indeed and StepStone searches (run in Chrome by the extension) | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
 | **Rank** | press **Rank pool** | a local AI reads every posting and drops the ones that don't fit: wrong language, too senior, wrong field |
 | **Build** | choose how many, press **Build** | Claude writes a one-page CV and a cover letter for each of the best matches |
 | **Apply** | open **Applications**, download, send | |
@@ -185,26 +185,27 @@ whose description is all LLM work is found by an "AI engineer" search even thoug
 the title doesn't say so. The local model then judges each kept job against your
 profile, like any other job.
 
-![The Arbeitnow searches panel with two searches, the rules and a preview](docs/screenshots/arbeitnow.png)
+![The Arbeitnow window: two searches, how close a match, and how many jobs would be kept](docs/screenshots/arbeitnow.png)
 
-**Edit them** with the settings button next to **+ Arbeitnow** (or **Set them
-on the dashboard** in the extension's Saved searches tab):
+**Edit them** with the settings button attached to **+ Arbeitnow** (or **Set them
+on the dashboard** in the extension). The window has three tabs:
 
 - **Searches.** One card per kind of job. Describe the work, not only the title:
   the role, what you would do, the field, the main tools. For example
   *"Designer for a B2B SaaS product, owning user research, flows and UI in
   Figma"*. Add up to 8, switch any off, and each shows how many jobs it keeps.
-- **On site or hybrid in.** The countries you'd work in. Leave it empty to keep
+  Below them, **How close a match**: Wide, Balanced or Close, each with how
+  many jobs it would keep this week.
+- **Rules.** **On site or hybrid in:** The countries you'd work in. Leave it empty to keep
   jobs from anywhere. A job whose location names no country is always kept.
-- **Also fully remote jobs based in other countries.**
-- **Include internships, working-student jobs, theses and apprenticeships.**
-  Off by default.
-- **Posted in the last** 1, 3 or 7 days.
-- **How close a match**: Wide, Balanced or Close, each with how many jobs it
-  would keep this week.
+  Then switches for **fully remote jobs based in other countries** and for
+  **internships, working-student jobs, theses and apprenticeships** (off by
+  default), and **Posted in the last** 1, 3 or 7 days.
+- **Preview.** A sample of the jobs that would be kept, and the ones just below
+  the line.
 
-Every change updates the preview: how many jobs would be kept, a sample of them,
-and the ones just below the line. **Save and pull** saves and collects them.
+Every change updates the count at the bottom of the window ("38 jobs would be
+kept"); click it to see the preview. **Save and pull** saves and collects them.
 
 **Where the first searches come from.** You don't have to write them. The first
 time, the local model reads your profile and suggests the searches, the
@@ -225,10 +226,15 @@ minute.
 
 The extension, **Job Collector**, collects jobs from LinkedIn, Indeed and
 StepStone and sends them to the pipeline. It reads only pages in your own
-Chrome, where you are already signed in, at a human pace. Without it the
-pipeline still works with Arbeitnow alone.
+Chrome, where you are already signed in, at a human pace. It is optional only in
+the sense that Arbeitnow works without it: **every LinkedIn, Indeed and StepStone
+search runs through it**, so without it those sites are not collected at all.
 
-![The extension's three tabs: This page, Saved searches and More](docs/screenshots/extension.png)
+Your searches are managed on the dashboard (see [Saved
+searches](#saved-searches)); the extension pulls them from the pipeline about
+once a minute and runs them when you press **Run scrape**.
+
+<img src="docs/screenshots/extension.png" alt="The extension: collect this page, mark a job applied, add the page you are on to your saved searches" width="428" align="right">
 
 **Install it once:**
 
@@ -237,7 +243,10 @@ pipeline still works with Arbeitnow alone.
 3. Click **Load unpacked** and choose the `extension` folder inside this project
 4. Click the puzzle icon in the toolbar and pin **Job Collector**
 
-**At the top**, on every tab:
+The dashboard says whether the extension is connected: under **Scrape**, and
+at the top of the **Saved searches** window.
+
+**At the top of the popup:**
 
 - a green dot when the pipeline is running, with how many jobs came in today,
   how many you applied to and how many were ranked (red means it is not
@@ -245,9 +254,7 @@ pipeline still works with Arbeitnow alone.
 - how many jobs this browser has collected, and how many are on the page open now
 - **Dashboard**, **Applications** and **Fit ranking** open those pages
 
-### This page
-
-Open a job search on LinkedIn, Indeed or StepStone, then:
+**On a job search page** (LinkedIn, Indeed or StepStone):
 
 - **Collect this page** reads every job on the results page and sends them to
   the pipeline. Keep **Also capture descriptions** ticked: the local AI ranks
@@ -257,68 +264,52 @@ Open a job search on LinkedIn, Indeed or StepStone, then:
 - **Mark this job applied**: open a job you applied to and press it. That job
   never comes back in a future batch. When a CV was already built for the job,
   it says so above the button.
+- **Add the page I am on** saves the search you are looking at, with every
+  filter you set on the site, to your saved searches. **Manage searches** opens
+  them on the dashboard.
 
-### Saved searches
-
-Save the searches you run often, then collect all of them with one click.
-
-**To save a search**, either:
-
-- **From the site:** on LinkedIn, Indeed or StepStone, search the way you
-  normally would and set the filters you want (location, remote, date
-  posted...). Then open the extension, go to **Saved searches** and press
-  **Add the page I am on**.
-- **From keywords,** without going to the site first: see below.
-
-Every saved search shows the site it runs on. Beside each one:
-
-- **edit** changes its name or its link
-- **on / off** skips it on the next run without deleting it
-- **remove** deletes it
-
-**Pages each** sets how many pages of results every search collects.
-
-**Run all searches now** opens each saved search in a background tab, one after
-the other, and collects it. Keep Chrome open while it runs; you can keep using
-it. If it gets interrupted, the button becomes **Resume now** and carries on
-where it stopped. The dashboard's **Run scrape** button starts the same run
-(Chrome picks it up within a minute). The line under the buttons shows when it
-last ran and what it found.
-
-**Export JSON** copies your list of searches; **Import JSON** replaces it. Use
-them to move your searches to another browser or computer.
-
-#### New search from keywords
-
-<img src="docs/screenshots/extension-keywords.png" alt="New search from keywords: job title, city, distance, site, how recent, remote only" width="380" align="right">
-
-Builds a search for you, so you do not have to set the filters on each site.
-It is at the bottom of the **Saved searches** tab:
-
-1. Click **New search from keywords** to open it
-2. Type the job title, e.g. `machine learning engineer`
-3. Type the city, and choose how far from it (5 to 100 km, or anywhere)
-4. Choose the site: LinkedIn, Indeed or StepStone
-5. Choose how recent: any date, past 24 hours, past week or past month
-6. Tick **Remote only** if you want only remote jobs
-7. Press **Open this search**: the results open in a new tab
-8. Check the results look right, then press **Add the page I am on** to save it
-
-What you typed is remembered for next time, so making the same search on
-another site is just changing the site and pressing the button again.
-
-On LinkedIn, the city only filters exactly after you have opened one LinkedIn
-search for that city yourself, which the extension then remembers. Until then
-the popup says so, and the search opens without the exact city filter.
+If the pipeline was off while you collected, the jobs are kept in the browser
+and sent as soon as it is back.
 
 <br clear="right">
 
-### More
+## Saved searches
 
-- **Export JSON (manual fallback)**: downloads the collected jobs as a file
-- **Erase everything and start fresh**: see [Where your files are](#where-your-files-are)
-- **Erase collected jobs only**: clears them here, while the pipeline still
-  remembers them as already seen
+The searches **Run scrape** runs on LinkedIn, Indeed and StepStone. Open them
+with the settings button attached to **Run scrape** on the dashboard.
+
+![The saved searches window: four searches, three on and one off](docs/screenshots/searches.png)
+
+The badge beside the title says whether the Chrome extension is connected. The
+window has three tabs:
+
+- **Searches.** Each one shows its site and, in words, what it looks for. The
+  switch turns it off without deleting it; the pencil renames it or edits its
+  link; the arrow opens it on the site; the bin removes it. **Pages per search**
+  sets how many pages of results each one collects.
+- **Add a search.** **From keywords**: type the job title and the place, pick
+  the site, how recent, the distance and remote only, and the link is built for
+  you (each site spells these differently; on Indeed, pick the country's Indeed
+  site). **Preview on the site** lets you check the results first. **Paste an
+  address**: set a search up on the site with every filter you want and paste
+  its address. The extension's **Add the page I am on** does the same in one
+  click.
+- **Share.** **Copy the list** / **Replace from a copied list**: hand a good set
+  of searches to someone, or move them to another computer.
+
+Press **Save**, or **Save and run** to start a scrape straight away. Chrome
+picks the run up within a minute and opens each search that is on in a
+background tab, one after the other (LinkedIn in front, because it only loads
+its list on screen). Keep Chrome open while it runs. If it gets cut off, **Run
+scrape** carries on where it stopped.
+
+On LinkedIn a place is pinned by an internal id, not the words you type.
+Whenever a LinkedIn search is open, the extension tells the pipeline which id
+your place has, and the builder uses it from then on. Until then the builder
+says so; opening the search once with **Preview on the site** is enough.
+
+A new install starts with three example searches, one per site. Edit or remove
+them freely.
 
 ---
 
@@ -327,8 +318,9 @@ the popup says so, and the search opens without the exact city filter.
 1. Open the dashboard: <http://127.0.0.1:8765/dashboard>. With start-at-login
    on it is always there; otherwise run `./start.sh` (Windows: `start.bat`) first.
 2. **Collect.** Press **+ Arbeitnow** (its searches: [Arbeitnow
-   searches](#arbeitnow-searches)), or in the Chrome extension open
-   **Saved searches** and press **Run all searches now**.
+   searches](#arbeitnow-searches)), and **Run scrape** for your LinkedIn,
+   Indeed and StepStone searches (they need the Chrome extension; edit them
+   under [Saved searches](#saved-searches)).
 3. **Rank.** Press **Rank pool**. It takes a few minutes; the **Funnel** shows
    how many jobs survived each filter.
 4. **Build.** Pick how many applications you want (5 is a good start) and press
@@ -353,9 +345,10 @@ these pages from anywhere.
 | Jobs you applied to | `scraper/history/applied.csv` (date, company, title, link), kept forever |
 | Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the local AI judged it). A job it already judged on an earlier day is skipped |
 
-**Erase everything and start fresh** (in the extension, under **More**) clears
-the collected jobs so the next collection starts from zero, and moves every
-built CV and letter into the archive. It never touches your applied list or the
+**Erase everything and start fresh** (on the dashboard, under **Start over**)
+clears the collected jobs, in the pipeline and in the extension's copy, so the
+next collection starts from zero, and moves every built CV and letter into the
+archive. It never touches your applied list or the
 30-day job history, so jobs you applied to, and jobs the local AI already judged
 on an earlier day, still never come back. The dashboard then starts a new round:
 each step shows only what has happened since the erase, and until a step runs
