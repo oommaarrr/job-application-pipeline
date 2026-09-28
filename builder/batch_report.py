@@ -121,6 +121,20 @@ JS = r"""
   var marks = load();
   var cards = [].slice.call(document.querySelectorAll(".card[data-url]"));
 
+  // Day tabs: built, and how many of those are not yet marked applied or skipped.
+  function dayTabs() {
+    document.querySelectorAll(".batches a.day").forEach(function (a) {
+      var m = {};
+      try { m = JSON.parse(localStorage.getItem("jobpipeline.batch." + a.dataset.date + ".marks")) || {}; } catch (e) {}
+      var done = 0;
+      Object.keys(m).forEach(function (k) { if (m[k] && (m[k].applied || m[k].skipped)) done++; });
+      var n = +a.dataset.n, left = Math.max(0, n - done);
+      a.querySelector(".n").textContent = left ? (n + " · " + left + " left") : (n + " · done");
+      a.classList.toggle("has-left", left > 0);
+    });
+  }
+  dayTabs();
+
   function paint(card) {
     var st = marks[card.dataset.url] || {};
     card.querySelectorAll("input[data-mark]").forEach(function (i) {
@@ -141,6 +155,7 @@ JS = r"""
     document.getElementById("n-applied").textContent = a;
     document.getElementById("n-skipped").textContent = s;
     document.getElementById("n-left").textContent = cards.length - a - s;
+    dayTabs();
     document.querySelector(".p-applied").style.width = (a / total * 100) + "%";
     document.querySelector(".p-skipped").style.width = (s / total * 100) + "%";
   }
@@ -332,24 +347,35 @@ def backfill_urls(batch: dict) -> int:
 
 def other_batches(date: str) -> str:
     """
-    Links to every other day's batch. The Applications page opens the newest
-    batch, so before this a new day's batch hid the previous one entirely:
-    applications built yesterday, some already sent, simply vanished from view.
+    One tab per day's batch, this one included. The Applications page opens the
+    newest batch, so before this a new day's batch hid the previous one: on 29
+    September a build of 2 made yesterday's 11 look gone, behind a small
+    "Other batches" line nobody noticed. Each tab counts what is still left to
+    handle; the page's script fills that in from the marks saved in this
+    browser, the same ones the counters below use.
     """
     days = []
     for d in sorted(APPS.glob("20??-??-??"), reverse=True):
-        if d.name == date or not (d / "batch.json").exists():
+        if not (d / "batch.json").exists() and d.name != date:
             continue
         try:
             payload = json.loads((d / "batch.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            continue
+            payload = {}
         n = len(payload.get("built", [])) if isinstance(payload, dict) else 0
-        days.append(f'<a href="{BRIDGE}/report/{d.name}/batch.html">{esc(d.name)} '
-                    f'<span class="n">{n}</span></a>')
-    if not days:
+        if not n and d.name != date:
+            continue
+        try:
+            label = dt.date.fromisoformat(d.name).strftime("%a %d %b")
+        except ValueError:
+            label = d.name
+        cur = ' class="day cur" aria-current="page"' if d.name == date else ' class="day"'
+        days.append(f'<a{cur} href="{BRIDGE}/report/{d.name}/batch.html" data-date="{esc(d.name)}" '
+                    f'data-n="{n}">{esc(label)} <span class="n">{n}</span></a>')
+    if len(days) < 2:
         return ""
-    return '  <nav class="batches" aria-label="Other batches">Other batches: ' + " ".join(days[:14]) + "</nav>"
+    return ('  <nav class="batches" aria-label="Batches by day"><span class="lbl">Batches</span>'
+            + "".join(days[:14]) + "</nav>")
 
 
 def render(batch: dict) -> str:

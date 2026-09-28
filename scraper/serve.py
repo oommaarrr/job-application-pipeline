@@ -31,6 +31,7 @@ import os
 import subprocess
 import urllib.request
 import threading
+import time
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -104,6 +105,22 @@ _last_rank: dict = {"ran_at": None, "matches": None, "collected": None, "error":
 
 def _today() -> str:
     return dt.date.today().isoformat()
+
+
+def _build_day() -> str:
+    """
+    The day whose batch folder and log belong to the current build. run_batch.py
+    fixes its day when it starts, so a build that runs past midnight keeps
+    writing into yesterday's folder; reading today's (empty) one made the
+    dashboard drop back to "ranking" at 00:00 with 0 built. The last build's day
+    is used until a build of the new day has started.
+    """
+    started = (_build.get("started") or "")[:10]
+    today = _today()
+    if started and started != today and (_build.get("running")
+                                         or not (BATCHES / today).exists()):
+        return started
+    return today
 
 
 def _active_inbox() -> pathlib.Path:
@@ -708,7 +725,7 @@ _build_proc: subprocess.Popen | None = None
 # this is a preview — it writes out/ranked.json and the same ollama cache the
 # build then reuses, so ranking here makes the subsequent build's ranking free.
 _rank_proc: subprocess.Popen | None = None
-_rank: dict = {"running": False, "started": None, "finished": None, "result": None}
+_rank: dict = {"running": False, "started": None, "finished": None, "failed_at": None}
 
 
 def _rank_running() -> bool:
@@ -733,14 +750,12 @@ def _rank_running() -> bool:
         # A failed rank leaves the PREVIOUS ranking on disk. Showing that as
         # this run's result is how a dead Ollama used to look like success.
         tail = " ".join(_tail(OUT / "rank.log", 3))[-220:]
-        _rank["result"] = None
+        _rank["failed_at"] = time.time()
         _event("rank", "failed", f"ranking stopped with an error (exit {code}): {tail}",
                fix=_error_fix(tail) or "Press Retry. Jobs already judged are cached, so it resumes where it stopped.")
         return False
     try:
         h = json.loads((OUT / "ollama_rank.json").read_text(encoding="utf-8")).get("health", {})
-        _rank["result"] = {"buildable": h.get("buildable"),
-                           "strong": h.get("strong"), "verdict": h.get("verdict")}
         _event("rank", "ok", f"ranked: {h.get('buildable', 0)} passed the filters, "
                f"{h.get('strong', 0)} strong")
     except (OSError, ValueError, AttributeError):
@@ -831,7 +846,10 @@ def _adopt_running_build() -> None:
     """
     pid = next(iter(_build_pids()), None)
     if pid and not _build.get("running"):
+        # The start time decides which day's folder it writes to (_build_day).
+        at = pu.started_at(pid)
         _build.update(running=True, pid=pid, finished=None, target=_build_target_of(pid),
+                      started=None if at == "unknown" else at.replace(" ", "T"),
                       reason=_build.get("reason") or "in progress (adopted on restart)")
 
 
@@ -1068,7 +1086,7 @@ def _record_build_outcome(code: int | None) -> None:
     if code in (None, 0):
         _event("build", "ok", f"build finished: {build_progress().get('built', 0)} built today")
     else:
-        tail = " ".join(_tail(BUILDER / "logs" / f"{_today()}.log", 3))[-220:]
+        tail = " ".join(_tail(BUILDER / "logs" / f"{_build_day()}.log", 3))[-220:]
         _event("build", "failed", f"build stopped with an error (exit {code}): {tail}",
                fix=_error_fix(tail) or "Press Retry. Finished applications are kept and skipped.")
 
@@ -1101,17 +1119,22 @@ def _pdf_ok(f: pathlib.Path) -> bool:
 
 def _rank_result() -> dict | None:
     """The local ranker's summary, surviving a bridge restart via its output
-    file, and cleared by a fresh start (the file predates the reset)."""
-    if _rank.get("result"):
-        return _rank["result"]
+    file, and cleared by a fresh start (the file predates the reset). Read from
+    the file every time: a build ranks too, and only the file hears about it.
+    A ranking that failed leaves the previous file behind, and showing that as
+    this run's result made a dead Ollama look like success, so a file older
+    than the last failure is not a result either."""
     f = OUT / "ollama_rank.json"
     try:
-        if _reset_at is not None and f.stat().st_mtime <= _reset_at:
+        mtime = f.stat().st_mtime
+        if _reset_at is not None and mtime <= _reset_at:
+            return None
+        if _rank.get("failed_at") and mtime <= _rank["failed_at"]:
             return None
         h = json.loads(f.read_text(encoding="utf-8")).get("health", {})
         if h:
-            return {"buildable": h.get("buildable"), "strong": h.get("strong"),
-                    "verdict": h.get("verdict")}
+            return {"buildable": h.get("buildable"), "judged": h.get("judged"),
+                    "strong": h.get("strong"), "verdict": h.get("verdict")}
     except (OSError, ValueError, AttributeError):
         pass
     return None
@@ -1229,7 +1252,7 @@ def build_progress() -> dict:
     is stale or absent, so the live folder scan is the only signal and is used
     then.
     """
-    day = _today()
+    day = _build_day()
     folder = BATCHES / day
     running = _build.get("running", False)
 
@@ -1302,7 +1325,7 @@ def build_detail() -> dict:
     whether the build is running, finished, or was stopped halfway.
     """
     bp = build_progress()
-    day = _today()
+    day = _build_day()
     folder = BATCHES / day
 
     # Live folder phases (real-time), split into finished and in-flight.
@@ -1694,7 +1717,7 @@ def stop_build() -> dict:
         except OSError:
             pass
     try:
-        state = BATCHES / _today() / ".batch-state"
+        state = BATCHES / _build_day() / ".batch-state"
         if state.exists():
             state.unlink()
     except OSError:

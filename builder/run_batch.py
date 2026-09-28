@@ -533,11 +533,12 @@ def main() -> None:
     # Every scraped description is read by a local model before Claude sees
     # anything: reading and extracting is cheap work an 8B model does well
     # enough, and writing a CV is not. The ranker writes out/ranked.json with
-    # ONLY the top N, so /apply-batch never sees the rest.
+    # every role that passed, best first (--all), and /apply-batch stops at the
+    # target. Some roles can only be rejected after the description is read, and
+    # a list cut at the top N ran dry while good roles waited below the cut.
     #
-    # Two numbers, not one. BUILD_TARGET is how many applications should exist
-    # at the end; TOP_N is how many candidates the ranker hands over to reach
-    # it. Some roles can only be rejected after the description is read.
+    # rank_top still matters: it is the batch size the pool health judges
+    # ("enough strong roles for a full batch?").
     cfg_target = int(getattr(cfg, "BUILD_TARGET", 15) or 15)
     cfg_max = int(getattr(cfg, "BUILD_TARGET_MAX", cfg_target) or cfg_target)
     cfg_top = int(getattr(cfg, "TOP_N", 20) or 20)
@@ -569,8 +570,8 @@ def main() -> None:
 
     say(f"ranking {last} jobs with the local model (this is the slow part)")
     notify(f"Ranking {last} jobs locally…")
-    say(f"target {build_target} built, from {rank_top} ranked candidates")
-    code, out = run_logged([PY, str(SCRAPER_DIR / "rank_ollama.py"), "--top", str(rank_top)],
+    say(f"target {build_target} built, from every role that passes the ranking")
+    code, out = run_logged([PY, str(SCRAPER_DIR / "rank_ollama.py"), "--top", str(rank_top), "--all"],
                            tee=True)
     if code != 0:
         if "Nothing to rank" in out:

@@ -57,11 +57,10 @@ async function tick(){
     el.classList.remove("pending","active","done"); el.classList.add(st);
   });
   $("stScrape").textContent = (d.searches_total? (d.searches_done+"/"+d.searches_total+" searches"):"");
-  $("stRank").textContent   = rrr? (rrr.buildable+" buildable")
-    : (rnk.matches!=null? (rnk.matches+" passed"):"");
+  $("stRank").textContent   = rrr? (rrr.buildable+" buildable") : (poolN>0? (poolN+" to judge"):"");
   // Only once something is building or built: "0/15" on an idle pipeline read
   // as a build in progress, when 15 is only the size of the next one.
-  $("stBuild").textContent  = ((bld.running||(bpr.built||0)>0)&&bpr.target? (bpr.built+"/"+bpr.target):"");
+  $("stBuild").textContent  = ((ph==="building"||(bpr.built||0)>0)&&bpr.target? (bpr.built+"/"+bpr.target):"");
   const sug=(d.suggested_build||bpr.target||15);
   const bn=$("buildN");
   if(document.activeElement!==bn && (bn.value===""||bn.value===String(window._sug))) bn.value=sug;
@@ -107,7 +106,7 @@ async function tick(){
     sub="collected"+(d.erased_at?" since the erase":"")+(anOk&&!d.searches_done?" from Arbeitnow":"")+" · press Rank pool"; }
   else { head="Idle — nothing running";
     sub = scrapeDone? ("last run: "+(d.searches_done?d.searches_done+" searches, ":"")+poolN+" to judge"
-                       +(rnk.matches!=null?(", "+rnk.matches+" passed"):"")+(buildDone?(", "+(bpr.built)+" built"):""))
+                       +(rrr?(", "+rrr.buildable+" passed"):"")+(buildDone?(", "+(bpr.built)+" built"):""))
                     : (d.erased_at?"nothing collected since the erase":"waiting for a scrape"); }
   $("stageline").style.color=LC[ph]||"var(--ink)";
   $("stageline").innerHTML=esc(head)+'<span class="sub" style="color:var(--dim)">'+esc(sub)+"</span>";
@@ -200,16 +199,29 @@ async function tick(){
       (x.userScrolled?' <span class=muted title="'+esc(x.why)+'">manual?</span>':"")+"</td></tr>";
   }).join("")||(anRow?"":'<tr><td colspan=6 class=muted>'+(d.erased_at?"nothing collected since the erase":"no searches reported yet")+'</td></tr>');
 
-  // rank — prefer the local ranker's own result; fall back to the run.py rerank
+  // rank — the local model's result once there is one. Before that, and while
+  // it runs, the number is what it will read: the pool, not every collected job.
+  // (run.py's keyword count, rank.matches, covers all collected jobs, including
+  // ones judged on an earlier day or already applied to, so it is not shown.)
   const rk=d.rank||{};
-  const passed = rrr? rrr.buildable : rk.matches;
+  const rankingNow=ph==="ranking";
+  const coll=(rk.collected!=null?rk.collected:(d.collected_today||0));
+  const why=(d.pool_explain||"").replace(/^[^:]*:\s*/,"");
+  let passed, unit, rkSub;
+  if(rankingNow){
+    const ac=d.active||{};
+    passed=ac.total||poolN; unit="being judged";
+    rkSub="judged "+(ac.done||0)+" of "+(ac.total||poolN)+" so far · from "+coll+" collected"+(why?(" · "+why):"");
+  } else if(rrr){
+    passed=rrr.buildable; unit="passed the local model";
+    rkSub=(rrr.judged!=null?("of "+rrr.judged+" judged, "):"")+"from "+coll+" collected · "+rrr.strong+" strong · verdict "+rrr.verdict;
+  } else {
+    passed=(poolN>0||!d.erased_at)?poolN:null; unit="to judge";
+    rkSub=(d.pool_explain||(coll+" collected"))+" · "+(d.erased_at?"not ranked since the erase":"not ranked yet")+(poolN>0?", press Rank pool":"");
+  }
   $("rkMatch").textContent=(passed!=null?passed:"–");
-  $("rkColl").textContent=(rk.collected!=null?rk.collected:(d.collected_today||"–"));
-  const rankingNow=!!(d.rank_run&&d.rank_run.running);
-  $("rkAt").textContent = rankingNow? "ranking now…"
-    : rrr? ("ranked locally · "+rrr.strong+" strong · verdict "+rrr.verdict)
-    : rk.ran_at?("ranked "+when(rk.ran_at))
-    : (d.erased_at?"not run since the erase":"not run yet")+(poolN>0?(" · "+poolN+" waiting, press Rank pool"):"");
+  $("rkUnit").textContent=unit;
+  $("rkSub").textContent=rkSub;
   $("rkPrev").innerHTML=(passed==null&&!rankingNow&&d.erased_at&&be.rank)?lastTime(be.rank):"";
   $("rkErr").innerHTML=rk.error?'<span style="color:var(--red)">'+esc(rk.error)+"</span>":"";
 
@@ -219,7 +231,9 @@ async function tick(){
   $("bdRejected").textContent=(bp.rejected>0?("· "+bp.rejected+" rejected"):"");
   $("bdBar").style.width=(bp.target?Math.round(100*(bp.built||0)/bp.target):0)+"%";
   const builtNone=!b.running&&!(bp.built>0);
-  $("bdState").textContent=b.running?("building… "+(b.reason||"")):(b.finished?("finished "+when(b.finished))
+  // A build ranks first and writes after; until the hand-off it is waiting.
+  const bdWaiting=b.running&&ph==="ranking";
+  $("bdState").textContent=bdWaiting?("waiting for the ranking · "+(b.reason||"")):b.running?("building… "+(b.reason||"")):(b.finished?("finished "+when(b.finished))
     :(d.erased_at&&builtNone?"nothing built since the erase":"idle"));
   $("bdPrev").innerHTML=(d.erased_at&&builtNone&&be.build)
     ?lastTime(be.build)+(be.build.status==="ok"?" · those documents are in applications/archive":""):"";
@@ -233,6 +247,9 @@ async function tick(){
     ? '<h3>&#9998; Writing now <span class=count>'+now.length+'</span></h3>'+
       now.map(c=>'<div class="bd-item now"><span class="spin"></span><span class="t">'+esc(c.company)+
         '</span><span class="bd-phase">'+esc(c.phase)+'</span></div>').join("")
+    : bdWaiting
+      ? '<h3>&#9203; Ranking first</h3><div class=muted style="padding:2px 2px 0">The local model is judging the pool'+
+        ((d.active&&d.active.total)?(' ('+d.active.done+' of '+d.active.total+')'):'')+'. Writing starts once it picks the roles.</div>'
     : (b.running && !builtR.length
         ? '<h3>&#9998; Writing now</h3><div class=muted style="padding:2px 2px 0">Preparing — reading the shortlist and planning (no documents on disk yet).</div>'
         : "");

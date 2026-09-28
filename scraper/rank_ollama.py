@@ -533,6 +533,9 @@ def main() -> int:
     ap.add_argument("--model", default=None,
                     help="default: OLLAMA_MODEL, or a model already installed in Ollama")
     ap.add_argument("--top", type=int, default=config.TOP_N)
+    ap.add_argument("--all", action="store_true",
+                    help="hand every role that passed to the build, best first; "
+                         "--top then only sizes the batch the pool health judges")
     ap.add_argument("--day", default=None, help="only this scrape date, e.g. 2026-09-13")
     ap.add_argument("--limit", type=int, default=0, help="only the first N, for testing")
     ap.add_argument("--recheck", action="store_true", help="ignore cached answers")
@@ -694,7 +697,10 @@ def main() -> int:
 
     passed = sorted([r for r in rows if r["verdict"] == "passed"], key=sort_key)
     dropped = [r for r in rows if r["verdict"] != "passed"]
-    top = passed[: args.top]
+    # --all: the build stops at its target anyway, so a short list only costs
+    # roles. On 29 September a build of 4 got the top 6, Claude rejected 4 of
+    # them as out of lane, and it stopped at 2 with 8 good roles never shown.
+    top = passed if args.all else passed[: args.top]
     for i, r in enumerate(top, 1):
         r["rank"] = i
 
@@ -828,7 +834,8 @@ def print_health(h: dict) -> None:
 
 def _write_audit(rows: list[dict], top: list[dict], args, health: dict) -> None:
     lines = [f"OLLAMA RANK · {dt.datetime.now().isoformat(timespec='seconds')} "
-             f"· model {args.model} · top {args.top}", "",
+             f"· model {args.model} · "
+             + ("every role that passed" if args.all else f"top {args.top}"), "",
              f"POOL: {health['verdict']} — {health['why']}",
              f"  {health['judged']} judged · {health['buildable']} buildable · "
              f"{health['strong']} strong · {health['pass_rate']:.0%} pass rate",
