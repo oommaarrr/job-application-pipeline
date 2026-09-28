@@ -41,12 +41,6 @@ GERMAN_TOKEN = re.compile(
 )
 ENGLISH_TOKEN = re.compile(r"\b(englisch\w*|english\w*)\b", re.IGNORECASE)
 
-# Any language talk at all — used to decide if a sentence is a language sentence.
-LANG_TOPIC = re.compile(
-    r"\b(deutsch\w*|german(?!y)\w*|sprach\w*|language|niveau|kenntnisse)\b",
-    re.IGNORECASE,
-)
-
 # --------------------------------------------------------------------------
 # Level table. ORDER MATTERS — most specific first.
 # "sehr gute" must be tested before "gute", or every B2 posting reads as B1.
@@ -189,7 +183,7 @@ def _is_requirement_sentence(sent: str) -> bool:
     # state a level ("sehr gute Deutschkenntnisse"), keep it — some ads put the
     # requirement inside an otherwise benefit-shaped paragraph.
     if BENEFIT_CONTEXT_RX.search(sent):
-        lvl, _ = _level_of(sent)
+        lvl = _level_of(sent)
         return lvl is not None
     return True
 
@@ -213,14 +207,13 @@ def _norm(text: str) -> str:
     return re.sub(r"[ \t\xa0]+", " ", text)
 
 
-def _level_of(fragment: str) -> tuple[int | None, str]:
-    """Highest level asserted in a fragment, plus the phrase that triggered it."""
-    best, evidence = None, ""
+def _level_of(fragment: str) -> int | None:
+    """Highest level asserted in a fragment."""
+    best = None
     for rx, lv in LEVEL_RX:
-        m = rx.search(fragment)
-        if m and (best is None or lv > best):
-            best, evidence = lv, m.group(0)
-    return best, evidence
+        if (best is None or lv > best) and rx.search(fragment):
+            best = lv
+    return best
 
 
 @dataclass
@@ -303,21 +296,19 @@ def assess_german(description: str, cap: int | None = None) -> LanguageVerdict:
         clauses = [c.strip() for c in CLAUSE_SPLIT.split(sent) if c.strip()]
         de_clauses = [c for c in clauses if GERMAN_TOKEN.search(c)]
 
-        lvl, ev = None, ""
+        lvl = None
         for c in de_clauses:
-            cl, ce = _level_of(c)
+            cl = _level_of(c)
             if cl is not None and (lvl is None or cl > lvl):
-                lvl, ev = cl, ce
+                lvl = cl
 
         if lvl is None:
             # No level inside the German clause. If the sentence also mentions
             # English, the level probably belongs to English — don't borrow it.
             # Otherwise fall back to the sentence, flagged as lower confidence.
-            slvl, sev = _level_of(sent)
-            if slvl is not None:
-                lvl, ev = slvl, sev
-                if ENGLISH_TOKEN.search(sent):
-                    confident = False
+            lvl = _level_of(sent)
+            if lvl is not None and ENGLISH_TOKEN.search(sent):
+                confident = False
 
         if lvl is None:
             continue

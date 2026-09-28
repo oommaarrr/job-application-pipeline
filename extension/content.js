@@ -667,7 +667,7 @@
       if (!key) continue;
       if (!jobs[key]) added++;
       // Never let a later, description-less sighting clobber a captured one.
-      jobs[key] = { ...(jobs[key] || {}), ...j, description: j.description || jobs[key]?.description || "" };
+      jobs[key] = { ...jobs[key], ...j, description: j.description || jobs[key]?.description || "" };
     }
     await chrome.storage.local.set({ jobs });
     return { added, total: Object.keys(jobs).length };

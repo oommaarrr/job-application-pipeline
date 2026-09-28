@@ -201,15 +201,6 @@ def mark_judged(jobs: list[dict], when: str | None = None) -> int:
         return changed
 
 
-def needs_judged_backfill() -> bool:
-    """A seen.csv from before the judged column existed."""
-    try:
-        with open(SEEN_CSV, encoding="utf-8") as fh:
-            return "judged" not in fh.readline()
-    except OSError:
-        return False
-
-
 def backfill_judged(judged_role_keys: set[str]) -> int:
     """One-off, for a seen.csv written before the judged column: mark the roles
     the model's cache shows were judged (dated by when they were first seen,
@@ -262,18 +253,6 @@ def record_seen(jobs: list[dict], when: str | None = None) -> int:
             added += 1
         _write(SEEN_CSV, SEEN_FIELDS, rows)
         return added
-
-
-def seen_earlier(job: dict, first: dict[str, str]) -> str:
-    """
-    The date this role was first collected, if that was BEFORE the day this copy
-    was collected; "" otherwise. Same-day repeats (a second scrape, a re-scrape
-    after Erase) are not duplicates: they are the same pool.
-    """
-    k = role_key(job.get("company", ""), job.get("title", ""))
-    when = first.get(k, "")
-    collected = job.get("_collected") or _today()
-    return when if when and when < collected else ""
 
 
 # ---------------------------------------------------------------- migration
