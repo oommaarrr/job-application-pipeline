@@ -154,7 +154,7 @@ function render(flash){
     return '<div class="sr-row'+(on?"":" off")+(flash===i?" flash":"")+'" data-i="'+i+'">'+
       '<span class="sr-site s-'+esc((site||"x").toLowerCase())+'">'+esc(site||"?")+'</span>'+
       '<div class="sr-main"><div class="sr-name">'+name+'</div><div class="sr-sum">'+esc(describe(q.url))+'</div></div>'+
-      '<span class="switch" title="'+(on?"On: runs with Run scrape":"Off: skipped, not deleted")+'">'+
+      '<span class="toggle" title="'+(on?"On: runs with Run scrape":"Off: skipped, not deleted")+'">'+
         '<input type="checkbox" class="sr-on" aria-label="Run '+name+'"'+(on?" checked":"")+'><i aria-hidden="true"></i></span>'+
       '<div class="sr-tools">'+
         '<button type="button" class="icon-btn sr-edit" aria-expanded="false" title="Rename or change the address">'+ICON("pencil","Edit "+name)+'</button>'+

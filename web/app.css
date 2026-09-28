@@ -653,18 +653,18 @@ pre.log .err{color:var(--log-err)}
 .ext-pill.ok{color:var(--ok);background:var(--ok-bg)}
 .ext-pill.warn{color:var(--warn);background:var(--warn-bg)}
 
-/* A switch: a real checkbox, drawn as a track and a knob. */
-.switch{position:relative;display:inline-flex;flex:none;width:34px;height:20px}
-.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
-.switch i{position:absolute;inset:0;border-radius:var(--radius-pill);background:var(--line-strong);
+/* A toggle (not .switch, which is the autobuild button in the top bar): a real checkbox, drawn as a track and a knob. */
+.toggle{position:relative;display:inline-flex;flex:none;width:34px;height:20px}
+.toggle input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.toggle i{position:absolute;inset:0;border-radius:var(--radius-pill);background:var(--line-strong);
   transition:background var(--dur-fast) var(--ease)}
-.switch i::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+.toggle i::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
   background:var(--card);box-shadow:var(--shadow-sm);transition:transform var(--dur-fast) var(--ease)}
-.switch input:checked+i{background:var(--accent)}
-.switch input:checked+i::after{transform:translateX(14px)}
-.switch input:focus-visible+i{outline:2px solid var(--focus);outline-offset:2px}
-.switch input:disabled{cursor:not-allowed}
-.switch input:disabled+i{opacity:.45}
+.toggle input:checked+i{background:var(--accent)}
+.toggle input:checked+i::after{transform:translateX(14px)}
+.toggle input:focus-visible+i{outline:2px solid var(--focus);outline-offset:2px}
+.toggle input:disabled{cursor:not-allowed}
+.toggle input:disabled+i{opacity:.45}
 
 .set-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--radius-sm,6px)}
 .set-row{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);padding:var(--sp-3);
@@ -740,7 +740,7 @@ pre.log .err{color:var(--log-err)}
 @media (max-width:640px){
   .dlg-tabs{padding:0 var(--sp-3)}
   .sr-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"main on" "site tools"}
-  .sr-main{grid-area:main} .sr-row>.switch{grid-area:on}
+  .sr-main{grid-area:main} .sr-row>.toggle{grid-area:on}
   .sr-site{grid-area:site;justify-self:start} .sr-tools{grid-area:tools}
   .sr-editor{grid-template-columns:1fr}
   .sr-grid.two{grid-template-columns:1fr}

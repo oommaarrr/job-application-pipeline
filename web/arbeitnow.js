@@ -96,7 +96,7 @@ function render(){
     '<div class="an-search'+(s.on?"":" off")+'" data-i="'+i+'">'+
       '<div class="an-search-top">'+
         '<input class="an-name" type="text" maxlength="60" placeholder="Job title, e.g. Product Designer" aria-label="Search '+(i+1)+' name" value="'+esc(s.name)+'">'+
-        '<span class="switch" title="'+(s.on?"On":"Off: kept, not used")+'"><input type="checkbox" class="an-on" aria-label="Use search '+(i+1)+'"'+(s.on?" checked":"")+'><i aria-hidden="true"></i></span>'+
+        '<span class="toggle" title="'+(s.on?"On":"Off: kept, not used")+'"><input type="checkbox" class="an-on" aria-label="Use search '+(i+1)+'"'+(s.on?" checked":"")+'><i aria-hidden="true"></i></span>'+
         '<button type="button" class="icon-btn danger an-del" title="Remove"><span class="ico i-trash" aria-hidden="true"></span><span class="sr-only">Remove search '+(i+1)+'</span></button>'+
       '</div>'+
       '<textarea class="an-text" maxlength="400" rows="2" aria-label="Search '+(i+1)+': what the job is" '+
