@@ -1,11 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Job Collector",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Collects job postings from LinkedIn, Indeed and StepStone search pages you are viewing and sends them to your local Job Pipeline.",
   "permissions": [
     "storage",
-    "downloads",
     "alarms",
     "tabs",
     "notifications"

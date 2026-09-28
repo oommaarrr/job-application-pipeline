@@ -283,6 +283,7 @@ _data_lock = threading.Lock()
 import config
 import ledger
 import pool_status
+import saved_searches
 from jobkey import job_key as _key
 
 
@@ -462,10 +463,53 @@ def rerank() -> dict:
 # So the extension says so explicitly instead.
 _scrape: dict = {"running": False, "done": 0, "total": 0, "at": None}
 
-# The extension's saved searches, mirrored here so the launcher can open one.
-# Seeded from the copy on disk, so a restart does not start with nothing.
-_searches: list = [q for q in (_read_json(ROOT / "out" / "searches.json", []) or [])
-                   if isinstance(q, dict) and q.get("url") and q.get("enabled") is not False]
+# The saved searches live in out/searches.json, kept by saved_searches.py and
+# edited on the dashboard; the extension pulls them. Read it once at start, so
+# an old copy (a bare list mirrored from the extension) is converted before
+# anything asks for it.
+saved_searches.load()
+
+# When the extension last asked the pipeline for its searches or for a run.
+# Persisted, so a bridge restart does not report a working extension as
+# missing until its next poll.
+_EXT_SEEN = OUT / ".extension_seen"
+_ext_seen: dict = {"at": (_read_json(_EXT_SEEN, {}) or {}).get("at"), "written": 0.0}
+
+
+def _mark_extension_seen() -> None:
+    now = dt.datetime.now()
+    _ext_seen["at"] = now.isoformat(timespec="seconds")
+    if now.timestamp() - _ext_seen["written"] > 60:
+        _ext_seen["written"] = now.timestamp()
+        try:
+            _write_json(_EXT_SEEN, {"at": _ext_seen["at"]})
+        except OSError:
+            pass
+
+
+# The extension polls about once a minute while Chrome is open. Past this it is
+# either closed, not loaded, or its worker has stopped waking.
+EXT_QUIET_S = 180
+
+
+def extension_state() -> dict:
+    at = _ext_seen.get("at")
+    age = None
+    if at:
+        try:
+            age = max(0, int(dt.datetime.now().timestamp() - dt.datetime.fromisoformat(at).timestamp()))
+        except ValueError:
+            age = None
+    return {"seen_at": at, "age_s": age, "connected": age is not None and age <= EXT_QUIET_S}
+
+
+def searches_state() -> dict:
+    """Everything the dashboard's saved-searches panel and the extension read."""
+    st = saved_searches.load()
+    return {"ok": True, "pages": st["pages"], "pages_choices": list(saved_searches.PAGES),
+            "searches": st["searches"], "geo": st["geo"], "updated": st.get("updated"),
+            "max": saved_searches.MAX_SEARCHES, "reset_at": _reset_at,
+            "extension": extension_state()}
 
 # Set by POST /trigger, consumed by the extension's GET /trigger poll.
 _trigger: str | None = None
@@ -541,6 +585,13 @@ def _load_reset_at() -> float | None:
         return None
 
 _reset_at: float | None = _load_reset_at()
+
+
+def _erased_since(seen) -> bool:
+    """True when the jobs were erased after the moment `seen` (the extension's
+    record of the last erase it acted on)."""
+    return (isinstance(seen, (int, float)) and not isinstance(seen, bool)
+            and _reset_at is not None and seen < _reset_at - 0.001)
 
 
 def _rank_is_current() -> bool:
@@ -1475,7 +1526,9 @@ def progress() -> dict:
               "errors": [{"text": e, "fix": _error_fix(e)} for e in errors[-12:]]}
 
     applied = range(_applied_count())
-    total = int(scr.get("total") or 0) or len(_searches) or len(searches)
+    saved = saved_searches.load()["searches"]
+    total = (int(scr.get("total") or 0)
+             or sum(1 for q in saved if q.get("enabled") is not False) or len(searches))
     # What is buildable regardless of which day it was scraped. collected_today
     # is zero the moment the clock rolls past midnight even though yesterday's
     # pool is still perfectly good, so the buttons must not gate on it.
@@ -1534,6 +1587,9 @@ def progress() -> dict:
                    "done": int(scr.get("done") or 0),
                    "total": total, "at": scr.get("at")},
         "searches_done": len(searches),
+        "saved_searches": {"total": len(saved),
+                           "on": sum(1 for q in saved if q.get("enabled") is not False)},
+        "extension": extension_state(),
         "searches_total": total,
         "searches": searches,
         "rank": _last_rank,
@@ -2193,11 +2249,21 @@ class Handler(BaseHTTPRequestHandler):
         # matching the raw path made "/dashboard?x" a 404.
         route = self.path.split("?", 1)[0].rstrip("/")
         if route == "/searches":
-            return self._send({"ok": True, "searches": _searches})
+            # The switched-on searches, the ones a run opens.
+            return self._send({"ok": True, "searches": saved_searches.active()})
 
         if route == "/searches/saved":
-            saved = _read_json(OUT / "searches.json", [])
-            return self._send({"ok": True, "searches": saved if isinstance(saved, list) else []})
+            return self._send({"ok": True, "searches": saved_searches.load()["searches"]})
+
+        if route == "/searches/list":
+            return self._send(searches_state())
+
+        if route == "/searches/sync":
+            # The extension, on every wake. Same answer as /searches/list; the
+            # only difference is that this one counts as the extension being
+            # alive, which the dashboard shows beside the searches.
+            _mark_extension_seen()
+            return self._send(searches_state())
 
         if route == "/searches-audit":
             return self._send({"ok": True, "searches": _search_log})
@@ -2245,6 +2311,7 @@ class Handler(BaseHTTPRequestHandler):
         # tabs are polling.
         if route == "/trigger":
             global _trigger, _trigger_only
+            _mark_extension_seen()
             pending, _trigger = _trigger, None
             only, _trigger_only = _trigger_only, None
             return self._send({"ok": True, "run": bool(pending), "at": pending,
@@ -2316,6 +2383,13 @@ class Handler(BaseHTTPRequestHandler):
             jobs = body.get("jobs") or []
             if not isinstance(jobs, list):
                 return self._send({"error": "jobs must be a list"}, 400)
+            # The extension resends everything it holds when the pipeline comes
+            # back. If the jobs were erased on the dashboard since it last
+            # looked, that resend is the erased pool, so it is refused; the
+            # extension clears its copy on its next sync.
+            if _erased_since(body.get("reset_seen")):
+                return self._send({"ok": True, "added": 0, "stale": True,
+                                   "total": len(_read_json(_active_inbox(), {"jobs": []}).get("jobs", []))})
             added, total = merge_jobs(jobs)
             try:
                 ledger.record_seen([j for j in jobs if isinstance(j, dict)])
@@ -2387,22 +2461,40 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ok": True, "started": True, "log": str(log)})
 
         if route == "/searches":
-            # Mirrored from the extension so a shell script can open a real
-            # search page, which is also what wakes the service worker.
-            global _searches
-            _searches = [q for q in (body.get("searches") or []) if q.get("url")]
-            # Keep a copy on disk, the whole list including switched-off ones.
-            # A reinstalled extension restores from it (GET /searches/saved),
-            # and a bridge restart no longer forgets what to launch.
-            full = [q for q in (body.get("all") or body.get("searches") or [])
-                    if isinstance(q, dict) and q.get("url")]
-            if full:
-                try:
-                    OUT.mkdir(exist_ok=True)
-                    _write_json(OUT / "searches.json", full)
-                except OSError:
-                    pass
-            return self._send({"ok": True, "count": len(_searches)})
+            # An extension from before 28 September 2026 mirrors its own list
+            # here on every wake. The pipeline keeps the list now, so that
+            # mirror is ignored: taking it would undo every dashboard edit
+            # until the extension is reloaded.
+            return self._send({"ok": True, "ignored": True,
+                               "count": len(saved_searches.active())})
+
+        if route == "/searches/save":
+            state, errors = saved_searches.save(body.get("searches"), body.get("pages"))
+            if errors:
+                return self._send({"ok": False, "why": errors[0], "errors": errors})
+            return self._send(searches_state())
+
+        if route == "/searches/add":
+            state, outcome, why = saved_searches.add(str(body.get("url") or ""),
+                                                     str(body.get("label") or ""))
+            if outcome == "added":
+                q = state["searches"][-1]
+                _event("searches", "info", f"saved a new search: {q['label']}"
+                       + (" (from the extension)" if body.get("from") == "extension" else ""))
+            return self._send({"ok": outcome != "refused", "outcome": outcome, "why": why,
+                               "count": len(state["searches"])})
+
+        if route == "/searches/merge":
+            state, added = saved_searches.merge(body.get("searches"))
+            if added:
+                _event("searches", "info", f"moved {added} saved search(es) from the extension "
+                                           "to the pipeline; edit them on the dashboard")
+            return self._send({"ok": True, "added": added, "count": len(state["searches"])})
+
+        if route == "/searches/geo":
+            learned = saved_searches.learn_geo(str(body.get("location") or ""),
+                                               str(body.get("geoId") or ""))
+            return self._send({"ok": True, "learned": learned})
 
         if route == "/search-result":
             # One line per saved search, recorded as it finishes. This is the
@@ -2480,10 +2572,19 @@ class Handler(BaseHTTPRequestHandler):
             # request is parked here and the extension picks it up on its next
             # one minute poll.
             global _trigger, _trigger_only
+            only = (body.get("only") or "").strip().lower()
+            picked = [q for q in saved_searches.active()
+                      if not only or only in q["url"].lower()]
+            if not picked:
+                # The extension would wake, find nothing to run and say
+                # nothing, so the button would look broken. Say it here.
+                return self._send({"ok": False, "why": (
+                    f"no saved search on {only} is switched on" if only else
+                    "no saved search is switched on. Add one under Saved searches")})
             _trigger = dt.datetime.now().isoformat(timespec="seconds")
-            _trigger_only = (body.get("only") or None)
-            return self._send({"ok": True, "queued_at": _trigger,
-                               "only": _trigger_only})
+            _trigger_only = only or None
+            return self._send({"ok": True, "queued_at": _trigger, "only": _trigger_only,
+                               "searches": len(picked), "extension": extension_state()})
 
         if route == "/reset":
             # A "hard" reset also forgets that a job was ever seen. Without it,
@@ -2501,7 +2602,7 @@ class Handler(BaseHTTPRequestHandler):
                 # next build runs against the fresh pool instead of reporting the
                 # day already complete.
                 archived_build = _archive_todays_build()
-            # Archive rather than delete. "Erase" in the popup means "stop
+            # Archive rather than delete. "Erase" on the dashboard means "stop
             # showing me these", not "destroy the only copy", and a mistaken
             # click should never cost a scrape that took real time to collect.
             moved = 0

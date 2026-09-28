@@ -807,6 +807,91 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     _write_local(sc, None)
 
 
+def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    Saved searches kept by the pipeline and edited on the dashboard (28
+    September 2026): the endpoints, the old list format, erasing, and the
+    extension's side of it through scripts/extension_test.mjs when Node is here.
+    """
+    sc = work / "scraper"
+    st = e.get("/searches/list")[1]
+    check(st.get("ok") and len(st.get("searches", [])) == 3
+          and {("linkedin" in q["url"], "indeed" in q["url"], "stepstone" in q["url"]).index(True)
+               for q in st["searches"]} == {0, 1, 2},
+          "a new install starts with one example search per site", json.dumps(st)[:300])
+    check(not st["extension"]["connected"], "no extension has checked in yet",
+          json.dumps(st.get("extension")))
+
+    r = e.post("/searches/add", {"url": "https://www.linkedin.com/jobs/search/?keywords=Data%20Engineer"
+                                        "&location=Berlin&currentJobId=42&trk=x"})
+    saved = e.get("/searches/list")[1]["searches"]
+    check(r.get("outcome") == "added" and "currentJobId" not in saved[-1]["url"]
+          and saved[-1]["label"] == "LinkedIn: Data Engineer",
+          "a search is added, cleaned and named", json.dumps(r) + json.dumps(saved[-1]))
+    r = e.post("/searches/add", {"url": "https://www.linkedin.com/jobs/search/?keywords=Data+Engineer&location=Berlin"})
+    check(r.get("outcome") == "duplicate", "the same search twice is refused", json.dumps(r))
+    r = e.post("/searches/add", {"url": "https://www.xing.com/jobs/search?keywords=x"})
+    check(r.get("ok") is False and "not LinkedIn" in r.get("why", ""),
+          "a site the extension cannot read is refused", json.dumps(r))
+
+    r = e.post("/searches/save", {"searches": [{"label": "bad", "url": "http://www.linkedin.com/jobs"}]})
+    check(r.get("ok") is False and len(e.get("/searches/list")[1]["searches"]) == 4,
+          "an unusable list is refused whole, nothing is lost", json.dumps(r))
+    keep = [{**q, "enabled": i != 0} for i, q in enumerate(saved)]
+    r = e.post("/searches/save", {"searches": keep, "pages": 2})
+    active = e.get("/searches")[1]["searches"]
+    check(r.get("ok") and r.get("pages") == 2 and len(active) == 3
+          and all(q["url"] != saved[0]["url"] for q in active),
+          "edits save; a switched-off search is kept but not run", json.dumps(r)[:300])
+    r = e.post("/searches", {"searches": [], "all": [{"label": "old", "url": "https://www.stepstone.de/jobs?what=old"}]})
+    check(r.get("ignored") and len(e.get("/searches/list")[1]["searches"]) == 4,
+          "an old extension's mirror cannot overwrite the list", json.dumps(r))
+    r = e.post("/searches/merge", {"searches": [{"label": "Mine", "url": "https://www.stepstone.de/jobs?what=Mine"},
+                                                {"label": "dup", "url": saved[1]["url"]}]})
+    check(r.get("added") == 1, "a list the extension kept itself is merged in once, without duplicates",
+          json.dumps(r))
+
+    # The old format: a bare list, as the extension used to mirror it.
+    out = ps(py, work, r"""
+        import json, pathlib, tempfile, saved_searches as ss
+        ss.FILE = pathlib.Path(tempfile.mkdtemp()) / "searches.json"
+        ss.FILE.write_text(json.dumps([{"label": "Old", "url": "https://de.indeed.com/jobs?q=x"},
+                                       {"label": "Off", "url": "https://www.stepstone.de/jobs?what=y", "enabled": False}]))
+        st = ss.load(); disk = json.loads(ss.FILE.read_text())
+        print(disk["version"], len(st["searches"]), len(ss.active(st)), st["searches"][1]["enabled"])
+    """)
+    check(out == "2 2 1 False", "an old list file is read and rewritten in the new shape", out)
+
+    ext = e.get("/searches/sync")[1]["extension"]
+    check(ext.get("connected"), "the extension's check-in shows as connected", json.dumps(ext))
+
+    r = e.post("/trigger", {})
+    check(r.get("ok") and r.get("searches") == 4, "Run scrape queues the searches that are on", json.dumps(r))
+    e.get("/trigger")
+
+    seen = e.get("/searches/list")[1]["reset_at"]
+    e.post("/reset", {"hard": False})
+    r = e.post("/ingest", {"jobs": [{"url": "https://www.linkedin.com/jobs/view/9", "title": "Old", "company": "C"}],
+                           "reset_seen": seen if seen is not None else 0})
+    check(r.get("stale") and r.get("added") == 0, "an erased pool resent by the extension is refused", json.dumps(r))
+
+    html = e.get("/dashboard")[1]
+    html = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
+    check('id="srDlg"' in html and 'id="btnSearches"' in html and 'id="btnEraseAll"' in html
+          and e.get("/web/searches.js")[0] == 200,
+          "the dashboard has the searches window and Start over")
+
+    node = shutil.which("node")
+    if node:
+        r = subprocess.run([node, str(work / "scripts" / "extension_test.mjs"), str(e.port),
+                            str(work / "extension" / "background.js")],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
+        check(r.returncode == 0, "the extension pulls searches, moves its own list, clears after an erase, "
+                                 "adds a page and continues a cut-off run", (r.stdout + r.stderr)[-1500:])
+    else:
+        print("  (Node is not installed, so the extension's own checks are skipped)")
+
+
 def _write_local(sc: pathlib.Path, text: str | None) -> None:
     """Write (or remove) the copy's config_local.py, and drop its compiled
     copy: Python checks that by size and a timestamp in whole seconds, so two
@@ -1013,6 +1098,9 @@ def main() -> int:
 
         section("Arbeitnow: searches by meaning, rules, and the dashboard panel")
         arbeitnow_section(e, py, work)
+
+        section("saved searches: kept by the pipeline, run by the extension")
+        searches_section(e, py, work)
 
     finally:
         section("cleanup")

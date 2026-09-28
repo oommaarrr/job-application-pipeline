@@ -67,13 +67,17 @@
       <li class="step pending" data-k="scrape">
         <div class="step-top"><i>1</i><b>Scrape</b><small id="stScrape"></small></div>
         <div class="step-acts">
-          <button class="go" id="btnScrape" type="button" data-act="scrape">&#9654; Run scrape</button>
-          <span class="an-pair">
-            <button class="go quiet" id="btnArbeitnow" type="button" data-act="arbeitnow"
+          <span class="split" role="group" aria-label="Job boards, through the Chrome extension">
+            <button class="go" id="btnScrape" type="button" data-act="scrape"
+              title="run the saved searches that are on, in Chrome, through the extension">&#9654; Run scrape</button>
+            <button class="go gear" id="btnSearches" type="button" aria-haspopup="dialog"
+              title="Saved searches: edit, add, switch off, share" aria-label="Saved searches"></button>
+          </span>
+          <span class="split alt" role="group" aria-label="Arbeitnow">
+            <button class="go" id="btnArbeitnow" type="button" data-act="arbeitnow"
               title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
-            <button class="go quiet icon gear" id="btnAnSettings" type="button"
-              title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"
-              aria-haspopup="dialog"></button>
+            <button class="go gear" id="btnAnSettings" type="button" aria-haspopup="dialog"
+              title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"></button>
           </span>
         </div>
         <div class="step-status" id="ssScrape" aria-live="polite"></div>
@@ -200,6 +204,7 @@
       </div>
       <div class="bar"><span id="scrBar" style="width:0;background:var(--blue)"></span></div>
       <div id="scrHealth" class="scr-health"></div>
+      <div id="scrExt" class="scr-ext hide" role="status"></div>
       <div id="scrPrev" class="kpi-sub prev"></div>
       <div class="table-scroll"><table id="scrTable"><thead><tr>
         <th>Search</th><th>Site</th><th class="n">Found</th><th class="n">Loaded</th><th class="n">New</th><th>Status</th>
@@ -221,6 +226,122 @@
     <ul id="actList" class="act-list"><li class="muted">nothing has happened yet</li></ul>
   </section>
 
+  <!-- ============================================================ start over
+       Moved here from the extension popup, 28 September 2026. Erasing also
+       clears the copy the extension keeps, at its next check-in. -->
+  <section id="resetCard" class="card reset-card" aria-labelledby="resetTitle">
+    <div class="card-head"><h2 id="resetTitle">Start over</h2></div>
+    <div class="reset-row">
+      <button class="go danger" id="btnEraseAll" type="button">Erase everything and start fresh</button>
+      <p class="muted">Clears the collected jobs and forgets that they were ever seen, so the next
+        scrape returns them all. Built CVs and letters move to applications/archive (never deleted);
+        your applied list, your 30-day job history and your saved searches are kept.</p>
+    </div>
+    <div class="reset-row">
+      <button class="go" id="btnEraseJobs" type="button">Erase collected jobs only</button>
+      <p class="muted">Unlike the button above, the pipeline still remembers these jobs as seen.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ saved searches
+       Opened by "Searches" beside Run scrape, or /dashboard#searches. The
+       pipeline keeps the list (scraper/saved_searches.py); the extension pulls
+       it and runs it in Chrome. Behaviour: web/searches.js. -->
+  <dialog id="srDlg" class="an-dlg" aria-labelledby="srTitle">
+    <div class="an-head">
+      <h2 id="srTitle">Saved searches</h2>
+      <span id="srExtPill" class="ext-pill hide" role="status"></span>
+      <span class="grow"></span>
+      <button class="go quiet icon" id="srClose" type="button" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="dlg-tabs" role="tablist" aria-label="Saved searches">
+      <button type="button" role="tab" id="srTabList" aria-controls="srPanList" aria-selected="true">Searches <span class="tab-n" id="srTabN"></span></button>
+      <button type="button" role="tab" id="srTabAdd" aria-controls="srPanAdd" aria-selected="false" tabindex="-1">Add a search</button>
+      <button type="button" role="tab" id="srTabShare" aria-controls="srPanShare" aria-selected="false" tabindex="-1">Share</button>
+    </div>
+    <div class="an-body">
+      <section role="tabpanel" id="srPanList" aria-labelledby="srTabList" class="dlg-pan">
+        <div id="srExt" class="an-note warn hide" role="status"></div>
+        <p class="pan-lead">Run scrape opens each search that is on, in your own Chrome, and collects its jobs.</p>
+        <div id="srList" class="sr-list"></div>
+        <div class="sr-bar">
+          <label class="inline-field" for="srPages">Pages per search <select id="srPages"></select></label>
+          <span class="grow"></span>
+          <span id="srCounts" class="muted"></span>
+        </div>
+      </section>
+
+      <section role="tabpanel" id="srPanAdd" aria-labelledby="srTabAdd" class="dlg-pan" hidden>
+        <div class="seg" role="radiogroup" aria-label="How to add">
+          <label><input type="radio" name="srHow" value="build" checked><span>From keywords</span></label>
+          <label><input type="radio" name="srHow" value="paste"><span>Paste an address</span></label>
+        </div>
+
+        <div id="srBuildBox" class="sr-form">
+          <div class="sr-grid two">
+            <label>Job title or keywords<input id="srKw" type="text" autocomplete="off" placeholder="e.g. Data Engineer"></label>
+            <label>Location<input id="srLoc" type="text" autocomplete="off" placeholder="a city or a country"></label>
+          </div>
+          <div class="sr-grid">
+            <label>Site<select id="srSite">
+              <option value="linkedin">LinkedIn</option>
+              <option value="indeed">Indeed</option>
+              <option value="stepstone">StepStone (Germany)</option></select></label>
+            <label id="srIndeedWrap" class="hide">Indeed site<select id="srIndeed"></select></label>
+            <label>Posted<select id="srPosted">
+              <option value="0">any time</option>
+              <option value="1">past day</option>
+              <option value="7" selected>past week</option>
+              <option value="30">past month</option></select></label>
+            <label>Distance<select id="srRadius">
+              <option value="0">any</option>
+              <option value="10">10 km</option>
+              <option value="30">30 km</option>
+              <option value="50">50 km</option>
+              <option value="100">100 km</option></select></label>
+          </div>
+          <label class="set-row"><span>Remote only</span><span class="switch"><input type="checkbox" id="srRemote"><i aria-hidden="true"></i></span></label>
+          <small id="srGeoHint" class="an-hint"></small>
+          <details class="sr-link"><summary>Show the link</summary><code id="srBuilt" class="sr-built"></code></details>
+          <div class="sr-actions">
+            <button class="go primary sm" id="srAddBuilt" type="button">Add search</button>
+            <a class="go quiet sm" id="srOpenBuilt" target="_blank" rel="noopener">Preview on the site &#8599;</a>
+          </div>
+        </div>
+
+        <div id="srPasteBox" class="sr-form" hidden>
+          <div class="sr-paste">
+            <input id="srPaste" type="url" autocomplete="off" aria-label="Search address"
+              placeholder="https://www.linkedin.com/jobs/search/?keywords=…">
+            <button class="go primary sm" id="srAddPaste" type="button">Add</button>
+          </div>
+          <small class="an-hint">Set a search up on LinkedIn, Indeed or StepStone with every filter you
+            want, then copy the address bar here. In Chrome, the extension’s “Add the page I am on” does it in one click.</small>
+        </div>
+      </section>
+
+      <section role="tabpanel" id="srPanShare" aria-labelledby="srTabShare" class="dlg-pan" hidden>
+        <p class="pan-lead">Hand a good set of searches to someone else, or move them to another computer.
+          The list is plain text.</p>
+        <div class="sr-actions">
+          <button class="go sm" id="srExport" type="button">Copy the list</button>
+          <button class="go sm" id="srImportBtn" type="button">Replace from a copied list</button>
+        </div>
+        <div id="srImportBox" class="sr-import hide">
+          <textarea id="srImport" rows="5" aria-label="A copied list of searches"
+            placeholder="Paste a list copied from here, or one someone shared with you"></textarea>
+          <button class="go sm" id="srImportGo" type="button">Use this list</button>
+        </div>
+      </section>
+    </div>
+    <div class="an-foot">
+      <span id="srStatus" class="muted" role="status"></span>
+      <span class="grow"></span>
+      <button class="go" id="srSave" type="button">Save</button>
+      <button class="go primary" id="srSaveRun" type="button">Save and run</button>
+    </div>
+  </dialog>
+
   <!-- ============================================================ Arbeitnow
        Opened by the gear next to "+ Arbeitnow". Arbeitnow's feed cannot be
        searched, so these searches are matched against the whole week by
@@ -233,18 +354,30 @@
         title="the local model reads your profile and suggests searches and rules">Fill from my profile</button>
       <button class="go quiet icon" id="anClose" type="button" aria-label="Close">&#10005;</button>
     </div>
+    <div class="dlg-tabs" role="tablist" aria-label="Arbeitnow settings">
+      <button type="button" role="tab" id="anTabS" aria-controls="anPanS" aria-selected="true">Searches</button>
+      <button type="button" role="tab" id="anTabR" aria-controls="anPanR" aria-selected="false" tabindex="-1">Rules</button>
+      <button type="button" role="tab" id="anTabP" aria-controls="anPanP" aria-selected="false" tabindex="-1">Preview <span class="tab-n" id="anTabN"></span></button>
+    </div>
     <div class="an-body">
-      <p class="an-intro">Arbeitnow cannot be searched, so the pipeline reads every job posted
-        there this week and keeps the ones that are close in meaning to a search below. Describe
-        the work, not only the title: the role, what you would do, the field and the main tools.
-        The local model still judges each kept job against your profile afterwards.</p>
-      <div id="anNote" class="an-note hide" role="status"></div>
+      <section role="tabpanel" id="anPanS" aria-labelledby="anTabS" class="dlg-pan">
+        <div id="anNote" class="an-note hide" role="status"></div>
+        <p class="pan-lead">Arbeitnow cannot be searched, so the pipeline reads every job posted there
+          this week and keeps those close in meaning to a search below.
+          <button type="button" class="linkish" id="anHowBtn" aria-expanded="false" aria-controls="anHow">How to write one</button></p>
+        <p id="anHow" class="an-hint hide">Describe the work, not only the title: the role, what you
+          would do, the field and the main tools. The local model still judges each kept job against
+          your profile afterwards.</p>
+        <div id="anSearches" class="an-searches"></div>
+        <button class="go quiet sm add-btn" id="anAdd" type="button">+ Add a search</button>
 
-      <div id="anSearches" class="an-searches"></div>
-      <button class="go sm" id="anAdd" type="button">+ Add a search</button>
+        <div class="an-field">
+          <span class="an-label" id="anLevelLabel">How close a match</span>
+          <div class="an-seg" id="anLevel" role="radiogroup" aria-labelledby="anLevelLabel"></div>
+        </div>
+      </section>
 
-      <fieldset class="an-set">
-        <legend>Rules</legend>
+      <section role="tabpanel" id="anPanR" aria-labelledby="anTabR" class="dlg-pan" hidden>
         <div class="an-field">
           <span class="an-label" id="anWhereLabel">On site or hybrid in</span>
           <div class="an-countries">
@@ -253,25 +386,20 @@
               placeholder="Add a country" aria-label="Add a country">
             <datalist id="anCountryList"></datalist>
           </div>
-          <small class="an-hint">Empty keeps jobs from anywhere. A job whose location says no
+          <small class="an-hint">Empty keeps jobs from anywhere. A job whose location names no
             country is always kept.</small>
         </div>
-        <label class="an-check"><input type="checkbox" id="anRemote">
-          <span>Also fully remote jobs based in other countries</span></label>
-        <label class="an-check"><input type="checkbox" id="anStudent">
-          <span>Include internships, working-student jobs, theses and apprenticeships</span></label>
-        <label class="an-check">
-          <span>Posted in the last</span>
-          <select id="anDays" aria-label="Days back"></select>
-          <span>day(s)</span></label>
-      </fieldset>
+        <div class="set-list">
+          <label class="set-row"><span>Also fully remote jobs based in other countries</span>
+            <span class="switch"><input type="checkbox" id="anRemote"><i aria-hidden="true"></i></span></label>
+          <label class="set-row"><span>Include internships, working-student jobs, theses and apprenticeships</span>
+            <span class="switch"><input type="checkbox" id="anStudent"><i aria-hidden="true"></i></span></label>
+          <label class="set-row"><span>Posted in the last</span>
+            <span><select id="anDays" aria-label="Days back"></select> day(s)</span></label>
+        </div>
+      </section>
 
-      <fieldset class="an-set">
-        <legend>How close a match</legend>
-        <div class="an-seg" id="anLevel" role="radiogroup" aria-label="How close a match"></div>
-      </fieldset>
-
-      <section class="an-preview" aria-live="polite" aria-labelledby="anCount">
+      <section role="tabpanel" id="anPanP" aria-labelledby="anTabP" class="dlg-pan an-preview" hidden aria-live="polite">
         <div class="an-prev-head">
           <span id="anCount" class="an-count">Preview</span>
           <span class="grow"></span>
@@ -286,6 +414,7 @@
       </section>
     </div>
     <div class="an-foot">
+      <button type="button" class="linkish foot-count" id="anFootCount" title="see which jobs"></button>
       <span id="anStatus" class="muted" role="status"></span>
       <span class="grow"></span>
       <button class="go" id="anSave" type="button">Save</button>
@@ -298,4 +427,5 @@
 </div>
 <script src="/web/dashboard.js"></script>
 <script src="/web/arbeitnow.js"></script>
+<script src="/web/searches.js"></script>
 </body></html>
