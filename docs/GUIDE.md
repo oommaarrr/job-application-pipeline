@@ -341,7 +341,7 @@ Pressing **Build** runs `builder/run_batch.py` (the same on every system), which
 2. links your profile at `builder/profile`,
 3. ranks the pool locally,
 4. starts Claude Code in the background: `claude -p "/apply-batch N"`, always
-   on **Claude Sonnet 5** (`--model claude-sonnet-5`, which wins over any default
+   on **Claude Sonnet 5.5** (`--model claude-sonnet-5-5`, which wins over any default
    in Claude Code's own settings). To use another model for one run, set
    `BUILD_MODEL`, e.g. `BUILD_MODEL=claude-opus-5-5`.
 

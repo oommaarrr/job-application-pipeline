@@ -218,7 +218,7 @@ RETRY_GAP = int(os.environ.get("RETRY_GAP_S", str(2 * 60)))
 MANUAL = os.environ.get("BUILD_MANUAL") == "1"
 # The model that writes the CVs and letters. Passed to every Claude session
 # with --model, which wins over any default in Claude Code's own settings.
-BUILD_MODEL = "claude-sonnet-5"
+BUILD_MODEL = "claude-sonnet-5-5"
 
 
 # A company folder counts as built only when both documents are present and
@@ -634,7 +634,7 @@ def main() -> None:
 
     # ------------------------------------------------------------ environment
     # Runs on the Claude subscription, not API billing, so there is no dollar cap.
-    # Sonnet 5 writes every document. Override only with BUILD_MODEL: the old
+    # Sonnet 5.5 writes every document. Override only with BUILD_MODEL: the old
     # name, MODEL, is generic enough that another tool or a shell profile
     # could set it and silently change which model writes the CVs.
     model = os.environ.get("BUILD_MODEL") or BUILD_MODEL
