@@ -181,7 +181,7 @@ by day.
 
 | Source | Needs | Notes |
 |---|---|---|
-| **Arbeitnow** | Ollama | free public API, full descriptions, Germany-focused. The **+ Arbeitnow** button; searches set in its panel. |
+| **Arbeitnow** | Ollama | free public API, full descriptions, Germany-focused. The **+ Arbeitnow** button; searches set with the settings button attached to it. |
 | **LinkedIn** | Chrome + login | the richest source |
 | **Indeed** | Chrome + login | sometimes challenges automated reading; fine at human pace |
 | **StepStone** | Chrome | German market |

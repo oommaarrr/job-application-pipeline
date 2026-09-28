@@ -41,7 +41,7 @@ flowchart LR
 
 | Step | You do | It does |
 |---|---|---|
-| **Collect** | press **+ Arbeitnow**, or run your saved LinkedIn, Indeed and StepStone searches from the Chrome extension | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
+| **Collect** | press **+ Arbeitnow**, and **Run scrape** for your saved LinkedIn, Indeed and StepStone searches (run in Chrome by the extension) | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
 | **Rank** | press **Rank pool** | a local AI reads every posting and drops the ones that don't fit: wrong language, too senior, wrong field |
 | **Build** | choose how many, press **Build** | Claude writes a one-page CV and a cover letter for each of the best matches |
 | **Apply** | open **Applications**, download, send | |
@@ -187,7 +187,7 @@ profile, like any other job.
 
 ![The Arbeitnow window: two searches, how close a match, and how many jobs would be kept](docs/screenshots/arbeitnow.png)
 
-**Edit them** with the settings button next to **+ Arbeitnow** (or **Set them
+**Edit them** with the settings button attached to **+ Arbeitnow** (or **Set them
 on the dashboard** in the extension). The window has three tabs:
 
 - **Searches.** One card per kind of job. Describe the work, not only the title:
