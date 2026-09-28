@@ -20,6 +20,17 @@ import urllib.request
 
 DEFAULT_MODEL = "llama3.1"
 DEFAULT_URL = "http://127.0.0.1:11434"
+# The small model that turns text into vectors, for the Arbeitnow filter
+# (arbeitnow_match.py). About 270 MB. Never used to rank: usable() rejects it.
+EMBED_MODEL = "nomic-embed-text"
+
+
+def embed_wanted(cfg) -> str:
+    return getattr(cfg, "EMBED_MODEL", None) or EMBED_MODEL
+
+
+def has_embed(entries: list[dict] | None, want: str = EMBED_MODEL) -> bool:
+    return any(matches(e.get("name") or e.get("model") or "", want) for e in entries or [])
 
 
 def tags(url: str = DEFAULT_URL, timeout: float = 3) -> list[dict] | None:

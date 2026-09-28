@@ -167,6 +167,12 @@ OLLAMA_USE_INSTALLED = True
 OLLAMA_CONCURRENCY = 2          # parallel requests; 16 GB holds two 8B streams
 OLLAMA_DESC_CHARS = 6000        # description truncation; the ask is near the top
 OLLAMA_TIMEOUT = 180            # seconds per job
+# Arbeitnow's feed cannot be searched, so its jobs are picked by meaning first
+# (arbeitnow_match.py): this small model turns each job and each search into a
+# vector. About 270 MB, downloaded by setup or the bridge. The match levels in
+# arbeitnow_match.LEVELS are tuned for it; another model needs them retuned.
+EMBED_MODEL = "nomic-embed-text"
+ARBEITNOW_API = "https://www.arbeitnow.com/api/job-board-api"
 
 # How many applications actually get written. THIS IS THE DIAL.
 #

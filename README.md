@@ -41,7 +41,7 @@ flowchart LR
 
 | Step | You do | It does |
 |---|---|---|
-| **Collect** | press **+ Arbeitnow**, or run your saved LinkedIn, Indeed and StepStone searches from the Chrome extension | gathers postings with their full descriptions |
+| **Collect** | press **+ Arbeitnow**, or run your saved LinkedIn, Indeed and StepStone searches from the Chrome extension | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
 | **Rank** | press **Rank pool** | a local AI reads every posting and drops the ones that don't fit: wrong language, too senior, wrong field |
 | **Build** | choose how many, press **Build** | Claude writes a one-page CV and a cover letter for each of the best matches |
 | **Apply** | open **Applications**, download, send | |
@@ -175,6 +175,52 @@ after installing it, run `start.bat` again: it adds Claude Code to your PATH.
 
 ---
 
+## Arbeitnow searches
+
+[Arbeitnow](https://www.arbeitnow.com) is the one source that needs no browser:
+press **+ Arbeitnow** on the dashboard. Its feed can't be searched, so the
+pipeline reads every job posted there in the last week (about 3,400) and keeps
+the ones that are **close in meaning** to your searches. A "Software Engineer"
+whose description is all LLM work is found by an "AI engineer" search even though
+the title doesn't say so. The local model then judges each kept job against your
+profile, like any other job.
+
+![The Arbeitnow searches panel with two searches, the rules and a preview](docs/screenshots/arbeitnow.png)
+
+**Edit them** with the settings button next to **+ Arbeitnow** (or **Set them
+on the dashboard** in the extension's Saved searches tab):
+
+- **Searches.** One card per kind of job. Describe the work, not only the title:
+  the role, what you would do, the field, the main tools. For example
+  *"Designer for a B2B SaaS product, owning user research, flows and UI in
+  Figma"*. Add up to 8, switch any off, and each shows how many jobs it keeps.
+- **On site or hybrid in.** The countries you'd work in. Leave it empty to keep
+  jobs from anywhere. A job whose location names no country is always kept.
+- **Also fully remote jobs based in other countries.**
+- **Include internships, working-student jobs, theses and apprenticeships.**
+  Off by default.
+- **Posted in the last** 1, 3 or 7 days.
+- **How close a match**: Wide, Balanced or Close, each with how many jobs it
+  would keep this week.
+
+Every change updates the preview: how many jobs would be kept, a sample of them,
+and the ones just below the line. **Save and pull** saves and collects them.
+
+**Where the first searches come from.** You don't have to write them. The first
+time, the local model reads your profile and suggests the searches, the
+countries, remote and internships. It works in small steps and checks each
+answer: a search your profile rules out is left out, and a country only counts
+if your profile names a place in it. Press **Fill from my profile** to have it
+suggest again, for example after you change your profile. Once you save, the
+searches are yours and are never rewritten.
+
+It all runs on your computer. The matching uses a small model, `nomic-embed-text`
+(about 270 MB), which setup installs next to the ranking model. The first pull
+takes a few minutes; after that only new jobs are read, so it takes about a
+minute.
+
+---
+
 ## Chrome extension (optional)
 
 The extension, **Job Collector**, collects jobs from LinkedIn, Indeed and
@@ -282,7 +328,8 @@ the popup says so, and the search opens without the exact city filter.
 
 1. Open the dashboard: <http://127.0.0.1:8765/dashboard>. With start-at-login
    on it is always there; otherwise run `./start.sh` (Windows: `start.bat`) first.
-2. **Collect.** Press **+ Arbeitnow**, or in the Chrome extension open
+2. **Collect.** Press **+ Arbeitnow** (its searches: [Arbeitnow
+   searches](#arbeitnow-searches)), or in the Chrome extension open
    **Saved searches** and press **Run all searches now**.
 3. **Rank.** Press **Rank pool**. It takes a few minutes; the **Funnel** shows
    how many jobs survived each filter.

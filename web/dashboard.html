@@ -70,6 +70,9 @@
           <button class="go" id="btnScrape" type="button" data-act="scrape">&#9654; Run scrape</button>
           <button class="go quiet" id="btnArbeitnow" type="button" data-act="arbeitnow"
             title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
+          <button class="go quiet icon gear" id="btnAnSettings" type="button"
+            title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"
+            aria-haspopup="dialog"></button>
         </div>
         <div class="step-status" id="ssScrape" aria-live="polite"></div>
       </li>
@@ -213,8 +216,81 @@
     <ul id="actList" class="act-list"><li class="muted">nothing has happened yet</li></ul>
   </section>
 
+  <!-- ============================================================ Arbeitnow
+       Opened by the gear next to "+ Arbeitnow". Arbeitnow's feed cannot be
+       searched, so these searches are matched against the whole week by
+       meaning (scraper/arbeitnow_match.py). Behaviour: web/arbeitnow.js. -->
+  <dialog id="anDlg" class="an-dlg" aria-labelledby="anTitle">
+    <div class="an-head">
+      <h2 id="anTitle">Arbeitnow searches</h2>
+      <span class="grow"></span>
+      <button class="go sm" id="anFill" type="button"
+        title="the local model reads your profile and suggests searches and rules">Fill from my profile</button>
+      <button class="go quiet icon" id="anClose" type="button" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="an-body">
+      <p class="an-intro">Arbeitnow cannot be searched, so the pipeline reads every job posted
+        there this week and keeps the ones that are close in meaning to a search below. Describe
+        the work, not only the title: the role, what you would do, the field and the main tools.
+        The local model still judges each kept job against your profile afterwards.</p>
+      <div id="anNote" class="an-note hide" role="status"></div>
+
+      <div id="anSearches" class="an-searches"></div>
+      <button class="go sm" id="anAdd" type="button">+ Add a search</button>
+
+      <fieldset class="an-set">
+        <legend>Rules</legend>
+        <div class="an-field">
+          <span class="an-label" id="anWhereLabel">On site or hybrid in</span>
+          <div class="an-countries">
+            <span class="chips" id="anCountries" aria-labelledby="anWhereLabel"></span>
+            <input id="anCountryIn" type="text" list="anCountryList" autocomplete="off"
+              placeholder="Add a country" aria-label="Add a country">
+            <datalist id="anCountryList"></datalist>
+          </div>
+          <small class="an-hint">Empty keeps jobs from anywhere. A job whose location says no
+            country is always kept.</small>
+        </div>
+        <label class="an-check"><input type="checkbox" id="anRemote">
+          <span>Also fully remote jobs based in other countries</span></label>
+        <label class="an-check"><input type="checkbox" id="anStudent">
+          <span>Include internships, working-student jobs, theses and apprenticeships</span></label>
+        <label class="an-check">
+          <span>Posted in the last</span>
+          <select id="anDays" aria-label="Days back"></select>
+          <span>day(s)</span></label>
+      </fieldset>
+
+      <fieldset class="an-set">
+        <legend>How close a match</legend>
+        <div class="an-seg" id="anLevel" role="radiogroup" aria-label="How close a match"></div>
+      </fieldset>
+
+      <section class="an-preview" aria-live="polite" aria-labelledby="anCount">
+        <div class="an-prev-head">
+          <span id="anCount" class="an-count">Preview</span>
+          <span class="grow"></span>
+          <span id="anFeed" class="muted"></span>
+        </div>
+        <div id="anSummary" class="muted"></div>
+        <ol id="anExamples" class="an-list"></ol>
+        <div id="anNearWrap" class="hide">
+          <span class="an-label">Just below the line</span>
+          <ol id="anNear" class="an-list an-near"></ol>
+        </div>
+      </section>
+    </div>
+    <div class="an-foot">
+      <span id="anStatus" class="muted" role="status"></span>
+      <span class="grow"></span>
+      <button class="go" id="anSave" type="button">Save</button>
+      <button class="go primary" id="anSavePull" type="button">Save and pull</button>
+    </div>
+  </dialog>
+
   <footer class="foot">Refreshes every 2 s · <span id="collInfo"></span></footer>
   <div id="toast" class="toast" role="status"></div>
 </div>
 <script src="/web/dashboard.js"></script>
+<script src="/web/arbeitnow.js"></script>
 </body></html>

@@ -840,8 +840,135 @@ def arbeitnow_running() -> bool:
     else:
         last = next((l.strip() for l in reversed(seg.splitlines()) if l.strip()), "")
         _event("arbeitnow", "failed", f"Arbeitnow failed: {last[:200]}",
-               fix="Check the internet connection, then press Retry.")
+               fix=("Open the Arbeitnow settings (the gear next to + Arbeitnow) and add a search."
+                    if "no Arbeitnow search" in last else
+                    "Start the Ollama app, then press Retry." if "Ollama" in last else
+                    "Check the internet connection, then press Retry."))
     return False
+
+
+# ---------------------------------------------------------------- Arbeitnow settings
+# The Arbeitnow panel on the dashboard: searches in plain words, the rules, and
+# a preview of what a pull would keep. The matching itself is in
+# arbeitnow_match.py; this is only the bridge's side of it.
+#
+#   suggest   the local model writes searches and rules from the profile. The
+#             first time (no settings yet) the result is saved; from the
+#             "Fill from my profile" button it only fills the form.
+#   prep      downloads the week's feed, places the locations and embeds the
+#             jobs, so a preview can be computed. Not while a pull runs: both
+#             write the same files.
+_an: dict = {"suggesting": False, "suggest_error": "", "suggestion": None,
+             "auto_failed_at": 0.0,
+             "prep": {"running": False, "stage": "", "done": 0, "total": 0, "error": ""}}
+_an_lock = threading.Lock()
+
+
+def _an_suggest(save: bool) -> None:
+    import arbeitnow_match as am
+    lines: list[str] = []
+    try:
+        s = am.suggest(lines.append)
+        if save:
+            s["saved_at"] = dt.datetime.now().isoformat(timespec="seconds")
+            am._write(am.SETTINGS, s)
+            _event("arbeitnow", "info", "Arbeitnow searches written from the profile: "
+                   + ", ".join(x["name"] for x in s["searches"]))
+        else:
+            _an["suggestion"] = s
+        _an["suggest_error"] = ""
+    except Exception as e:                                   # noqa: BLE001
+        _an["suggest_error"] = f"{type(e).__name__}: {e}"[:300]
+        if save:
+            import time as _t
+            _an["auto_failed_at"] = _t.time()
+    finally:
+        _an["suggesting"] = False
+
+
+def _an_start_suggest(save: bool) -> bool:
+    with _an_lock:
+        if _an["suggesting"]:
+            return False
+        _an.update(suggesting=True, suggest_error="", suggestion=None)
+    threading.Thread(target=_an_suggest, args=(save,), daemon=True).start()
+    return True
+
+
+def _an_prepare() -> None:
+    import arbeitnow_match as am
+    prep = _an["prep"]
+    try:
+        prep.update(stage="downloading this week's jobs", done=0, total=0)
+        feed, error = am.fetch(lambda m: None)
+        if not feed["jobs"]:
+            raise RuntimeError(error or "Arbeitnow returned no jobs")
+        prep.update(stage="working out where the jobs are")
+        am.resolve_places([j.get("location") or "" for j in feed["jobs"].values()],
+                          lambda m: None)
+        prep.update(stage="reading the jobs")
+        am.ensure_vectors(feed["jobs"], lambda m: None,
+                          progress=lambda d, t: prep.update(done=d, total=t))
+        prep["error"] = ""
+    except Exception as e:                                   # noqa: BLE001
+        prep["error"] = f"{type(e).__name__}: {e}"[:300]
+    finally:
+        prep.update(running=False, stage="")
+
+
+def _an_start_prepare() -> bool:
+    with _an_lock:
+        if _an["prep"]["running"] or arbeitnow_running():
+            return False
+        _an["prep"].update(running=True, error="", done=0, total=0)
+    threading.Thread(target=_an_prepare, daemon=True).start()
+    return True
+
+
+def _an_feed_ready() -> bool:
+    """Is the feed on disk recent and read (embedded) enough to preview?"""
+    import arbeitnow_match as am
+    feed = am.load_feed()
+    if not feed["jobs"] or not feed.get("fetched_at"):
+        return False
+    try:
+        age = dt.datetime.now() - dt.datetime.fromisoformat(feed["fetched_at"])
+    except ValueError:
+        return False
+    if age > dt.timedelta(hours=12):
+        return False
+    vecs = am.load_vectors()
+    return sum(1 for k in feed["jobs"] if k in vecs) >= 0.95 * len(feed["jobs"])
+
+
+def arbeitnow_settings_state() -> dict:
+    import arbeitnow_match as am
+    import countries as cc
+    import time as _t
+    s = am.load()
+    # First visit, or the model wrote them and the profile changed since:
+    # write them now, in the background. A failure is retried after 10 min,
+    # not on every 2 s poll.
+    if (am.needs_suggestion(s) and not _an["suggesting"]
+            and _t.time() - _an["auto_failed_at"] > 600):
+        _an_start_suggest(save=True)
+    name, sig = am.profile_signature()
+    feed = am.load_feed()
+    return {
+        "ok": True,
+        "settings": s,
+        "profile": name, "has_profile": bool(sig),
+        "profile_changed": bool(s and s.get("made_by") == "you" and s.get("profile_sig")
+                                and s.get("profile_sig") != sig),
+        "suggesting": _an["suggesting"], "suggest_error": _an["suggest_error"],
+        "suggestion": _an["suggestion"],
+        "prep": dict(_an["prep"]),
+        "running": arbeitnow_running(),
+        "feed_at": feed.get("fetched_at"), "feed_jobs": len(feed["jobs"]),
+        "levels": list(am.LEVELS), "days": list(am.DAY_CHOICES),
+        "max_searches": am.MAX_SEARCHES,
+        "countries": sorted(([c, n] for c, n in cc.NAMES.items()), key=lambda x: x[1]),
+    }
 
 
 def _build_outcome() -> dict:
@@ -1579,7 +1706,7 @@ def _ollama_state() -> tuple[bool, str, list[str]]:
 # and the model is missing, download it in the background, once at a time.
 # Only when Ollama has no usable model at all: one that is already installed is
 # used instead of downloading OLLAMA_MODEL (scraper/ollama_model.py).
-_model_pull: dict = {"running": False, "failures": 0}
+_model_pull: dict = {"running": False, "failures": 0, "embed_failures": 0}
 
 
 def _model_wanted(entries: list[dict]) -> str | None:
@@ -1617,6 +1744,26 @@ def _model_watch() -> None:
                     _event("model", "failed", f"downloading '{want}' failed (exit {code})",
                            fix=f"Check the internet connection. It retries by itself; "
                                f"or run: ollama pull {want}")
+            # The small embedding model the Arbeitnow filter needs (about 270
+            # MB). After the ranking model, never alongside it.
+            emb = om.embed_wanted(config)
+            if (up and exe and not _model_pull["running"] and not om.has_embed(entries, emb)
+                    and _model_pull["embed_failures"] < 3 and os.environ.get("AUTO_PULL") != "0"):
+                _model_pull["running"] = True
+                _event("model", "started", f"downloading '{emb}' (about 270 MB, once), "
+                       "which Arbeitnow uses to match jobs by meaning")
+                with open(OUT / "model-pull.log", "a", encoding="utf-8") as log:
+                    code = subprocess.call([exe, "pull", emb], stdout=log,
+                                           stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                           **pu.quiet_kwargs())
+                _model_pull["running"] = False
+                if code == 0:
+                    _event("model", "ok", f"'{emb}' is ready")
+                else:
+                    _model_pull["embed_failures"] += 1
+                    _event("model", "failed", f"downloading '{emb}' failed (exit {code})",
+                           fix=f"Check the internet connection. It retries by itself; "
+                               f"or run: ollama pull {emb}")
         except Exception as e:                               # noqa: BLE001
             _model_pull["running"] = False
             print(f"  model watch: {e}")
@@ -1672,6 +1819,12 @@ def doctor() -> dict:
          else (", ".join(models[:4]) if have else "not yet: it downloads by itself shortly"))
         if up else "cannot tell while Ollama is down; open the Ollama app",
         f"ollama pull {want}")
+    emb = om.embed_wanted(config)
+    has_emb = om.has_embed(entries, emb)
+    add("embed-model", f"Model '{emb}' is pulled (for Arbeitnow)", up and has_emb,
+        ("installed" if has_emb else "not yet: it downloads by itself shortly (about 270 MB)")
+        if up else "cannot tell while Ollama is down",
+        f"ollama pull {emb}", weight="optional")
 
     # --- the extension --------------------------------------------------
     # Judged by what the EXTENSION brought in, not by whether the pool has
@@ -2023,6 +2176,9 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/searches-audit":
             return self._send({"ok": True, "searches": _search_log})
 
+        if route == "/arbeitnow/settings":
+            return self._send(arbeitnow_settings_state())
+
         if route == "/build":
             return self._send({"ok": True, "build": {**_build,
                                                      "running": _build_running()}})
@@ -2146,6 +2302,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ok": True, "added": added, "total": total,
                                "matches": result.get("matches"),
                                "error": result.get("error")})
+
+        if route == "/arbeitnow/settings":
+            import arbeitnow_match as am
+            saved = am.save(body.get("settings") or {}, made_by="you")
+            _an["suggestion"] = None
+            return self._send({"ok": True, "settings": saved})
+
+        if route == "/arbeitnow/suggest":
+            started = _an_start_suggest(save=False)
+            return self._send({"ok": True, "started": started})
+
+        if route == "/arbeitnow/preview":
+            # From the feed on disk. When there is none recent enough, download
+            # and read it first (a minute or two the first time); the page
+            # asks again until it is ready.
+            import arbeitnow_match as am
+            if _an["prep"]["running"]:
+                return self._send({"ok": True, "preparing": dict(_an["prep"])})
+            if not _an_feed_ready() and not arbeitnow_running():
+                if body.get("refresh", True) and _an_start_prepare():
+                    return self._send({"ok": True, "preparing": dict(_an["prep"])})
+            try:
+                return self._send({"ok": True, "preview": am.preview(body.get("settings") or {}),
+                                   "prep_error": _an["prep"]["error"]})
+            except Exception as e:                           # noqa: BLE001
+                return self._send({"ok": False, "why": f"{e}"[:300]})
+
+        if route == "/arbeitnow" and _an["prep"]["running"]:
+            return self._send({"ok": False, "why": "the Arbeitnow preview is still downloading; "
+                                                   "try again in a minute"})
 
         if route == "/arbeitnow" and arbeitnow_running():
             return self._send({"ok": False, "why": "Arbeitnow is already running"})

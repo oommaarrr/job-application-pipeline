@@ -227,6 +227,17 @@ def after_venv(py: pathlib.Path) -> int:
             print(f"  pulling {model} (this is a few GB, once)…")
             if run([ollama, "pull", model]).returncode == 0:
                 ok(f"pulled {model}")
+        # The small model Arbeitnow matches jobs with, by meaning
+        # (scraper/arbeitnow_match.py). About 270 MB.
+        emb = om.embed_wanted(config)
+        if entries is not None and om.has_embed(entries, emb):
+            ok(f"model '{emb}' is present (Arbeitnow matching)")
+        elif "--skip-model" in sys.argv:
+            print(f"  - model '{emb}' not pulled (--skip-model)")
+        elif entries is not None:
+            print(f"  pulling {emb} (about 270 MB, once, for Arbeitnow)…")
+            if run([ollama, "pull", emb]).returncode == 0:
+                ok(f"pulled {emb}")
 
     say("   PDF optimiser (optional)")
     if shutil.which("qpdf"):

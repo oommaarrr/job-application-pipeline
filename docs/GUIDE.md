@@ -144,10 +144,41 @@ searches are not touched, and jobs you already built still never come back.
 
 | Source | Needs | Notes |
 |---|---|---|
-| **Arbeitnow** | nothing | free public API, full descriptions, Germany-focused. The **+ Arbeitnow** button. |
+| **Arbeitnow** | Ollama | free public API, full descriptions, Germany-focused. The **+ Arbeitnow** button; searches set in its panel. |
 | **LinkedIn** | Chrome + login | the richest source |
 | **Indeed** | Chrome + login | sometimes challenges automated reading; fine at human pace |
 | **StepStone** | Chrome | German market |
+
+**How Arbeitnow picks jobs.** The feed ignores every search parameter, so
+`scraper/arbeitnow.py` reads the whole week and `scraper/arbeitnow_match.py`
+decides what goes on to the ranker:
+
+1. **Fetch.** Pages of 100 to 330 jobs, about 31 for a week. The feed is only
+   roughly newest first (a stale posting can sit at the top of page 1), so a
+   page is judged by whether it has anything from the week, not by its oldest
+   job. A copy is kept in `scraper/out/arbeitnow_feed.json`; later pulls stop
+   after two pages with nothing new. The API allows 50 requests per window: 1.3 s
+   between pages, and a 429 is waited out.
+2. **Rules**, which need no judgement: days back, internships and working-student
+   jobs (by title and by Arbeitnow's job types), and location. The local model
+   turns each location string into countries, 25 at a time, cached in
+   `arbeitnow_places.json`; a broken answer is retried in halves. Places the
+   model can't name are kept.
+3. **Meaning.** `nomic-embed-text` turns each job (half title, half the first
+   1,500 characters of its description) and each search into a vector. A job is
+   kept when, for some search, it stands out from the week's jobs by at least
+   *z* standard deviations and also reaches a minimum similarity. The floor stops
+   a search for something the board doesn't carry from keeping filler. Levels:
+   Wide (z 2.0, 0.60), Balanced (2.5, 0.62), Close (3.0, 0.65), tuned on a real
+   week's feed. Vectors are cached in `arbeitnow_vectors.bin`.
+
+The settings live in `scraper/out/arbeitnow_settings.json`. When there are none,
+or the model wrote them and the profile has changed since, the local model
+writes them from `profile.md`. It asks for the searches, then checks each one
+separately against the profile's exclusions. For location, it first copies the
+profile's own words about where the person would work, then lists the places
+named in them, and only places that really appear in that quote count. Settings
+saved from the dashboard are never rewritten.
 
 **Adding a source:** `scraper/arbeitnow.py` is the template, about 150 lines
 with comments. Fetch postings, turn each into `{title, company, location, url,

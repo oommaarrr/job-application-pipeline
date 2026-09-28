@@ -282,7 +282,7 @@ async function post(path,body){
 }
 const ACT={
   scrape:{path:"/trigger",ok:"Scrape queued — the extension starts it within a minute.",confirm:null},
-  arbeitnow:{path:"/arbeitnow",ok:"Arbeitnow pulling \u2014 its jobs join the pool in about a minute.",confirm:null},
+  arbeitnow:{path:"/arbeitnow",ok:"Arbeitnow pulling \u2014 its jobs join the pool in a few minutes (the first pull takes longer).",confirm:null},
   rank:{path:"/rank",ok:"Ranking started — scoring the pool with the local model.",confirm:null},
   build:{path:"/build",ok:"Local run started — ranking, then building CVs with Claude.",
     confirm:"Start the local run?\n\nThis ranks the pool locally and builds CVs & cover letters with Claude (spends usage)."},

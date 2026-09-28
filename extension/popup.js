@@ -217,6 +217,7 @@ $("navDash").onclick = () => openPage("/dashboard");
 $("navApps").onclick = () => openPage("/report/");
 $("navRank").onclick = () => openPage("/ranking");
 $("openReport").onclick = () => openPage("/ranking");
+$("openArbeitnow").onclick = (e) => { e.preventDefault(); openPage("/dashboard#arbeitnow"); };
 
 /*
  * Search builder.

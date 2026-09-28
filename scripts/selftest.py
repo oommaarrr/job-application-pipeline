@@ -508,6 +508,296 @@ def recovery_section(py: pathlib.Path, work: pathlib.Path, port: int) -> None:
     shutil.rmtree(day, ignore_errors=True)
 
 
+# ------------------------------------------------------------------ Arbeitnow
+# A stand-in embedding model: one dimension per topic, so texts about the same
+# thing point the same way, the way a real model's vectors do. A real model is
+# far too big to download in a test.
+AN_TOPICS = [
+    {"ai", "llm", "llms", "agent", "agents", "rag", "genai", "prompt", "language"},
+    {"machine", "learning", "ml", "pytorch", "models", "model", "mlops", "training", "deploying"},
+    {"engineer", "engineering", "developer", "software", "python", "production", "systems", "backend"},
+    {"sales", "account", "customers", "quota", "crm", "deals"},
+    {"nurse", "patients", "care", "hospital", "clinic"},
+    {"chef", "kitchen", "restaurant", "cooking", "food"},
+    {"accountant", "accounting", "ledger", "tax", "audit", "finance"},
+    {"designer", "figma", "brand", "visual", "ux"},
+    {"warehouse", "logistics", "driver", "shipping", "forklift"},
+]
+
+
+def _an_vec(text: str) -> list[float]:
+    import math
+    import re
+    import zlib
+    text = re.sub(r"^search_(document|query): ", "", text)
+    v = [0.0] * (len(AN_TOPICS) + 6)
+    for w in re.findall(r"[a-zäöüß]+", text.lower()):
+        for i, t in enumerate(AN_TOPICS):
+            if w in t:
+                v[i] += 1.0
+                break
+        else:
+            v[len(AN_TOPICS) + zlib.crc32(w.encode()) % 6] += 0.15
+    v[-1] += 1.0
+    n = math.sqrt(sum(x * x for x in v)) or 1
+    return [x / n for x in v]
+
+
+AN_PLACES = {"Mainz": ["DE"], "Paris": ["FR"], "Lyon": ["FR"], "Zug": ["CH"],
+             "Basel": ["CH"], "Graz": ["AT"], "Konz": ["DE"]}
+
+
+def arbeitnow_ollama(port: int) -> None:
+    """A stand-in Ollama for the Arbeitnow step: embeddings, the questions the
+    settings are written from, location answers (one batch deliberately
+    broken), and ranker answers for everything else."""
+    import http.server
+    import re
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def _send(self, obj, raw: str | None = None):
+            body = (raw if raw is not None else json.dumps(obj)).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            self._send({"models": [{"name": "llama3.1:latest"},
+                                   {"name": "nomic-embed-text:latest"}]}
+                       if "tags" in self.path else {"version": "selftest"})
+
+        def do_POST(self):
+            req = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+            if self.path.endswith("/api/embed"):
+                return self._send({"embeddings": [_an_vec(t) for t in req.get("input") or []]})
+            p = req.get("prompt") or ""
+            ans: dict
+            if "job locations from Arbeitnow" in p:
+                locs = [json.loads(l) for l in p.split("Locations:", 1)[1].split("\n") if l.strip()]
+                if any("BREAK" in l for l in locs):
+                    return self._send(None, json.dumps({"response": '{"places": [{"text": "Ly'}))
+                ans = {"places": [{"text": l, "countries": AN_PLACES.get(l, [])} for l in locs]}
+            elif "You set up job searches" in p:
+                ans = {"searches": [
+                    {"name": "AI Engineer", "looking_for": "Engineer building LLM apps, AI agents "
+                                                           "and RAG systems in production with Python"},
+                    {"name": "Research Scientist", "looking_for": "Research on new learning methods"},
+                    {"name": "Machine Learning Engineer",
+                     "looking_for": "Machine learning engineer training and deploying models "
+                                    "with PyTorch, MLOps"}],
+                    "student_roles": False}
+            elif "Does this profile say" in p:
+                ruled = "Research Scientist" in p
+                ans = {"ruled_out": ruled, "because": "research roles do not count" if ruled else ""}
+            elif "Copy, word for word" in p:
+                ans = {"quote": "Based in Berlin; remote elsewhere in the EU is fine."}
+            elif "wrote this about where they would work" in p:
+                # Atlantis is not in the quote, so its country must be ignored.
+                ans = {"places": [{"name": "Berlin", "countries": ["DE"], "office": True},
+                                  {"name": "Atlantis", "countries": ["FR"], "office": True},
+                                  {"name": "the EU", "countries": [], "office": False}],
+                       "remote_abroad": True}
+            else:
+                ans = {"german_level": "none", "years_required": 2, "role_family": "ml",
+                       "is_management": False, "berlin": True, "remote_germany": False,
+                       "fit": 80, "reason": "selftest answer"}
+            self._send({"response": json.dumps(ans)})
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+
+def arbeitnow_feed(port: int) -> dict:
+    """
+    A stand-in Arbeitnow API, three pages:
+      page 1 opens with a posting from 60 days ago (the 28 September case that
+             ended the old scraper after one page), then this week's jobs
+      page 2 answers 429 the first time
+      page 3 is the last page
+    Returns a dict the test reads: how often each page was asked for.
+    """
+    import http.server
+    import threading
+    now = int(time.time())
+    hits: dict = {"pages": [], "429": 0}
+
+    def job(title, desc, loc="Berlin", remote=False, types=(), age_days=0):
+        slug = f"{title}-{loc}-{len(hits)}-{abs(hash((title, loc, desc))) % 10**8}"
+        return {"slug": slug, "company_name": "Beispiel GmbH", "title": title,
+                "description": f"<p>{desc}</p>", "remote": remote,
+                "url": f"https://www.arbeitnow.com/jobs/{slug}", "tags": [],
+                "job_types": list(types), "location": loc,
+                "created_at": now - age_days * 86400 - 60}
+    core = [
+        job("Software Engineer", "We build llm agents and rag pipelines in production with python. "
+            "Our agents use prompt engineering and language models."),
+        job("Machine Learning Engineer", "Train and deploy machine learning models with pytorch, "
+            "mlops, model training in production.", "Mainz"),
+        job("Werkstudent Machine Learning", "machine learning models pytorch training for students",
+            types=["Working student"]),
+        job("ML Engineer", "machine learning models pytorch mlops deploying", "Paris"),
+        job("AI Engineer", "llm agents rag genai python production", "Paris", remote=True),
+    ]
+    fill = [("Sales Manager", "sales account customers quota crm deals"),
+            ("Account Executive", "sales deals crm customers quota"),
+            ("Nurse", "nurse patients care hospital clinic"),
+            ("ICU Nurse", "patients hospital care nurse"),
+            ("Chef", "chef kitchen restaurant cooking food"),
+            ("Cook", "kitchen cooking food restaurant"),
+            ("Accountant", "accountant accounting ledger tax audit finance"),
+            ("Tax Advisor", "tax audit accounting finance"),
+            ("Product Designer", "designer figma brand visual ux"),
+            ("Brand Designer", "brand visual designer figma"),
+            ("Warehouse Worker", "warehouse logistics forklift shipping"),
+            ("Driver", "driver shipping logistics")]
+    towns = ["Lyon", "Zug", "Basel", "Graz", "Konz", "BREAK Office", "Remote", ""]
+    filler = [job(t, f"{d} team number {k} office", towns[(k * 3 + i) % len(towns)])
+              for k in range(4) for i, (t, d) in enumerate(fill)]
+    stale = job("AI Engineer (old)", "llm agents rag", age_days=60)
+    pages = {1: [stale] + core + filler[:16], 2: filler[16:40], 3: filler[40:]}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            page = int((self.path.split("page=", 1) + ["1"])[1].split("&")[0] or 1)
+            hits["pages"].append(page)
+            if page == 2 and not hits["429"]:
+                hits["429"] += 1
+                self.send_response(429)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            rows = pages.get(page, [])
+            body = json.dumps({"data": rows, "links": {
+                "next": f"/api?page={page + 1}" if page < 3 else None}}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return hits
+
+
+def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    The real arbeitnow.py and bridge, against a fake feed and a fake Ollama:
+    settings written from the profile (with a planted wrong search and a
+    planted wrong country), paging past a stale first job, a 429, placing
+    locations with one broken answer, matching by meaning, and the dashboard
+    endpoints.
+    """
+    sc = work / "scraper"
+    oport, fport = free_port(), free_port()
+    arbeitnow_ollama(oport)
+    hits = arbeitnow_feed(fport)
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{oport}"\n'
+                     f'ARBEITNOW_API = "http://127.0.0.1:{fport}/api"\n'
+                     "ARBEITNOW_RATE_WAIT = 1\nARBEITNOW_PAGE_DELAY = 0\n")
+    for name in ("arbeitnow_settings.json", "arbeitnow_feed.json", "arbeitnow_places.json",
+                 "arbeitnow_vectors.json", "arbeitnow_vectors.bin"):
+        (sc / "out" / name).unlink(missing_ok=True)
+    for f in (sc / "inbox").glob("*.json"):
+        f.unlink()
+    # Restart the bridge so it reads config_local.py: the supervisor brings it
+    # back by itself.
+    serve = ps(py, work, f"""
+        import platform_util as pu
+        print(pu.find_script_procs(__import__('pathlib').Path(r'{sc / 'serve.py'}'))[0])
+    """)
+    ps(py, work, f"import psutil; psutil.Process({serve}).kill()")
+    time.sleep(1)
+    check(e.wait_up(60), "bridge back up with the Arbeitnow test settings")
+
+    def run() -> tuple[int, str]:
+        r = subprocess.run([str(py), "arbeitnow.py"], cwd=sc, env=dict(e.env),
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=300)
+        return r.returncode, r.stdout + r.stderr
+
+    code, log = run()
+    check(code == 0, "arbeitnow.py runs", log[-800:])
+    s = json.loads((sc / "out" / "arbeitnow_settings.json").read_text(encoding="utf-8")) \
+        if (sc / "out" / "arbeitnow_settings.json").exists() else {}
+    check(s.get("made_by") == "model"
+          and [x["name"] for x in s.get("searches", [])] == ["AI Engineer", "Machine Learning Engineer"],
+          "searches written from the profile; the one the profile rules out is left out",
+          json.dumps(s)[:400])
+    check(s.get("countries") == ["DE"] and s.get("remote_elsewhere") is True
+          and s.get("student_roles") is False,
+          "location read from the profile's own words (a country it never names is ignored)",
+          json.dumps({k: s.get(k) for k in ("countries", "remote_elsewhere", "student_roles")}))
+    check(3 in hits["pages"] and hits["429"] == 1,
+          "reads past a stale first job and waits out a 429", str(hits))
+    places = json.loads((sc / "out" / "arbeitnow_places.json").read_text(encoding="utf-8")) \
+        if (sc / "out" / "arbeitnow_places.json").exists() else {}
+    check(places.get("Mainz") == ["DE"] and places.get("Zug") == ["CH"]
+          and places.get("BREAK Office") == [] and "could not place" in log,
+          "locations placed; a broken answer costs only its own half", json.dumps(places)[:300])
+    inbox = next(iter(sorted((sc / "inbox").glob("*.json"))), None)
+    jobs = json.loads(inbox.read_text(encoding="utf-8")).get("jobs", []) if inbox else []
+    got = {(j["title"], j["location"]) for j in jobs}
+    want = {("Software Engineer", "Berlin, Germany"), ("Machine Learning Engineer", "Mainz, Germany"),
+            ("AI Engineer", "Paris, France (Remote)")}
+    check(got == want, "kept by meaning: a plain 'Software Engineer' with LLM work, not the "
+          "working-student or on-site-abroad jobs", str(sorted(got)))
+    q = {j["title"]: j.get("query") for j in jobs}
+    check(q.get("Software Engineer") == "Arbeitnow: AI Engineer"
+          and q.get("Machine Learning Engineer") == "Arbeitnow: Machine Learning Engineer",
+          "each job is credited to the search it matched", str(q))
+
+    before = list(hits["pages"])
+    code, log2 = run()
+    again = hits["pages"][len(before):]
+    check(code == 0 and "nothing new on two pages" in log2 and "reading" not in log2
+          and len(again) == 2,
+          "a second pull stops once nothing is new and reads no job twice",
+          f"pages {again}; {log2[-400:]}")
+
+    # The dashboard's side.
+    st = e.get("/arbeitnow/settings")[1]
+    check(st.get("ok") and st["settings"]["searches"][0]["name"] == "AI Engineer"
+          and not st.get("suggesting"), "GET /arbeitnow/settings", json.dumps(st)[:300])
+    pv = e.post("/arbeitnow/preview", {"settings": s})
+    p = pv.get("preview") or {}
+    check(p.get("kept") == 3 and p["levels"]["wide"] >= p["levels"]["balanced"] >= p["levels"]["close"],
+          "preview matches the pull", json.dumps(pv)[:400])
+    anywhere = e.post("/arbeitnow/preview", {"settings": {**s, "countries": [], "student_roles": True}})
+    check((anywhere.get("preview") or {}).get("kept") == 5,
+          "preview follows the rules: anywhere, with working-student jobs", json.dumps(anywhere)[:300])
+    saved = e.post("/arbeitnow/settings", {"settings": {
+        "searches": [{"name": "  Nurse ", "looking_for": "ICU nurse in a hospital"}, {"name": ""}],
+        "countries": ["Deutschland", "Narnia", "ch"], "strictness": "extreme", "days": 5}})
+    ss = saved.get("settings") or {}
+    check(ss.get("made_by") == "you" and [x["name"] for x in ss.get("searches", [])] == ["Nurse"]
+          and ss.get("countries") == ["DE", "CH"] and ss.get("strictness") == "balanced"
+          and ss.get("days") == 7, "settings from the page are cleaned before saving", json.dumps(ss))
+    active = ps(py, work, "from profile_dir import profile_file; print(profile_file())")
+    pathlib.Path(active).write_text("# Changed\nA different profile.\n", encoding="utf-8")
+    st = e.get("/arbeitnow/settings")[1]
+    check(not st.get("suggesting") and st.get("profile_changed")
+          and st["settings"]["searches"][0]["name"] == "Nurse",
+          "settings someone saved are never rewritten; a changed profile is only pointed out",
+          json.dumps(st)[:300])
+    dash = e.get("/dashboard")[1]
+    dash = dash.decode("utf-8", "replace") if isinstance(dash, bytes) else str(dash)
+    check('id="anDlg"' in dash and e.get("/web/arbeitnow.js")[0] == 200,
+          "the dashboard has the Arbeitnow dialog")
+    e.post("/arbeitnow/settings", {"settings": {"searches": []}})
+    code, log3 = run()
+    check(code == 1 and "no Arbeitnow search" in log3, "no search set: a clear failure",
+          log3[-300:])
+    _write_local(sc, None)
+
+
 def _write_local(sc: pathlib.Path, text: str | None) -> None:
     """Write (or remove) the copy's config_local.py, and drop its compiled
     copy: Python checks that by size and a timestamp in whole seconds, so two
@@ -711,6 +1001,9 @@ def main() -> int:
 
         section("which jobs the ranker reads (real ranker, real pool rules)")
         pool_section(py, work)
+
+        section("Arbeitnow: searches by meaning, rules, and the dashboard panel")
+        arbeitnow_section(e, py, work)
 
     finally:
         section("cleanup")

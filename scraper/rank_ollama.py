@@ -441,25 +441,9 @@ def off_lane_text(description: str) -> str:
 # German places that appear in a LinkedIn location string without the word
 # "Germany" attached. Everything else that is not "Germany"/"Deutschland" counts
 # as outside Germany, which is the looser-years side of the line.
-_DE_PLACES = re.compile(
-    r"\b(?:germany|deutschland|berlin|munich|münchen|hamburg|cologne|köln|"
-    r"frankfurt|stuttgart|düsseldorf|dusseldorf|dresden|leipzig|hannover|"
-    r"hanover|nuremberg|nürnberg|bremen|essen|dortmund|aachen|heidelberg|"
-    r"karlsruhe|mannheim|bonn|münster|munster|bavaria|bayern|hesse|hessen|"
-    r"saxony|sachsen|thuringia|brandenburg|baden[- ]württemberg|"
-    r"baden[- ]wurttemberg|north rhine[- ]westphalia|rhineland[- ]palatinate|"
-    r"lower saxony|schleswig|mecklenburg|saarland)\b", re.I)
-
-
-def in_germany(location: str) -> bool:
-    """Is this posting located in Germany?
-
-    Decides which years ceiling applies. A regional label that merely includes
-    Germany ("EMEA", "European Union", "DACH") is NOT Germany for this purpose:
-    those are remote-abroad listings and get the looser ceiling, which is the
-    whole point of the split.
-    """
-    return bool(_DE_PLACES.search(location or ""))
+# in_germany() lives in countries.py since 28 September 2026, shared with the
+# Arbeitnow location rule, which must not import the ranker.
+from countries import in_germany  # noqa: E402,F401
 
 
 def years_ceiling(v: dict) -> int:
