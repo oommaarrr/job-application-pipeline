@@ -1,8 +1,6 @@
 import re,sys
 css=open(sys.argv[1]).read()
-def block(sel_re):
-    m=re.search(sel_re+r'\s*\{(.*?)\n\}',css,re.S); return m.group(1)
-light=dict(re.findall(r'(--[\w-]+):\s*(#[0-9a-fA-F]{6})',block(r'^:root')  if False else css.split('@media (prefers-color-scheme: dark)')[0]))
+light=dict(re.findall(r'(--[\w-]+):\s*(#[0-9a-fA-F]{6})',css.split('@media (prefers-color-scheme: dark)')[0]))
 dark=dict(light); dark.update(dict(re.findall(r'(--[\w-]+):\s*(#[0-9a-fA-F]{6})',css.split(':root[data-theme="dark"]')[1].split('}')[0])))
 def L(h):
     c=[int(h[i:i+2],16)/255 for i in (1,3,5)]

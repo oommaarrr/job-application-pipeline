@@ -115,7 +115,7 @@ const isEnabled = (q) => q && q.enabled !== false;
 const activeSearches = (list) => (list || []).filter(isEnabled);
 
 const getSched = async () =>
-  ({ ...DEFAULT_SCHED, ...((await chrome.storage.local.get(SCHED))[SCHED] || {}) });
+  ({ ...DEFAULT_SCHED, ...(await chrome.storage.local.get(SCHED))[SCHED] });
 const setSched = async (patch) =>
   chrome.storage.local.set({ [SCHED]: { ...(await getSched()), ...patch } });
 
@@ -604,9 +604,7 @@ async function runSchedule() {
                      lastResult: { at: Date.now(), lines: rs.done } });
   } finally {
     await setSched({ running: false });
-    const s = await getSched();
-    const unfinished = s.runState && s.runState.index < searches.length;
-    await reportScrape(!!unfinished && false, searches.length, searches.length);
+    await reportScrape(false, searches.length, searches.length);
   }
 }
 

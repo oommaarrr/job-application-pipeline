@@ -300,7 +300,7 @@ def _get(url: str, timeout: float) -> bytes | None:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
             return r.read()
-    except (urllib.error.URLError, OSError, ValueError):
+    except (OSError, ValueError):
         return None
 
 
@@ -312,7 +312,7 @@ def net_up() -> bool:
             return True
         except urllib.error.HTTPError:
             return True
-        except (urllib.error.URLError, OSError):
+        except OSError:
             continue
     return False
 
@@ -330,10 +330,6 @@ def status_json() -> dict | None:
 # a build on 20 September, waiting for a "scrape in flight" that was itself.
 def scraping(js: dict) -> bool:
     return bool((js.get("scrape") or {}).get("running"))
-
-
-def ollama_up() -> bool:
-    return _get("http://127.0.0.1:11434/api/version", 4) is not None
 
 
 def json_count(path: pathlib.Path) -> int:
@@ -555,18 +551,18 @@ def main() -> None:
 
     # Ollama has to be up. It is a normal user process, not a service, so a
     # machine that rebooted has it installed and not running.
-    if not ollama_up():
+    if not pu.ollama_up():
         say("ollama is not running, starting it")
         pu.start_ollama(LOG_DIR / "ollama.log")
     # Any model Ollama already has will do (scraper/ollama_model.py); only
     # with none installed does the wanted one have to download first.
     want_model = ollama_model.wanted(cfg)
     entries = ollama_model.tags(getattr(cfg, "OLLAMA_URL", ollama_model.DEFAULT_URL), 5)
-    if ollama_up() and entries is not None and ollama_model.resolve(cfg, entries) is None:
+    if pu.ollama_up() and entries is not None and ollama_model.resolve(cfg, entries) is None:
         end_with("info", f"the local model '{want_model}' is not downloaded yet, so nothing "
                  "was ranked", "It downloads by itself while the pipeline runs; press Build "
                  "again when the Activity panel says it is ready.", 0)
-    if not ollama_up():
+    if not pu.ollama_up():
         notify("nothing was built", "Ollama is down")
         end_with("failed", "Ollama is not running and could not be started, so nothing "
                  "was ranked", "Open the Ollama app (or run: ollama serve), then press Retry.", 1)
