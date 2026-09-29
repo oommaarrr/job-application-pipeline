@@ -109,7 +109,11 @@ def main() -> int:
     if not background and sys.stdin is not None and sys.stdin.isatty() \
             and os.environ.get("START_AT_LOGIN", "").strip() != "0":
         agent = [str(py), str(ROOT / "scripts" / "install-agent.py")]
-        if subprocess.call(agent + ["--status"], stdout=subprocess.DEVNULL) != 0:
+        status = subprocess.run(agent + ["--status"], capture_output=True, text=True)
+        if status.returncode == 2:
+            # In a folder macOS keeps from login items: say so, do not offer.
+            print(status.stdout.strip(), flush=True)
+        elif status.returncode != 0:
             if ask_yes("Start Job Pipeline by itself at every login, in the background, so "
                        "the dashboard and the extension always work and you never need "
                        "to run this again?"):

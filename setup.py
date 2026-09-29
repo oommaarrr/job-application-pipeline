@@ -266,8 +266,14 @@ def after_venv(py: pathlib.Path) -> int:
     from_start = "--from-start" in sys.argv
     # The dashboard and the extension only work while it runs, so this is the
     # answer that makes ./start.sh (start.bat) a one-time thing.
-    if ask("Start Job Pipeline by itself every time you log in (in the background), "
-           "so you never have to start it by hand?"):
+    status = subprocess.run(agent_cmd + ["--status"], capture_output=True, text=True)
+    if status.returncode == 2:
+        # In a folder macOS keeps from login items (Desktop, Documents...).
+        print("  " + status.stdout.strip().replace("\n", "\n  "))
+        if not from_start and ask("Start it now?"):
+            return run([str(py), str(ROOT / "start.py")]).returncode
+    elif ask("Start Job Pipeline by itself every time you log in (in the background), "
+             "so you never have to start it by hand?"):
         if run(agent_cmd).returncode == 0:
             return 0
     else:

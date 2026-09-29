@@ -8,7 +8,8 @@ Optional: without it, run ./start.sh (or start.bat) when you want it.
     Linux     scraper/.venv/bin/python scripts/install-agent.py   (systemd --user)
 
     add --remove to stop it and stop starting at login.
-    add --status to ask whether it is installed (exit 0 yes, 1 no).
+    add --status to ask whether it is installed (exit 0 yes, 1 no, 2 it cannot
+    be, because the project is in a folder macOS keeps from login items).
 
 After this the dashboard is always at http://127.0.0.1:8765/dashboard and the
 Chrome extension always finds it. Settings in local.env (e.g. AUTOBUILD=1) are
@@ -71,6 +72,36 @@ def wait_and_report() -> int:
 # ------------------------------------------------------------------ macOS
 LABEL = "com.jobpipeline.bridge"
 
+# Folders macOS keeps from anything started at login. A launchd agent whose
+# files are in one of them is refused every time ("Operation not permitted",
+# launchd exit 78), while the same command typed in Terminal works, because
+# Terminal has been allowed in. So it looks fine until the Mac restarts, and
+# then never starts again. That happened on 29 September 2026 with the project
+# on the Desktop.
+MAC_PROTECTED = ("Desktop", "Documents", "Downloads", "Library/Mobile Documents")
+
+
+def mac_protected_folder() -> str | None:
+    """The protected folder the project is in, e.g. "Desktop", or None."""
+    home = pathlib.Path.home().resolve()
+    for name in MAC_PROTECTED:
+        try:
+            ROOT.resolve().relative_to(home / name)
+            return "iCloud Drive" if "/" in name else name
+        except ValueError:
+            continue
+    return None
+
+
+def mac_protected_warning(folder: str) -> str:
+    target = pathlib.Path.home() / ROOT.name
+    return (f"Job Pipeline is in your {folder} folder, and macOS does not let anything "
+            f"started at login read that folder, so it would never start by itself.\n"
+            f"Move the project folder somewhere else in your home folder, for example:\n"
+            f"    mv \"{ROOT}\" \"{target}\"\n"
+            f"then run scripts/install-agent.sh from there. (Reload the Chrome extension "
+            f"from the new folder too.) Until then, start it with ./start.sh.")
+
 
 def mac(remove: bool) -> int:
     plist = pathlib.Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
@@ -80,6 +111,13 @@ def mac(remove: bool) -> int:
         plist.unlink(missing_ok=True)
         print("Removed. Start it by hand with ./start.sh from now on.")
         return 0
+    folder = mac_protected_folder()
+    if folder:
+        # Installing anyway would report "starts at login" and then fail at
+        # every login, which is worse than not installing.
+        plist.unlink(missing_ok=True)
+        print(mac_protected_warning(folder))
+        return 1
     py = pu.venv_python(SCRAPER / ".venv")
     plist.parent.mkdir(parents=True, exist_ok=True)
     home = pathlib.Path.home()
@@ -217,7 +255,9 @@ def installed() -> bool:
         except OSError:
             return False
     if pu.IS_MAC:
-        return points_here(home / "Library" / "LaunchAgents" / f"{LABEL}.plist")
+        # An agent that macOS will refuse to start is not "starts at login".
+        return (not mac_protected_folder()
+                and points_here(home / "Library" / "LaunchAgents" / f"{LABEL}.plist"))
     if pu.IS_WIN:
         import winreg
         try:
@@ -233,6 +273,12 @@ def installed() -> bool:
 
 def main() -> int:
     if "--status" in sys.argv:
+        # 2: cannot start at login from where the project is (macOS), so do
+        # not offer it; the message says what to do instead.
+        folder = mac_protected_folder() if pu.IS_MAC else None
+        if folder:
+            print(mac_protected_warning(folder))
+            return 2
         on = installed()
         print("starts at login" if on else "does not start at login")
         return 0 if on else 1
