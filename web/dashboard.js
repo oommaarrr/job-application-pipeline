@@ -25,6 +25,7 @@ async function tick(){
   $("phase").textContent=pl; $("phase").style.background=pc;
   const h=d.health||{};
   $("health").innerHTML='<span class="dot" style="background:'+(h.ok?"var(--green)":"var(--red)")+'"></span>'+(h.ok?"all good":"needs attention");
+  staleBanner(d);
   window._autobuild=!!d.autobuild;
   const ab=$("autobuild");
   ab.textContent="autobuild "+(d.autobuild?"ON":"OFF");
@@ -359,7 +360,28 @@ function toast(m,ok){const t=$("toast");t.textContent=m;
 async function post(path,body){
   try{const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify(body||{})});
-    return await r.json();}catch(e){return {ok:false,why:"bridge not answering"};}
+    const j=await r.json().catch(()=>({}));
+    // An error status is a failure even without ok:false in the body. An older
+    // pipeline answers a request it does not know with 404 {"error":"not found"},
+    // which used to read as success (29 September 2026).
+    if(!r.ok) return {...j,ok:false,why:j.why||(r.status===404
+      ?"the running pipeline is older than this page and does not know this yet. Restart it (see the banner at the top)"
+      :(j.error||("error "+r.status)))};
+    return j;}catch(e){return {ok:false,why:"bridge not answering"};}
+}
+
+/* The page is read from disk on every load, the pipeline keeps running the code
+   it started with, so an update needs a restart before the two agree. */
+const PIPELINE_API=4;     // keep equal to API_VERSION in scraper/serve.py
+function staleBanner(d){
+  const old=d.api==null||d.api<PIPELINE_API, changed=!!d.code_changed;
+  const el=$("staleBanner"); if(!el) return;
+  el.classList.toggle("hide",!(old||changed));
+  if(!(old||changed)) return;
+  el.innerHTML="<b>"+(old?"The running pipeline is older than this page.":"The pipeline was updated but is still running the old version.")+
+    "</b> Restart it so your changes are saved"+(old?" (until then, saving searches and other new features fail)":"")+". "+
+    "If it starts at login, run <code>scripts/install-agent.sh</code> (Windows: <code>scripts\\install-agent.bat</code>). "+
+    "Otherwise close the window running <code>./start.sh</code> (or <code>start.bat</code>) and start it again. Then reload this page.";
 }
 const ACT={
   scrape:{path:"/trigger",ok:"Scrape queued — the extension starts it within a minute.",confirm:null},

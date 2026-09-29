@@ -104,8 +104,16 @@ async function open(tab){
   fillBuilder();
 }
 async function load(replace){
-  let d; try{ d=await fetch("/searches/list",{cache:"no-store"}).then(r=>r.json()); }
+  let d, r;
+  try{ r=await fetch("/searches/list",{cache:"no-store"}); d=await r.json(); }
   catch(e){ $("srList").innerHTML=""; extNote(null); status("The pipeline is not answering, so the searches cannot be loaded."); return; }
+  if(!r.ok||!Array.isArray(d.searches)){
+    // An older pipeline, from before it kept the searches: showing its answer
+    // as an empty list invited adding searches that could never be saved.
+    $("srList").innerHTML='<p class="muted sr-empty">The running pipeline is older than this page, so it cannot load or save searches. Restart it (see the banner at the top of the dashboard), then open this again.</p>';
+    extNote(null); $("srSave").disabled=$("srSaveRun").disabled=true; return;
+  }
+  $("srSave").disabled=$("srSaveRun").disabled=false;
   meta=d;
   extNote(d.extension);
   if(replace||!dirty){ draft={pages:d.pages,searches:clone(d.searches||[])}; setDirty(false); render(); }
@@ -241,10 +249,31 @@ function built(){
 }
 ["srKw","srLoc","srSite","srIndeed","srRadius","srPosted","srRemote"].forEach(id=>{
   $(id).addEventListener("input",built); $(id).addEventListener("change",built); });
-$("srAddBuilt").onclick=()=>{ const url=built(); if(!url) return;
+function addBuilt(){ const url=built(); if(!url) return false;
   const f=form(), site=siteOf(url);
-  if(addToDraft(url,site+": "+f.kw+(f.loc?" · "+f.loc:""))) $("srKw").value="", built(); };
+  if(!addToDraft(url,site+": "+f.kw+(f.loc?" · "+f.loc:""))) return false;
+  $("srKw").value=""; built(); return true; }
+$("srAddBuilt").onclick=addBuilt;
 $("srAddPaste").onclick=()=>{ if(addToDraft($("srPaste").value)) $("srPaste").value=""; };
+
+/*
+ * A search typed into "Add a search" but not added yet. Pressing Save there
+ * used to save the list without it, silently: the search only joined the list
+ * through the tab's own Add button (29 September 2026, from a new user). Save
+ * now takes it along, and closing warns about it like any unsaved change.
+ */
+function pendingUrl(){
+  if(!$("srPasteBox").hidden) return $("srPaste").value.trim();
+  return built();
+}
+function takePending(){
+  const url=pendingUrl(); if(!url) return true;
+  if(draft.searches.some(q=>keyOf(q.url)===keyOf(url))){      // already in the list
+    if($("srPasteBox").hidden){ $("srKw").value=""; built(); } else $("srPaste").value="";
+    return true;
+  }
+  return !$("srPasteBox").hidden ? (addToDraft(url) && ($("srPaste").value="", true)) : addBuilt();
+}
 $("srPaste").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); $("srAddPaste").click(); } });
 
 /* ------------------------------------------------------------ share
@@ -272,6 +301,7 @@ $("srImportGo").onclick=()=>{
 
 /* ------------------------------------------------------------ save */
 async function save(){
+  if(!takePending()) return false;            // the reason is in the status line
   $("srSave").disabled=$("srSaveRun").disabled=true;
   const r=await post("/searches/save",{searches:draft.searches,pages:draft.pages});
   $("srSave").disabled=$("srSaveRun").disabled=false;
@@ -284,14 +314,14 @@ async function save(){
 }
 $("srSave").onclick=save;
 $("srSaveRun").onclick=async()=>{
-  if(dirty && !await save()) return;
+  if((dirty||pendingUrl()) && !await save()) return;
   const r=await post("/trigger",{});
   if(!r||r.ok===false){ status("Saved, but not started: "+((r&&r.why)||"the pipeline did not answer")); return; }
   dlg.close(); clearTimeout(pollTimer);
   scrapeQueued(r);
 };
 function tryClose(){
-  if(dirty && !confirm("Close without saving your changes?")) return false;
+  if((dirty||pendingUrl()) && !confirm("Close without saving your changes?")) return false;
   clearTimeout(pollTimer); dlg.close(); return true;
 }
 $("srClose").onclick=tryClose;

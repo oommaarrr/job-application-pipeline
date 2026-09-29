@@ -182,6 +182,14 @@ def windows(remove: bool) -> int:
             pyw = pu.venv_python(SCRAPER / ".venv")
         command = f'"{pyw}" "{ROOT / "start.py"}" --background'
         winreg.SetValueEx(key, RUN_NAME, 0, winreg.REG_SZ, command)
+    # Running this again restarts it, as launchd does on a Mac, so an update
+    # (git pull) takes effect: a running copy keeps its old code until then.
+    for pid in _supervisors():
+        pu.kill_tree(pid)
+    for _ in range(10):
+        if not answering():
+            break
+        time.sleep(1)
     if not answering():
         # Start it now too, so there is no need to log out and back in.
         subprocess.Popen([str(pyw), str(ROOT / "start.py"), "--background"],

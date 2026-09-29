@@ -107,6 +107,29 @@ def _today() -> str:
     return dt.date.today().isoformat()
 
 
+# What the dashboard pages expect this server to understand. The pages are read
+# from disk on every load while this process keeps running the code it started
+# with, so after an update (git pull) a new page can talk to an old server:
+# on 29 September 2026 the new Saved searches window met a server without
+# /searches/save, and a new search was lost on Save. Raise it whenever the pages
+# start relying on a new endpoint, together with PIPELINE_API in web/dashboard.js.
+API_VERSION = 4
+_CODE_FILES = sorted(pathlib.Path(__file__).resolve().parent.glob("*.py"))
+_CODE_AT_START = {f: f.stat().st_mtime for f in _CODE_FILES}
+
+
+def _code_changed() -> bool:
+    """True when this server's Python files changed on disk since it started,
+    so it is running an older version than the one installed."""
+    for f in pathlib.Path(__file__).resolve().parent.glob("*.py"):
+        try:
+            if _CODE_AT_START.get(f) != f.stat().st_mtime:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _build_day() -> str:
     """
     The day whose batch folder and log belong to the current build. run_batch.py
@@ -1649,6 +1672,8 @@ def progress() -> dict:
         "health": health,
         "active": active,
         "ok": True,
+        "api": API_VERSION,
+        "code_changed": _code_changed(),
         "now": dt.datetime.now().isoformat(timespec="seconds"),
         "phase": phase,
         "autobuild": _autobuild,

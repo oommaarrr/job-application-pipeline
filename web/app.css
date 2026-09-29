@@ -766,3 +766,8 @@ pre.log .err{color:var(--log-err)}
 @media (max-width:640px){
   .an-foot .foot-count{flex-basis:100%}
 }
+
+/* An update on disk that the running pipeline has not picked up yet. */
+.stale-banner{margin:0 0 var(--sp-4);padding:12px 16px;border:1px solid var(--warn);border-radius:var(--r-md,10px);
+  background:var(--warn-bg);color:var(--ink);font-size:var(--fs-sm);line-height:1.5}
+.stale-banner code{font-size:.95em}
