@@ -53,7 +53,7 @@ flowchart LR
 
 - **A Mac, Windows or Linux computer.**
 - **A Claude subscription**, for writing the CVs.
-- **Google Chrome** (optional), only for collecting from LinkedIn, Indeed or StepStone.
+- **Google Chrome** , only for collecting from LinkedIn, Indeed or StepStone.
 
 Everything else (Python on Windows, [Ollama](https://ollama.com), [Claude
 Code](https://claude.com/claude-code), and Git for Windows) is installed by the
@@ -152,7 +152,7 @@ If you said no, it runs only while that window is open (closing it stops it),
 and `start.bat` asks once more next time. Turn it on later with
 `scripts\install-agent.bat`, off with `scripts\install-agent.bat --remove`.
 
-**3. (Optional) Install the Chrome extension**: see below.
+**3. Install the Chrome extension**: see below.
 
 <details>
 <summary>Doing the steps by hand instead</summary>
@@ -222,7 +222,7 @@ minute.
 
 ---
 
-## Chrome extension (optional)
+## Chrome extension 
 
 The extension, **Job Collector**, collects jobs from LinkedIn, Indeed and
 StepStone and sends them to the pipeline. It reads only pages in your own
