@@ -440,6 +440,7 @@ def render(batch: dict) -> str:
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Application batch {esc(date)}</title>
+<link rel="icon" href="{BRIDGE}/web/favicon.svg" type="image/svg+xml">
 <script>{THEME_BOOT}</script><style>{CSS}</style></head>
 <body>
 <div class="topbar-shell">

@@ -122,9 +122,18 @@ site, place and keywords) and strips LinkedIn's tracking parameters.
   until **Save**.
 - **Run scrape** opens each search that is on in a background tab, collects it
   and closes it, dealing the sites in turn so one site is never hit twice in a
-  row. A run that is cut off continues where it stopped the next time **Run
-  scrape** (or **Retry**) is pressed, within six hours. Changing the list drops
-  that resume point, so an edit is never ignored. With no search switched on,
+  row. While it runs the button reads **Stop scrape**: the extension asks the
+  pipeline every few seconds and closes the search tab when you press it.
+  Jobs already collected are kept, and a stopped run does not start an
+  autobuild.
+- A run that is stopped or cut off continues where it stopped the next time
+  **Run scrape** (or **Retry**) is pressed, within six hours. The pipeline
+  records which searches finished (`scraper/out/.scrape_run.json` and
+  `scrape_audit.json`) and hands them to the extension to skip, so the place
+  survives the extension being reloaded; a failed search is run again. The
+  extension also keeps its own place, for when the pipeline is not running.
+  Changing the list drops the extension's resume point, so an edit is never
+  ignored. With no search switched on,
   **Run scrape** says so instead of queuing a run nothing would pick up.
 - **Copy the list** puts the whole list on your clipboard as JSON; **Replace
   from a copied list** takes it back. This is how you share a good set of
@@ -311,6 +320,15 @@ on, `--remove` undoes it.
 | Linux | `scripts/install-agent.sh` | a systemd user service (or an autostart entry without systemd) |
 
 Its output goes to `scraper/out/bridge.log`.
+
+On macOS the project must not be in Desktop, Documents, Downloads or iCloud
+Drive. macOS keeps anything started at login out of those folders: the agent is
+refused at every login (launchd exit 78, and nothing reaches `bridge.log`,
+because the bridge never starts), while the same
+command typed in Terminal works. The installer refuses there, `--status` exits
+2 with the reason, and `./start.sh` prints it instead of asking. Move the folder
+into your home folder, reinstall the agent, and load the Chrome extension from
+the new place.
 
 **When something fails:** every step writes what happened to
 `scraper/out/events.jsonl`, shown on the dashboard's Activity panel. A failed

@@ -1,4 +1,8 @@
+<img src="web/logo.svg" width="72" alt="" align="left">
+
 # Job Pipeline
+
+<br clear="left">
 
 **Finds jobs that fit you and writes a tailored CV and cover letter for each
 one, on your own computer.** Works on Mac, Windows and Linux.
@@ -98,6 +102,11 @@ dashboard from a bookmark: <http://127.0.0.1:8765/dashboard>.
 If you said no, it runs only while that terminal window is open (`Ctrl+C`
 stops it), and `./start.sh` asks once more next time. Turn it on later with
 `scripts/install-agent.sh`, off with `scripts/install-agent.sh --remove`.
+
+On a Mac, keep the project out of Desktop, Documents, Downloads and iCloud
+Drive. macOS does not let anything started at login read those folders, so
+start-at-login would never start. `./start.sh` says so instead of offering it.
+Your home folder (for example `~/job-pipeline`) is fine.
 
 **3. (Optional) Install the Chrome extension**: see [below](#chrome-extension-optional).
 
@@ -300,8 +309,13 @@ window has three tabs:
 Press **Save**, or **Save and run** to start a scrape straight away. Chrome
 picks the run up within a minute and opens each search that is on in a
 background tab, one after the other (LinkedIn in front, because it only loads
-its list on screen). Keep Chrome open while it runs. If it gets cut off, **Run
-scrape** carries on where it stopped.
+its list on screen). Keep Chrome open while it runs.
+
+While it runs, **Run scrape** turns into **Stop scrape**: Chrome closes the
+search tab within a few seconds, and the jobs already collected are kept. If a
+run is stopped or cut off (Chrome closed, the laptop slept), **Run scrape**
+continues with the searches it had not finished, for six hours. The pipeline
+keeps that place itself, so it holds even after the extension is reloaded.
 
 On LinkedIn a place is pinned by an internal id, not the words you type.
 Whenever a LinkedIn search is open, the extension tells the pipeline which id
