@@ -57,7 +57,7 @@ flowchart LR
 
 - **A Mac, Windows or Linux computer.**
 - **A Claude subscription**, for writing the CVs.
-- **Google Chrome** , only for collecting from LinkedIn, Indeed or StepStone.
+- **Google Chrome**, only for collecting from LinkedIn, Indeed or StepStone.
 
 Everything else (Python on Windows, [Ollama](https://ollama.com), [Claude
 Code](https://claude.com/claude-code), and Git for Windows) is installed by the
@@ -108,7 +108,7 @@ Drive. macOS does not let anything started at login read those folders, so
 start-at-login would never start. `./start.sh` says so instead of offering it.
 Your home folder (for example `~/job-pipeline`) is fine.
 
-**3. (Optional) Install the Chrome extension**: see [below](#chrome-extension-optional).
+**3. Install the Chrome extension**: see [below](#chrome-extension).
 
 <details>
 <summary>Doing the steps by hand instead</summary>
@@ -231,7 +231,7 @@ minute.
 
 ---
 
-## Chrome extension 
+## Chrome extension
 
 The extension, **Job Collector**, collects jobs from LinkedIn, Indeed and
 StepStone and sends them to the pipeline. It reads only pages in your own
