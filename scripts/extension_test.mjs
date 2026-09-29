@@ -7,7 +7,8 @@
  * Covers what moved to the dashboard on 28 September 2026: the extension
  * pulling the saved searches, moving a list it kept itself, clearing its copy
  * of the jobs after an erase, "Add the page I am on", learning LinkedIn place
- * ids, and Run scrape continuing a cut-off run. Changes the bridge's searches
+ * ids, Run scrape continuing a cut-off run, and Stop scrape (29 September).
+ * Changes the bridge's searches
  * and erases its pool, so point it only at a test bridge.
  */
 import fs from "node:fs";
@@ -34,8 +35,8 @@ const chrome = {
 };
 let code = fs.readFileSync(SRC, "utf8").replace('"http://127.0.0.1:8765"', `"http://127.0.0.1:${PORT}"`);
 // Exposed for the checks below; runSchedule is replaced before any run.
-code += "\n;globalThis.__t = { syncSearches, checkTrigger, flushToBridge, getSched, setSched };";
-const ctx = { chrome, fetch, AbortController, setTimeout, clearTimeout, console, URL, JSON, Date, Math, Promise, Set, Map, globalThis: null };
+code += "\n;globalThis.__t = { syncSearches, checkTrigger, flushToBridge, getSched, setSched, runSchedule };";
+const ctx = { chrome, fetch, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, console, URL, JSON, Date, Math, Promise, Set, Map, globalThis: null };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInContext(code, ctx);
@@ -109,7 +110,25 @@ await post("/trigger", {});
 await t.checkTrigger();
 ok(ctx.__ran === 2 && store.schedule.runState.index === 0 && store.schedule.runState.order.length === store.schedule.searches.filter((q) => q.enabled !== false).length, "and otherwise starts every search that is on");
 
-// 7. Nothing to run: the pipeline refuses the trigger instead of queuing it.
+// 7. Stop scrape on the dashboard closes the search tab and ends the run,
+// keeping the resume point at the search that was cut off.
+const closed = [];
+chrome.tabs.remove = async (id) => { closed.push(id); };
+vm.runInContext(`runOneSearch = async () => { currentTabId = 7;
+  while (!stopRequested) await wait(100); return { ok: false, line: "tab closed" }; };`, ctx);
+await t.setSched({ running: false, runState: { index: 1, order, done: ["x"], tries: {}, startedAt: Date.now() } });
+const run = t.runSchedule();
+await sleep(600);
+const stopped = await post("/scrape/stop", {});
+const finished = await Promise.race([run.then(() => true), sleep(15000).then(() => false)]);
+const st = await get("/scrape/state");
+const prog = await get("/progress");
+ok(stopped.was_running && finished && closed.includes(7) && store.schedule.runState?.index === 1
+   && !store.schedule.running && !st.stop && !prog.scrape.running,
+   "Stop scrape closes the tab, ends the run and keeps where it stopped",
+   JSON.stringify({ stopped, finished, closed, rs: store.schedule.runState?.index, st, scrape: prog.scrape }));
+
+// 8. Nothing to run: the pipeline refuses the trigger instead of queuing it.
 await post("/searches/save", { searches: (await get("/searches/list")).searches.map((q) => ({ ...q, enabled: false })) });
 const none = await post("/trigger", {});
 ok(none.ok === false && /switched on/.test(none.why), "Run scrape with every search off says so", JSON.stringify(none));

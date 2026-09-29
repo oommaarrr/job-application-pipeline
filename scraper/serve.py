@@ -533,6 +533,61 @@ _trigger: str | None = None
 # Optional host filter carried with a trigger, e.g. "linkedin.com". Lets a
 # manual run cover one site without touching the saved schedule.
 _trigger_only: str | None = None
+# Set by the dashboard's Stop scrape. The pipeline cannot reach into Chrome, so
+# the extension asks for it every few seconds while it runs (GET /scrape/state)
+# and stops at once. Cleared when the extension reports it has stopped, or by
+# the next Run scrape, so a flag left behind by a dead run never blocks one.
+_scrape_stop: str | None = None
+
+# The pipeline keeps the scrape's place, not only the extension. The extension
+# kept it alone until 29 September 2026, and reloading the extension (a new
+# folder gives it empty storage) made Run scrape start all five searches again
+# after three had finished. {"started": iso, "finished": bool}, on disk so a
+# bridge restart keeps it too. The finished searches are the ok rows of
+# _search_log (out/scrape_audit.json).
+_SCRAPE_RUN = ROOT / "out" / ".scrape_run.json"
+SCRAPE_RESUME_H = 6               # as the extension's RESUME_MAX_MS
+_trigger_skip: list | None = None # handed to the extension with the trigger
+_scrape_offset = 0                # searches finished before this continuation
+_last_skip: list = []             # the skip list the extension last picked up
+
+
+def _scrape_run() -> dict:
+    try:
+        d = json.loads(_SCRAPE_RUN.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _set_scrape_run(**kw) -> None:
+    try:
+        _SCRAPE_RUN.write_text(json.dumps({**_scrape_run(), **kw}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _resume_skip() -> list[str]:
+    """
+    The saved searches a cut-off run already finished, so Run scrape continues
+    with the rest: the addresses exactly as saved, which is how the extension
+    knows them. Empty when the last run finished, is older than
+    SCRAPE_RESUME_H, or nothing in it finished. A failed search is not
+    skipped: it is the one most worth running again.
+    """
+    run = _scrape_run()
+    if run.get("finished") or not run.get("started"):
+        return []
+    try:
+        age = dt.datetime.now() - dt.datetime.fromisoformat(run["started"])
+    except ValueError:
+        return []
+    if age.total_seconds() > SCRAPE_RESUME_H * 3600:
+        return []
+    done = {saved_searches.key(r.get("url") or "") for r in _search_log if r.get("ok")}
+    skip = [q["url"] for q in saved_searches.active() if saved_searches.key(q["url"]) in done]
+    # Every search already done: nothing to continue, so a new run starts.
+    return skip if len(skip) < len(saved_searches.active()) else []
 
 # ------------------------------------------------------------------ autobuild
 #
@@ -2149,6 +2204,7 @@ class Handler(BaseHTTPRequestHandler):
                 '<!doctype html><html lang="en"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width, initial-scale=1">'
                 '<title>Applications · Job Pipeline</title>'
+                '<link rel="icon" href="/web/favicon.svg" type="image/svg+xml">'
                 '<link rel="stylesheet" href="/web/tokens.css">'
                 '<link rel="stylesheet" href="/web/topbar.css">'
                 '<link rel="stylesheet" href="/web/app.css">'
@@ -2321,19 +2377,26 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/report" or route.startswith("/report/"):
             return self._serve_report()
 
-        if route not in ("/status", "", "/built", "/trigger"):
+        if route not in ("/status", "", "/built", "/trigger", "/scrape/state"):
             return self._send({"error": "not found"}, 404)
 
         # The extension asks here every minute. A pending trigger is handed over
         # once and then cleared, so a run starts exactly once no matter how many
         # tabs are polling.
+        if route == "/scrape/state":
+            return self._send({"ok": True, "stop": bool(_scrape_stop)})
+
         if route == "/trigger":
             global _trigger, _trigger_only
             _mark_extension_seen()
+            global _trigger_skip, _last_skip
             pending, _trigger = _trigger, None
             only, _trigger_only = _trigger_only, None
+            skip, _trigger_skip = (_trigger_skip or []) if pending else [], None
+            if pending:
+                _last_skip = skip
             return self._send({"ok": True, "run": bool(pending), "at": pending,
-                               "only": only})
+                               "only": only, "skip": skip})
 
         built = built_jobs()
         if route == "/built":
@@ -2392,6 +2455,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _do_post(self):
+        global _scrape, _autobuild, _scrape_stop, _trigger, _trigger_only, _reset_at
+        global _trigger_skip, _scrape_offset, _last_skip
         # Route on the path alone. No handler reads a query string, and
         # matching the raw path made "/dashboard?x" a 404.
         route = self.path.split("?", 1)[0].rstrip("/")
@@ -2524,21 +2589,63 @@ class Handler(BaseHTTPRequestHandler):
             _write_scrape_audit()
             return self._send({"ok": True, "logged": len(_search_log)})
 
+        if route == "/scrape/stop":
+            if not _scrape.get("running"):
+                return self._send({"ok": True, "was_running": False})
+            _scrape_stop = dt.datetime.now().isoformat(timespec="seconds")
+            _trigger = None
+            done, total = int(_scrape.get("done") or 0), int(_scrape.get("total") or 0)
+            _scrape.update(running=False, at=_scrape_stop)
+            _event("scrape", "stopped", f"scrape stopped by hand after {done} of {total} searches",
+                   fix="Jobs already collected are kept. Run scrape continues where it stopped.")
+            return self._send({"ok": True, "was_running": True, "done": done, "total": total})
+
         if route == "/scrape":
-            global _scrape, _autobuild
+            if _scrape_stop:
+                if body.get("running"):
+                    # The extension has not seen the stop yet: keep it stopped
+                    # and tell it, rather than let this report restart the run.
+                    return self._send({"ok": True, "stop": True})
+                # It has stopped. No "finished" edge: a stopped run does not
+                # count as done and must not start an autobuild.
+                _scrape_stop = None
+                _scrape.update(done=int(body.get("done") or 0) + _scrape_offset,
+                               total=int(body.get("total") or 0) + _scrape_offset)
+                return self._send({"ok": True, "stopped": True})
             was_running = bool(_scrape.get("running"))
+            starting = bool(body.get("running")) and not was_running
+            if starting:
+                # How many searches the pipeline told this run to skip. A
+                # report partway through its own run (done > 0) after the
+                # pipeline gave up on it is the same run coming back, not a
+                # new one: keep its rows and its offset.
+                if int(body.get("done") or 0) == 0:
+                    _scrape_offset, _last_skip = len(_last_skip), []
             _scrape = {
                 "running": bool(body.get("running")),
-                "done": int(body.get("done") or 0),
-                "total": int(body.get("total") or 0),
+                "done": int(body.get("done") or 0) + _scrape_offset,
+                "total": int(body.get("total") or 0) + _scrape_offset,
                 "at": dt.datetime.now().isoformat(timespec="seconds"),
             }
             # The edge, not the level. Only a transition from running to
             # finished starts a build, so the extension repeating "not running"
             # on every wake cannot start a second one.
-            if _scrape["running"] and not was_running:
-                _search_log.clear()      # a new run starts a new audit
-                _event("scrape", "started", f"extension started {_scrape['total']} search(es)")
+            if starting and int(body.get("done") or 0) == 0:
+                if _scrape_offset:
+                    # Keep the finished searches' rows: this run is their rest.
+                    _search_log[:] = [r for r in _search_log if r.get("ok")]
+                    _event("scrape", "started", f"extension continued the cut-off run: "
+                           f"{_scrape['total'] - _scrape_offset} of {_scrape['total']} "
+                           f"search(es) left")
+                else:
+                    _search_log.clear()      # a new run starts a new audit
+                    _set_scrape_run(started=_scrape["at"], finished=False)
+                    _event("scrape", "started", f"extension started {_scrape['total']} search(es)")
+            elif starting:
+                _event("scrape", "started", f"the extension is back, at search "
+                       f"{_scrape['done'] + 1} of {_scrape['total']}")
+            if was_running and not _scrape["running"] and _scrape["done"] >= _scrape["total"]:
+                _set_scrape_run(finished=True)
             if was_running and not _scrape["running"]:
                 failed = [r for r in _search_log if not r.get("ok")]
                 if failed:
@@ -2589,7 +2696,6 @@ class Handler(BaseHTTPRequestHandler):
             # minutes, which is far too slow to feel like a button. So the
             # request is parked here and the extension picks it up on its next
             # one minute poll.
-            global _trigger, _trigger_only
             only = (body.get("only") or "").strip().lower()
             picked = [q for q in saved_searches.active()
                       if not only or only in q["url"].lower()]
@@ -2601,8 +2707,13 @@ class Handler(BaseHTTPRequestHandler):
                     "no saved search is switched on. Add one under Saved searches")})
             _trigger = dt.datetime.now().isoformat(timespec="seconds")
             _trigger_only = only or None
+            _scrape_stop = None
+            # A run narrowed to one site starts fresh, as in the extension.
+            _trigger_skip = [] if only else _resume_skip()
             return self._send({"ok": True, "queued_at": _trigger, "only": _trigger_only,
-                               "searches": len(picked), "extension": extension_state()})
+                               "searches": len(picked) - len(_trigger_skip),
+                               "continuing": len(_trigger_skip),
+                               "extension": extension_state()})
 
         if route == "/reset":
             # A "hard" reset also forgets that a job was ever seen. Without it,
@@ -2635,10 +2746,11 @@ class Handler(BaseHTTPRequestHandler):
             # the tracker keeps reporting the last scrape, rank and build after
             # a fresh start, which is exactly the stale state that should be
             # gone. Decision, 19 September 2026.
-            global _reset_at
             _last_rank.update(ran_at=None, matches=None, collected=None, error=None)
             _scrape.update(running=False, done=0, total=0, at=None)
             _search_log.clear()
+            _SCRAPE_RUN.unlink(missing_ok=True)
+            _trigger_skip, _last_skip, _scrape_offset = None, [], 0
             _build.update(running=False, started=None, finished=None,
                           reason=None, pid=None, log=None)
             # Roll the on-disk audit aside too, so a tail or a bridge restart

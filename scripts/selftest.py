@@ -869,6 +869,28 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     check(r.get("ok") and r.get("searches") == 4, "Run scrape queues the searches that are on", json.dumps(r))
     e.get("/trigger")
 
+    # A run cut off after two searches continues with the other two, even for
+    # an extension that forgot its place (29 September 2026).
+    on = [q["url"] for q in e.get("/searches")[1]["searches"]]
+    e.post("/scrape", {"running": True, "done": 0, "total": 4})
+    for u in on[:2]:
+        e.post("/search-result", {"label": "x", "url": u, "host": "linkedin.com", "ok": True, "loaded": 25})
+    e.post("/scrape", {"running": True, "done": 2, "total": 4})
+    e.post("/scrape/stop", {})
+    e.post("/scrape", {"running": False, "done": 2, "total": 4})
+    r = e.post("/trigger", {})
+    skip = e.get("/trigger")[1].get("skip")
+    e.post("/scrape", {"running": True, "done": 0, "total": 2})
+    p = e.get("/progress")[1]
+    check(r.get("continuing") == 2 and sorted(skip or []) == sorted(on[:2])
+          and p["scrape"]["done"] == 2 and p["scrape"]["total"] == 4 and p["searches_done"] == 2,
+          "Run scrape continues a cut-off run from the pipeline's record, keeping its finished rows",
+          json.dumps({"r": r, "skip": skip, "scrape": p["scrape"], "rows": p["searches_done"]}))
+    e.post("/scrape", {"running": False, "done": 2, "total": 2})
+    r = e.post("/trigger", {})
+    e.get("/trigger")
+    check(r.get("continuing") == 0, "once every search is done, the next Run scrape starts fresh", json.dumps(r))
+
     seen = e.get("/searches/list")[1]["reset_at"]
     e.post("/reset", {"hard": False})
     r = e.post("/ingest", {"jobs": [{"url": "https://www.linkedin.com/jobs/view/9", "title": "Old", "company": "C"}],

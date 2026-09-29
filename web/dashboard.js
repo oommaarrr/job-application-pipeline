@@ -75,10 +75,15 @@ async function tick(){
   const canRank=poolN>0;
   const canBuild=poolN>0||(d.ranked_ready||0)>0;
   const bS=$("btnScrape"),bR=$("btnRank"),bB=$("btnBuild");
-  bS.disabled=d.scrape.running;
+  // While a scrape runs, Run scrape becomes its Stop button, where the eye is.
+  window._scraping=!!d.scrape.running;
+  bS.disabled=false;
+  bS.classList.toggle("danger",window._scraping);
+  $("btnStopScrape").style.display=window._scraping?"inline-block":"none";
   bR.disabled=busy||!canRank;
   bB.disabled=busy||!canBuild;
-  bS.textContent=d.scrape.running?"Scraping\u2026":"\u25B6 Run scrape";
+  bS.textContent=d.scrape.running?"\u23F9 Stop scrape":"\u25B6 Run scrape";
+  bS.title=d.scrape.running?"Stop the scrape running in Chrome. Jobs already collected are kept.":"";
   bR.textContent=(ph==="ranking")?"Ranking\u2026":"\u25B6 Rank pool";
   bB.textContent=(ph==="building")?"Building\u2026":"\u25B6 Start build";
   bR.title=canRank?"score the pool locally (preview, no CVs)":"nothing in the pool to rank yet";
@@ -389,7 +394,22 @@ $("autobuild").onclick=async()=>{
   if(r) toast("Autobuild "+(r.autobuild?"ON — builds after each scrape":"OFF"));
   tick();
 };
-document.querySelectorAll("#steps .go[data-act]").forEach(b=>b.onclick=()=>doAct(b.dataset.act));
+document.querySelectorAll("#steps .go[data-act]").forEach(b=>b.onclick=()=>
+  (b.dataset.act==="scrape"&&window._scraping)?stopScrape():doAct(b.dataset.act));
+async function stopScrape(){
+  if(!confirm("Stop the scrape now?\n\nJobs already collected are kept. Run scrape later continues from the search it stopped at.")) return;
+  const btns=[$("btnScrape"),$("btnStopScrape")];
+  btns.forEach(x=>{x.disabled=true; x.textContent="Stopping\u2026";});
+  const r=await post("/scrape/stop",{});
+  btns.forEach(x=>{x.disabled=false;});
+  $("btnStopScrape").textContent="\u23F9 Stop scrape";
+  if(r && r.ok!==false) toast(r.was_running
+    ? "Scrape stopped after "+r.done+" of "+r.total+" searches. Chrome closes its tab within a few seconds."
+    : "No scrape was running.");
+  else toast("Couldn\u2019t stop the scrape",false);
+  tick();
+}
+$("btnStopScrape").onclick=stopScrape;
 $("btnStop").onclick=async()=>{
   if(!confirm("Stop the build now?\n\nThe documents already finished are kept. You can start again later; it will resume from what is on disk and not rebuild them.")) return;
   $("btnStop").disabled=true; $("btnStop").textContent="Stopping…";

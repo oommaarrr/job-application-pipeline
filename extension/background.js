@@ -254,6 +254,9 @@ async function waitForRun(ms = 15 * 60 * 1000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     await wait(3000);
+    // Stopped from the dashboard: the tab is already closed and will never
+    // report, so stop waiting for it.
+    if (stopRequested) break;
     const { autoRun } = await chrome.storage.local.get("autoRun");
     if (!autoRun) return true;
   }
@@ -319,6 +322,24 @@ function cleanSearchUrl(raw) {
   } catch { return raw; }
 }
 
+/*
+ * Stop scrape on the dashboard. The pipeline cannot reach into Chrome, so a
+ * run asks it every few seconds, and a stop closes the search tab at once:
+ * waiting for the current search to finish could take five minutes.
+ */
+let stopRequested = false;
+let currentTabId = null;
+const STOP_POLL_MS = 4000;
+
+async function watchForStop() {
+  const r = await call("/scrape/state", null, 3000);
+  if (!r.ok || !r.stop || stopRequested) return;
+  stopRequested = true;
+  if (currentTabId != null) {
+    try { await chrome.tabs.remove(currentTabId); } catch { /* already closed */ }
+  }
+}
+
 async function runOneSearch(search, pages) {
   let tab = null;
   const t0 = Date.now();
@@ -351,6 +372,7 @@ async function runOneSearch(search, pages) {
     tab = open && open[0]
       ? open[0]
       : await chrome.tabs.create({ url, active: foreground });
+    currentTabId = tab.id;
     if (foreground) {
       // Reused tabs start inactive, and a focused tab in an unfocused window is
       // still not being rendered, so raise both.
@@ -495,7 +517,10 @@ async function reportSearch(audit) {
 }
 
 async function reportScrape(running, done, total) {
-  try { await call("/scrape", { running, done, total }); } catch { /* best effort */ }
+  try {
+    const r = await call("/scrape", { running, done, total });
+    if (running && r.stop) stopRequested = true;
+  } catch { /* best effort */ }
 }
 
 async function runSchedule() {
@@ -512,12 +537,14 @@ async function runSchedule() {
   rs.order = searches;
 
   rs.startedAt = Date.now();
+  stopRequested = false;
   await setSched({ running: true, runState: rs });
   await reportScrape(true, rs.index, searches.length);
   await flushToBridge("run start");
+  const stopPoll = setInterval(() => { watchForStop().catch(() => {}); }, STOP_POLL_MS);
 
   try {
-    while (rs.index < searches.length) {
+    while (rs.index < searches.length && !stopRequested) {
       const i = rs.index;
       const search = searches[i];
       const tries = (rs.tries[i] || 0) + 1;
@@ -528,6 +555,9 @@ async function runSchedule() {
         text: `search ${i + 1}/${searches.length}: ${siteLabel(search.url)} · ${search.label}`, running: true } });
 
       const res = await runOneSearch(search, s0.pages);
+      currentTabId = null;
+      // Stopped mid-search: that search is not done, so Run scrape repeats it.
+      if (stopRequested) break;
 
       if (!res.ok && tries < MAX_TRIES) {
         /*
@@ -590,6 +620,13 @@ async function runSchedule() {
     }
 
     await flushToBridge("run end");
+    if (stopRequested) {
+      // Kept: Run scrape continues from here (within RESUME_MAX_MS).
+      await setSched({ runState: rs });
+      await chrome.storage.local.set({ autoStatus: {
+        text: `stopped after ${rs.index} of ${searches.length} searches`, running: false } });
+      return;
+    }
     await chrome.storage.local.set({ autoStatus: {
       text: `all ${searches.length} searches done`, running: false } });
     // The popup is usually shut while this runs, so the only place a result
@@ -603,8 +640,10 @@ async function runSchedule() {
     await setSched({ runState: null,
                      lastResult: { at: Date.now(), lines: rs.done } });
   } finally {
+    clearInterval(stopPoll);
     await setSched({ running: false });
-    await reportScrape(false, searches.length, searches.length);
+    await reportScrape(false, stopRequested ? rs.index : searches.length, searches.length);
+    stopRequested = false;
   }
 }
 
@@ -751,6 +790,23 @@ async function checkTrigger() {
     if (only && !picked.length) {
       alert_("Job collector", `No saved search matches “${only}”`);
       return;
+    }
+
+    /*
+     * The pipeline keeps the run's place too, and sends the searches a cut-off
+     * run already finished. It survives what this browser's storage does not:
+     * reloading the extension from another folder starts it empty, and on
+     * 29 September that made Run scrape repeat three finished searches.
+     */
+    const skip = new Set(Array.isArray(r.skip) ? r.skip : []);
+    if (!only && skip.size) {
+      const rest = picked.filter((q) => !skip.has(q.url));
+      if (rest.length) {
+        alert_("Job collector", `Continuing: ${rest.length} of ${picked.length} searches left…`);
+        await setSched({ runState: { index: 0, done: [], tries: {}, order: interleave(rest) } });
+        runSchedule().catch(() => {});
+        return;
+      }
     }
 
     /*
