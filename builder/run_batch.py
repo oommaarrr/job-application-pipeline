@@ -654,6 +654,7 @@ def main() -> None:
                  "Git Bash to run commands, so nothing could be written",
                  f"Install it: {pu.install_hint('git-bash')}, then press Retry.", 1)
 
+    check_claude(claude, model)
     build_rounds(claude, model, ref_cvs, build_target)
 
 
@@ -750,6 +751,55 @@ NOTHING_RE = re.compile(r"nothing to build|no batch to build|zero (eligible|rank
                         r"roles?|nothing to rank|no eligible roles", re.I)
 
 
+def end_signed_out() -> None:
+    """A signed-out CLI is the one failure retrying cannot fix: headless has no
+    way to prompt for a login. `claude auth status` can still say "logged in"
+    when the stored sign-in no longer renews, hence the update hint."""
+    notify("No applications built", "Claude is signed out. Run: claude auth login")
+    STATE.unlink(missing_ok=True)
+    end_with("failed", "Claude is signed out, so nothing could be written",
+             "In a terminal run: claude update, then claude auth login, then press Retry.", 1)
+
+
+def check_claude(claude: str, model: str) -> None:
+    """
+    One short call before any writing session starts.
+
+    Two reasons. A build runs two Claude sessions at once, and with an expired
+    access token both used to renew it at the same moment; one renewal makes
+    the other's stale, which is a likely way the stored sign-in broke on
+    7 October 2026. One call first renews it once, and the sessions start with
+    a fresh token. And a sign-in that is broken is found in seconds, before
+    the sessions spend minutes retrying, with the fix in the message.
+    """
+    say("checking that Claude answers")
+    try:
+        p = subprocess.run([claude, "-p", "Reply with the single word: ok", "--model", model,
+                            "--max-turns", "1"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=90, stdin=subprocess.DEVNULL, **pu.quiet_kwargs())
+        text, code = (p.stdout or "") + (p.stderr or ""), p.returncode
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        text, code = out, None
+    except OSError as e:
+        text, code = str(e), 1
+    if AUTH_RE.search(text):
+        end_signed_out()
+    if LIMIT_RE.search(text):
+        STATE.unlink(missing_ok=True)
+        end_with("stopped", "Claude usage limit reached before writing started",
+                 "Press Retry after the limit resets.", 0)
+    if code is None:
+        # It keeps retrying a refused sign-in for minutes without saying so.
+        STATE.unlink(missing_ok=True)
+        end_with("failed", "Claude did not answer within 90 seconds, so nothing was written",
+                 'In a terminal run: claude -p "ok" to see why. Usually the fix is '
+                 "claude update, then claude auth login. Then press Retry.", 1)
+    if code != 0:
+        say(f"the check call ended with exit {code}; continuing, the build reports any real problem")
+
+
 def build_rounds(claude: str, model: str, ref_cvs: str, build_target: int) -> None:
     for rnd in range(1, MAX_ATTEMPTS + 1):
         have = n_built()
@@ -838,13 +888,9 @@ def build_rounds(claude: str, model: str, ref_cvs: str, build_target: int) -> No
                      "Press Retry after the limit resets. Finished applications are kept "
                      "and skipped.", 0)
 
-        # A signed-out CLI is the one failure retrying cannot fix: headless has
-        # no way to prompt for a login.
+        # The sign-in can also stop working partway through a build.
         if AUTH_RE.search(text):
-            notify("No applications built", "Claude is signed out. Run: claude auth login")
-            STATE.unlink(missing_ok=True)
-            end_with("failed", "Claude is signed out, so nothing could be written",
-                     "In a terminal run: claude auth login, then press Retry.", 1)
+            end_signed_out()
 
         # Claude stops ON PURPOSE when it cannot write honestly, with a
         # BATCH-STOP line. Retrying only re-spends usage to hear the same answer.

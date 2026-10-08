@@ -1977,6 +1977,41 @@ def _claude_signed_in(binary) -> bool | None:
     return value
 
 
+def _claude_signin_broken() -> bool:
+    """
+    The last build was refused because the sign-in no longer worked, and it
+    has not changed since. `claude auth status` cannot see this: it reports a
+    stored sign-in as logged in even when its token can no longer be renewed
+    (7 October 2026, when it said "signed in" for a sign-in that failed every
+    build). Signing in again changes it, which clears this.
+    """
+    o = _build_outcome()
+    if o.get("status") != "failed" or "signed out" not in (o.get("message") or ""):
+        return False
+    try:
+        failed_at = dt.datetime.fromisoformat(o["at"]).timestamp()
+    except (KeyError, ValueError):
+        return False
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        # A token from claude setup-token in local.env: changed when that is.
+        try:
+            changed = (REPO / "local.env").stat().st_mtime
+        except OSError:
+            changed = None
+    else:
+        changed = pu.claude_signin_changed_at()
+    return not (changed and changed > failed_at)
+
+
+def _claude_age_days(binary) -> int | None:
+    """How old the installed Claude Code is, from the file itself. An install
+    that stopped updating hid the 7 October 2026 sign-in failure for months."""
+    try:
+        return int((time.time() - pathlib.Path(binary).resolve().stat().st_mtime) // 86400)
+    except OSError:
+        return None
+
+
 def doctor() -> dict:
     """Preflight. Everything a fresh clone needs, checked one at a time."""
     checks: list[dict] = []
@@ -2042,9 +2077,17 @@ def doctor() -> dict:
             pu.install_hint("git-bash"))
     if claude:
         signed = _claude_signed_in(claude)
-        add("claude-login", "Claude Code is signed in", signed is not False,
-            "signed in" if signed else ("could not check" if signed is None else "not signed in"),
-            "claude auth login")
+        broken = signed is not False and _claude_signin_broken()
+        add("claude-login", "Claude Code is signed in", signed is not False and not broken,
+            ("the last build was refused: the sign-in no longer works. Sign in again, "
+             "then press Retry" if broken
+             else "signed in" if signed else ("could not check" if signed is None else "not signed in")),
+            "claude update && claude auth login" if broken else "claude auth login")
+        age = _claude_age_days(claude)
+        add("claude-update", "Claude Code is up to date", age is None or age < 60,
+            "recent" if age is None or age < 60
+            else f"this install is {age} days old and has not updated itself",
+            "claude update", weight="optional")
 
     # --- the profile ------------------------------------------------------
     prof = PROFILE if PROFILE.exists() else None

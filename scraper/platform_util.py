@@ -14,9 +14,11 @@ Windows branch would have been the one nobody tested.
 
 from __future__ import annotations
 
+import calendar
 import contextlib
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -60,6 +62,27 @@ def _first_file(paths) -> str | None:
         if p and pathlib.Path(p).is_file():
             return str(p)
     return None
+
+
+def claude_signin_changed_at() -> float | None:
+    """
+    When Claude Code's stored sign-in last changed (a new login, or a renewed
+    token), as a Unix time, or None when it cannot be told. Only the date is
+    read, never the sign-in itself. macOS keeps it in the login Keychain;
+    Linux and Windows in ~/.claude/.credentials.json.
+    """
+    if IS_MAC:
+        try:
+            out = subprocess.run(["security", "find-generic-password", "-s", "Claude Code-credentials"],
+                                 capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        m = re.search(r'"mdat"<timedate>=\S*\s+"(\d{14})Z', out)
+        return calendar.timegm(time.strptime(m.group(1), "%Y%m%d%H%M%S")) if m else None
+    try:
+        return (pathlib.Path.home() / ".claude" / ".credentials.json").stat().st_mtime
+    except OSError:
+        return None
 
 
 def find_claude() -> str | None:

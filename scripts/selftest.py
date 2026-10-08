@@ -82,6 +82,8 @@ want = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 3
 shard, shards = os.environ.get("APPLY_SHARD", "1"), os.environ.get("APPLY_SHARDS", "1")
 if mode == "limit": print("You've hit your limit · resets 5pm (Europe/Berlin)"); sys.exit(1)
 if mode == "auth": print("Invalid API key · Please run /login"); sys.exit(1)
+if not prompt.startswith("/apply-batch"):
+    print("ok"); sys.exit(0)        # run_batch.py's check call before writing
 if mode == "stop": print("BATCH-STOP: the profile has no projects"); sys.exit(0)
 if mode == "hang": time.sleep(3600)
 day = pathlib.Path("applications") / dt.date.today().isoformat()
