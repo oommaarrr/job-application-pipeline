@@ -505,7 +505,13 @@ dashboard all use the same one; `RANK_ENGINE` in the config sets the default.
   posting per call, four calls at a time (`CLAUDE_RANK_BATCH`,
   `CLAUDE_RANK_CONCURRENCY`). Several postings per call was measured and
   rejected: Haiku left up to a third of them unanswered and its verdicts moved
-  on about 1 in 5 of the rest. A posting left unanswered is asked about again. Ollama is not needed;
+  on about 1 in 5 of the rest. A posting left unanswered is asked about again.
+- Each call is lean: no tools, none of your own Claude Code setup (MCP
+  servers, plugins, hooks, skills) and a one-line system prompt, about 3,500
+  input tokens per posting instead of 41,000. A call that takes over
+  `CLAUDE_RANK_TIMEOUT` (45 s) is abandoned and asked again: most answer in
+  about 5 s, but now and then one stalls for minutes, and the ranking would wait
+  for it. Measured: 48 postings in under a minute. Ollama is not needed;
   a signed-out Claude or a spent usage window stops the ranking with the fix.
 - The same gates decide for both models. Claude scores the same jobs lower, so
   it has its own fit floor, `CLAUDE_MIN_FIT` (30; the local model's is

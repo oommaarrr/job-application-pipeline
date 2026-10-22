@@ -186,7 +186,12 @@ CLAUDE_RANK_MODEL = "claude-haiku-5-5"
 # time answered all 48 in 89 seconds, about 3 minutes for a pool of 100.
 CLAUDE_RANK_BATCH = 1           # postings per call
 CLAUDE_RANK_CONCURRENCY = 4     # calls at a time
-CLAUDE_RANK_TIMEOUT = 240       # seconds per call
+# Seconds before a call is given up and asked again. A call takes about 5
+# seconds, but now and then one stalls for minutes (358 s measured, the same
+# job answered in 5 s by the next call), and the whole ranking waits for it:
+# 58 jobs took 10 minutes on 22 October 2026. A stalled call is abandoned and
+# retried at once, and the final pass tries once more.
+CLAUDE_RANK_TIMEOUT = 45
 # Claude scores the same jobs lower than the local model, so it has its own
 # fit floor (MIN_FIT below is the local model's). Measured on 80 past jobs,
 # 22 October 2026: of roles Sonnet later built, Haiku kept 68% at 30 (43% at

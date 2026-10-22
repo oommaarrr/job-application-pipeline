@@ -41,8 +41,10 @@ import pathlib
 import os
 import re
 import signal
+import statistics
 import subprocess
 import sys
+import time
 import urllib.request
 
 import config
@@ -188,6 +190,22 @@ CLAUDE_AUTH = re.compile(r"OAuth access token|authentication_error|Failed to aut
                          r"Invalid API key|Please run /login|Not logged in", re.I)
 CLAUDE_LIMIT = re.compile(r"hit your limit|usage limit|rate limit|quota", re.I)
 
+# A ranking call needs none of Claude Code's own machinery: no tools, no MCP
+# servers, plugins, hooks or skills from the user's setup, no saved session,
+# and a one-line system prompt instead of the coding one. Measured 22 October
+# 2026: 41,000 input tokens per job became 3,500, and on a machine with MCP
+# servers or plugins the start-up they cost (10 minutes for 58 jobs, reported)
+# goes too. --bare would be leaner still but cannot use a subscription sign-in.
+CLAUDE_LEAN = ["--tools", "", "--strict-mcp-config", "--disable-slash-commands",
+               "--no-session-persistence", "--setting-sources", "project",
+               "--system-prompt", "You screen job postings for one candidate and answer "
+                                  "only with the JSON you are asked for."]
+_lean = {"ok": True}      # an older Claude Code without these options: run without
+# Seconds per call, total and inside Claude's API, for the summary line at the
+# end: when a ranking is slow on someone's machine, it says whether the time
+# went to Claude answering or to Claude Code starting (and the network).
+_timings: list[tuple[float, float]] = []
+
 
 def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[str, dict]:
     """
@@ -201,16 +219,33 @@ def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[s
                           "Switch the ranker to Local, or install Claude Code")
     cwd = OUT / ".rank-claude"
     cwd.mkdir(parents=True, exist_ok=True)
-    p = subprocess.run([claude, "-p", "--model", model, "--output-format", "json",
-                        "--max-turns", "1"],
-                       input=build_batch_prompt(jobs, profile), capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", cwd=cwd,
-                       timeout=config.CLAUDE_RANK_TIMEOUT, **pu.quiet_kwargs())
+    def call(lean: bool):
+        return subprocess.run([claude, "-p", "--model", model, "--output-format", "json",
+                               "--max-turns", "1", *(CLAUDE_LEAN if lean else [])],
+                              input=build_batch_prompt(jobs, profile), capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", cwd=cwd,
+                              timeout=config.CLAUDE_RANK_TIMEOUT, **pu.quiet_kwargs())
+    t0 = time.time()
+    try:
+        p = call(_lean["ok"])
+    except subprocess.TimeoutExpired:
+        # A stalled call (see CLAUDE_RANK_TIMEOUT): a fresh one usually answers
+        # in seconds.
+        print(f"  (a call took over {config.CLAUDE_RANK_TIMEOUT}s; asking again)", flush=True)
+        p = call(_lean["ok"])
+    if _lean["ok"] and p.returncode != 0 and re.search(r"unknown option|unrecognized", p.stderr or "", re.I):
+        _lean["ok"] = False
+        print("  (this Claude Code is too old for the lean options; running without them. "
+              "claude update makes ranking faster)", flush=True)
+        p = call(False)
     out = (p.stdout or "") + (p.stderr or "")
     try:
         env = json.loads(p.stdout)
     except ValueError:
         env = {"is_error": True, "result": out}
+    # One append per call (thread-safe), retries included in its time.
+    _timings.append((time.time() - t0, (env.get("duration_api_ms") or 0) / 1000
+                     if isinstance(env, dict) else 0.0))
     text = str(env.get("result") or "")
     if env.get("is_error") or p.returncode != 0:
         if CLAUDE_AUTH.search(out):
@@ -222,7 +257,13 @@ def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[s
         raise ValueError(f"Claude did not answer: {text[:160] or out[:160]}")
     data = _parse(text)
     answers = data.get("answers") if isinstance(data, dict) else data
-    return {str(a.get("id")): a for a in (answers or []) if isinstance(a, dict)}
+    answers = [a for a in (answers or []) if isinstance(a, dict)]
+    # Haiku now and then labels an answer "POSTING 1", or with a number from
+    # the posting itself (2 of 24, measured). One posting, one answer: it is
+    # that posting's, whatever the label.
+    if len(jobs) == 1 and len(answers) == 1:
+        return {jobs[0][0]: answers[0]}
+    return {re.sub(r"(?i)^\s*posting\s*", "", str(a.get("id"))).strip(): a for a in answers}
 
 
 # ------------------------------------------------------- the pre-filter
@@ -943,6 +984,12 @@ def main() -> int:
     for r in top:
         print(f"  {r['rank']:>2}. {r['rank_score']:>3}  {r['title'][:50]:<50} "
               f"{r['company'][:22]:<22} {r['location'][:20]}")
+    if _timings:
+        tot = sorted(t for t, _ in _timings)
+        api = [a for _, a in _timings if a]
+        print(f"\nClaude calls: {len(tot)}, {statistics.median(tot):.1f}s each (median), slowest "
+              f"{tot[-1]:.0f}s; of that, {statistics.median(api) if api else 0:.1f}s answering. "
+              "A big gap between the two is Claude Code starting or the network, not Claude.")
     print("\nFull detail in out/ollama_rank.json and out/ollama_rank.txt")
     return 0
 
