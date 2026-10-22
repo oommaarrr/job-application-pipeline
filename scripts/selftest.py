@@ -967,6 +967,16 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           and e.get("/web/searches.js")[0] == 200,
           "the dashboard has the searches window and Start over")
 
+    node = shutil.which("node")
+    if node:
+        r = subprocess.run([node, str(work / "scripts" / "extension_test.mjs"), str(e.port),
+                            str(work / "extension" / "background.js")],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
+        check(r.returncode == 0, "the extension pulls searches, moves its own list, clears after an erase, "
+                                 "adds a page and continues a cut-off run", (r.stdout + r.stderr)[-1500:])
+    else:
+        print("  (Node is not installed, so the extension's own checks are skipped)")
+
     # Restart now: start.py runs this bridge, as ./start.sh does, so the bridge
     # exits and comes straight back as a new process on the code on disk.
     who = lambda: ps(py, work, f"""
@@ -977,24 +987,18 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     back = False
     for _ in range(60):
         time.sleep(0.5)
+        # Back means a new process answering and none of the old ones left:
+        # the old one answers for half a second after it says yes.
+        now = who()
         try:
-            back = e.get("/status", timeout=2)[0] == 200 and who() not in ("", "[]", before)
-        except OSError:
+            back = (now not in ("", "[]") and not set(json.loads(now)) & set(json.loads(before))
+                    and e.get("/status", timeout=2)[0] == 200)
+        except (OSError, ValueError):
             back = False
         if back:
             break
     check(p.get("can_restart") and r.get("ok") and back,
           "Restart now brings the bridge back as a new process", json.dumps({"r": r, "before": before}))
-
-    node = shutil.which("node")
-    if node:
-        r = subprocess.run([node, str(work / "scripts" / "extension_test.mjs"), str(e.port),
-                            str(work / "extension" / "background.js")],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
-        check(r.returncode == 0, "the extension pulls searches, moves its own list, clears after an erase, "
-                                 "adds a page and continues a cut-off run", (r.stdout + r.stderr)[-1500:])
-    else:
-        print("  (Node is not installed, so the extension's own checks are skipped)")
 
 
 def _write_local(sc: pathlib.Path, text: str | None) -> None:

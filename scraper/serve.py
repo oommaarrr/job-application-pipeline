@@ -143,11 +143,21 @@ def _supervised() -> bool:
         return True
     if os.environ.get("XPC_SERVICE_NAME") == "com.jobpipeline.bridge":   # launchd agent
         return True
-    try:                                                      # start.py (window or login entry)
+    # start.py (a window or the login entry). Not only the parent: on Windows a
+    # venv's python.exe is a launcher that runs the real Python as its child,
+    # so start.py is the grandparent there.
+    try:
         import psutil
-        return any(t.endswith("start.py") for t in psutil.Process(os.getppid()).cmdline())
+        proc = psutil.Process(os.getpid())
+        for _ in range(3):
+            proc = proc.parent()
+            if proc is None:
+                return False
+            if any(t.endswith("start.py") for t in proc.cmdline()):
+                return True
     except Exception:                                         # noqa: BLE001
-        return False
+        pass
+    return False
 
 
 def _build_day() -> str:
