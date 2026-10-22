@@ -173,6 +173,36 @@ OLLAMA_TIMEOUT = 180            # seconds per job
 EMBED_MODEL = "nomic-embed-text"
 ARBEITNOW_API = "https://www.arbeitnow.com/api/job-board-api"
 
+# Which model ranks the pool, switched on the dashboard (rank_engine.py keeps
+# the choice). "local" is Ollama above. "claude" is a small fast Claude model
+# through the Claude Code sign-in the build already uses: minutes instead of
+# hours on a slow laptop, no Ollama needed, and it uses some of the Claude
+# usage the CVs also need.
+RANK_ENGINE = "local"
+CLAUDE_RANK_MODEL = "claude-haiku-5-5"
+# One posting per call. Measured on 48 past jobs, 22 October 2026: with 4 or
+# 8 postings per call Haiku left 17-33% of them unanswered and its verdicts
+# moved on about 1 in 5 of the rest, for a run 2-3 times faster. One at a
+# time answered all 48 in 89 seconds, about 3 minutes for a pool of 100.
+CLAUDE_RANK_BATCH = 1           # postings per call
+CLAUDE_RANK_CONCURRENCY = 4     # calls at a time
+CLAUDE_RANK_TIMEOUT = 240       # seconds per call
+# Claude scores the same jobs lower than the local model, so it has its own
+# fit floor (MIN_FIT below is the local model's). Measured on 80 past jobs,
+# 22 October 2026: of roles Sonnet later built, Haiku kept 68% at 30 (43% at
+# 45); of roles Sonnet rejected as the wrong field, it let 22% through at 30.
+# The local model let all of those through, which is why Sonnet rejected so
+# many. Lower keeps more stretch roles; higher sends Sonnet fewer misfits.
+CLAUDE_MIN_FIT = 30
+
+# Before either model reads anything, jobs far from your target roles (the
+# Arbeitnow searches) by meaning are set aside, using EMBED_MODEL. Measured on
+# 1,270 collected jobs, 22 October 2026: a floor of 0.62 set aside about 15%
+# of them and only 1 of the 221 that were later built. The signal is weak
+# inside one field (good and out-of-lane roles score alike), so the floor is
+# kept low: it removes the unrelated, not the borderline. 0 turns it off.
+EMBED_PREFILTER_FLOOR = 0.62
+
 # How many applications actually get written. THIS IS THE DIAL.
 #
 # It is a FLOOR now, not a fixed number. When the local ranker finds more

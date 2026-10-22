@@ -768,6 +768,11 @@ pre.log .err{color:var(--log-err)}
 }
 
 /* An update on disk that the running pipeline has not picked up yet. */
-.stale-banner{margin:0 0 var(--sp-4);padding:12px 16px;border:1px solid var(--warn);border-radius:var(--r-md,10px);
+.stale-banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 var(--sp-4);padding:12px 16px;border:1px solid var(--warn);border-radius:var(--r-md,10px);
   background:var(--warn-bg);color:var(--ink);font-size:var(--fs-sm);line-height:1.5}
-.stale-banner code{font-size:.95em}
+.stale-banner code{font-size:.95em;padding:2px 6px;border-radius:6px;background:var(--card)}
+.stale-banner > span{flex:1 1 320px}
+
+/* Which model ranks, under Rank pool. */
+.step-acts .rank-engine{margin-top:2px}
+.step-acts .rank-engine label{padding:3px 10px}

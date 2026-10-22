@@ -88,6 +88,11 @@
         <div class="step-top"><i>2</i><b>Rank</b><small id="stRank"></small></div>
         <div class="step-acts">
           <button class="go" id="btnRank" type="button" data-act="rank">&#9654; Rank pool</button>
+          <div class="seg rank-engine" role="radiogroup" aria-label="Which model ranks"
+               title="Local: free and private, slow on some laptops. Claude: minutes instead of hours, uses some Claude usage.">
+            <label><input type="radio" name="rankEngine" value="local"><span>Local</span></label>
+            <label><input type="radio" name="rankEngine" value="claude"><span>Claude</span></label>
+          </div>
         </div>
         <div class="step-status" id="ssRank" aria-live="polite"></div>
       </li>

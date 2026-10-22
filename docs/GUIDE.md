@@ -494,3 +494,28 @@ read what you commit.
   `python3 scripts/contrast.py web/tokens.css`.
 - Most rules in the code carry a comment saying what went wrong without them.
   Read it before changing the rule.
+
+## Ranking with Claude instead of the local model
+
+The switch under **Rank pool** (Local / Claude) decides who reads the pool. It
+is kept in `scraper/out/rank_engine.json`, so the ranker, a build and the
+dashboard all use the same one; `RANK_ENGINE` in the config sets the default.
+
+- **Claude** runs `claude -p` with `CLAUDE_RANK_MODEL` (Haiku 5.5), one
+  posting per call, four calls at a time (`CLAUDE_RANK_BATCH`,
+  `CLAUDE_RANK_CONCURRENCY`). Several postings per call was measured and
+  rejected: Haiku left up to a third of them unanswered and its verdicts moved
+  on about 1 in 5 of the rest. A posting left unanswered is asked about again. Ollama is not needed;
+  a signed-out Claude or a spent usage window stops the ranking with the fix.
+- The same gates decide for both models. Claude scores the same jobs lower, so
+  it has its own fit floor, `CLAUDE_MIN_FIT` (30; the local model's is
+  `MIN_FIT`, 45). Measured on 80 past jobs (October 2026): of roles later built,
+  it kept 68%; of roles Sonnet rejected as the wrong field, it let 22% through,
+  where the local model let all of them through.
+- **Pre-filter.** Before either model reads anything, each job is compared by
+  meaning with your target roles (the Arbeitnow searches), using the embedding
+  model. Below `EMBED_PREFILTER_FLOOR` (0.62) it is set aside, shown on Fit
+  ranking as "far from your roles". Measured on 1,270 collected jobs it set
+  aside about 15% and lost 1 of 221 later built. The signal is weak within one
+  field, so the floor only removes the unrelated. Without target roles, or
+  without Ollama, it is skipped and every job is read. `0` turns it off.

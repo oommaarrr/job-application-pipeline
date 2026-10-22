@@ -335,8 +335,16 @@ them freely.
    searches](#arbeitnow-searches)), and **Run scrape** for your LinkedIn,
    Indeed and StepStone searches (they need the Chrome extension; edit them
    under [Saved searches](#saved-searches)).
-3. **Rank.** Press **Rank pool**. It takes a few minutes; the **Funnel** shows
-   how many jobs survived each filter.
+3. **Rank.** Press **Rank pool**; the **Funnel** shows how many jobs survived
+   each filter. The switch under it picks who reads the jobs:
+   - **Local**: the model on your computer. Free and private, but on a slow
+     laptop it can take hours, and on some it does not run at all.
+   - **Claude**: a small, fast Claude model (Haiku) through the Claude sign-in
+     the build already uses. Minutes instead of hours, no extra setup; it uses
+     some of your Claude usage.
+
+   Either way, jobs far from your target roles (your Arbeitnow searches) are
+   set aside first, so neither model reads a gardener or a car mechanic.
 4. **Build.** Pick how many applications you want (5 is a good start) and press
    **Build**. Each one uses some of your Claude usage.
 5. **Apply.** Click **Applications** at the top: each job has its CV, its cover

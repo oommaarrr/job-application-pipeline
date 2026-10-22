@@ -61,6 +61,7 @@ if __name__ == "__main__":
     bootstrap.ensure(__file__)
 import platform_util as pu                                   # noqa: E402
 import ollama_model                                          # noqa: E402
+import rank_engine                                           # noqa: E402
 
 _venv_py = pu.venv_python(SCRAPER_DIR / ".venv")
 PY = os.environ.get("PY") or (str(_venv_py) if _venv_py.exists() else sys.executable)
@@ -550,28 +551,43 @@ def main() -> None:
     # is free: /apply-batch stops at the target. Decision, 24 September 2026.
     rank_top = max(rank_top, build_target_max + (build_target_max + 2) // 3)
 
+    # Which model ranks: the dashboard's switch (scraper/rank_engine.py).
+    engine = rank_engine.get()
+    if engine == "claude":
+        # Claude ranks; Ollama only runs the optional pre-filter, so it is
+        # started if it is installed and never required.
+        if not pu.ollama_up() and pu.find_ollama():
+            pu.start_ollama(LOG_DIR / "ollama.log")
     # Ollama has to be up. It is a normal user process, not a service, so a
     # machine that rebooted has it installed and not running.
-    if not pu.ollama_up():
+    elif not pu.ollama_up():
         say("ollama is not running, starting it")
         pu.start_ollama(LOG_DIR / "ollama.log")
     # Any model Ollama already has will do (scraper/ollama_model.py); only
     # with none installed does the wanted one have to download first.
     want_model = ollama_model.wanted(cfg)
     entries = ollama_model.tags(getattr(cfg, "OLLAMA_URL", ollama_model.DEFAULT_URL), 5)
-    if pu.ollama_up() and entries is not None and ollama_model.resolve(cfg, entries) is None:
+    if engine == "local" and pu.ollama_up() and entries is not None \
+            and ollama_model.resolve(cfg, entries) is None:
         end_with("info", f"the local model '{want_model}' is not downloaded yet, so nothing "
                  "was ranked", "It downloads by itself while the pipeline runs; press Build "
                  "again when the Activity panel says it is ready.", 0)
-    if not pu.ollama_up():
+    if engine == "local" and not pu.ollama_up():
         notify("nothing was built", "Ollama is down")
         end_with("failed", "Ollama is not running and could not be started, so nothing "
                  "was ranked", "Open the Ollama app (or run: ollama serve), then press Retry.", 1)
 
-    say(f"ranking {last} jobs with the local model (this is the slow part)")
-    notify(f"Ranking {last} jobs locally…")
+    if engine == "claude":
+        say(f"ranking {last} jobs with Claude ({rank_engine.claude_model()})")
+        notify(f"Ranking {last} jobs with Claude…")
+    else:
+        say(f"ranking {last} jobs with the local model (this is the slow part)")
+        notify(f"Ranking {last} jobs locally…")
     say(f"target {build_target} built, from every role that passes the ranking")
-    code, out = run_logged([PY, str(SCRAPER_DIR / "rank_ollama.py"), "--top", str(rank_top), "--all"],
+    # The engine is passed, not re-read: the switch flipped in between must
+    # not leave this build checking for one model and ranking with the other.
+    code, out = run_logged([PY, str(SCRAPER_DIR / "rank_ollama.py"), "--top", str(rank_top), "--all",
+                            "--engine", engine],
                            tee=True)
     if code != 0:
         if "Nothing to rank" in out:
@@ -579,8 +595,14 @@ def main() -> None:
             end_with("info", "every job in the pool was already applied to or handled, "
                      "so there was nothing new to rank",
                      "Collect fresh jobs, then build again.", 0)
-        notify("nothing was built", "Local ranking failed")
-        end_with("failed", "the local ranking failed, so nothing was built from an "
+        stopped = re.search(r"RANKING STOPPED: (.+)", out)
+        if stopped:
+            # Claude signed out or out of usage: the ranker said what to do.
+            notify("nothing was built", "Ranking stopped")
+            end_with("failed", "the ranking stopped, so nothing was built",
+                     stopped.group(1).strip()[:300], 1)
+        notify("nothing was built", "Ranking failed")
+        end_with("failed", "the ranking failed, so nothing was built from an "
                  "unranked pool", "Press Retry: jobs already judged are cached, so it "
                  "resumes. Details are in the build log.", 1)
 

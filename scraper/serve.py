@@ -113,7 +113,7 @@ def _today() -> str:
 # on 29 September 2026 the new Saved searches window met a server without
 # /searches/save, and a new search was lost on Save. Raise it whenever the pages
 # start relying on a new endpoint, together with PIPELINE_API in web/dashboard.js.
-API_VERSION = 4
+API_VERSION = 6
 _CODE_FILES = sorted(pathlib.Path(__file__).resolve().parent.glob("*.py"))
 _CODE_AT_START = {f: f.stat().st_mtime for f in _CODE_FILES}
 
@@ -128,6 +128,26 @@ def _code_changed() -> bool:
         except OSError:
             continue
     return False
+
+
+# Exit code that asks whatever runs the bridge to start it again: launchd
+# (KeepAlive on a failed exit), systemd (Restart=on-failure) and start.py's own
+# loop all do. Used by the dashboard's Restart now, so an update takes effect
+# without a terminal.
+RESTART_EXIT = 75
+
+
+def _supervised() -> bool:
+    """Is something running this bridge that starts it again when it exits?"""
+    if os.environ.get("INVOCATION_ID"):                       # systemd --user
+        return True
+    if os.environ.get("XPC_SERVICE_NAME") == "com.jobpipeline.bridge":   # launchd agent
+        return True
+    try:                                                      # start.py (window or login entry)
+        import psutil
+        return any(t.endswith("start.py") for t in psutil.Process(os.getppid()).cmdline())
+    except Exception:                                         # noqa: BLE001
+        return False
 
 
 def _build_day() -> str:
@@ -323,6 +343,7 @@ _data_lock = threading.Lock()
 import config
 import ledger
 import pool_status
+import rank_engine
 import saved_searches
 from jobkey import job_key as _key
 
@@ -850,16 +871,19 @@ def start_rank() -> dict:
     ranker = ROOT / "rank_ollama.py"
     if not (PYTHON.exists() and ranker.exists()):
         return {"ok": False, "why": "ranker or venv is missing"}
+    engine = rank_engine.get()
     up, _, entries = _ollama_tags()
-    if not up and pu.start_ollama(OUT / "ollama.log",
-                                  url=getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")):
+    if not up and pu.find_ollama() and pu.start_ollama(
+            OUT / "ollama.log", url=getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")):
         up, _, entries = _ollama_tags()
-    if not up:
+    if engine == "claude":
+        pass        # Claude ranks; Ollama only runs the optional pre-filter
+    elif not up:
         _event("rank", "failed", "Ollama is not running, so nothing can be ranked",
                fix="Open the Ollama app (or run: ollama serve), then press Retry.")
         return {"ok": False, "why": "Ollama is not running. Open the Ollama app, then try again.",
                 "fix": "ollama serve"}
-    if _model_wanted(entries) is None:
+    elif _model_wanted(entries) is None:
         return {"ok": False, "why": f"the local model '{om.wanted(config)}' is still downloading "
                 "(it starts by itself when Ollama runs); try again when Activity says it is ready"}
     top = getattr(config, "TOP_N", 20)
@@ -867,13 +891,14 @@ def start_rank() -> dict:
     log.write(f"\n=== rank started by the dashboard {dt.datetime.now():%H:%M:%S} ===\n")
     log.flush()
     global _rank_proc
-    proc = subprocess.Popen([str(PYTHON), str(ranker), "--top", str(top)],
+    proc = subprocess.Popen([str(PYTHON), str(ranker), "--top", str(top), "--engine", engine],
                             cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL, **pu.detach_kwargs())
     _rank_proc = proc
     _rank.update(running=True, started=dt.datetime.now().isoformat(timespec="seconds"),
                  finished=None, pid=proc.pid, result=None)
-    _event("rank", "started", "ranking the pool with the local model")
+    _event("rank", "started", "ranking the pool with " + (
+        f"Claude ({rank_engine.claude_model()})" if engine == "claude" else "the local model"))
     return {"ok": True, "pid": proc.pid}
 
 
@@ -1209,10 +1234,13 @@ def _rank_result() -> dict | None:
             return None
         if _rank.get("failed_at") and mtime <= _rank["failed_at"]:
             return None
-        h = json.loads(f.read_text(encoding="utf-8")).get("health", {})
+        data = json.loads(f.read_text(encoding="utf-8"))
+        h = data.get("health", {})
         if h:
             return {"buildable": h.get("buildable"), "judged": h.get("judged"),
-                    "strong": h.get("strong"), "verdict": h.get("verdict")}
+                    "strong": h.get("strong"), "verdict": h.get("verdict"),
+                    "engine": data.get("engine") or "local",
+                    "set_aside": (data.get("counts") or {}).get("set_aside") or 0}
     except (OSError, ValueError, AttributeError):
         pass
     return None
@@ -1674,6 +1702,8 @@ def progress() -> dict:
         "ok": True,
         "api": API_VERSION,
         "code_changed": _code_changed(),
+        "can_restart": _supervised(),
+        "rank_engine": rank_engine.get(),
         "now": dt.datetime.now().isoformat(timespec="seconds"),
         "phase": phase,
         "autobuild": _autobuild,
@@ -2025,15 +2055,19 @@ def doctor() -> dict:
     models = [m.get("name", "") for m in entries]
     chosen = _model_wanted(entries) if up else None
     want = chosen or om.wanted(config)
+    # With Claude ranking, the local model is only the optional pre-filter.
+    by_claude = rank_engine.get() == "claude"
+    local_w = {"weight": "optional"} if by_claude else {}
     add("ollama", "Ollama is running", up,
-        f"{len(models)} model(s) available" if up else f"not reachable — {why}",
-        "ollama serve")
+        (f"{len(models)} model(s) available" if up else f"not reachable — {why}")
+        + (" · Claude ranks, so this is optional" if by_claude else ""),
+        "ollama serve", **local_w)
     have = chosen is not None
     add("model", f"Model '{want}' is pulled", up and have,
         ("downloading now, by itself (a few GB, once)" if _model_pull["running"]
          else (", ".join(models[:4]) if have else "not yet: it downloads by itself shortly"))
         if up else "cannot tell while Ollama is down; open the Ollama app",
-        f"ollama pull {want}")
+        f"ollama pull {want}", **local_w)
     emb = om.embed_wanted(config)
     has_emb = om.has_embed(entries, emb)
     add("embed-model", f"Model '{emb}' is pulled (for Arbeitnow)", up and has_emb,
@@ -2656,6 +2690,31 @@ class Handler(BaseHTTPRequestHandler):
                                 "at": dt.datetime.now().isoformat(timespec="seconds")})
             _write_scrape_audit()
             return self._send({"ok": True, "logged": len(_search_log)})
+
+        if route == "/rank/engine":
+            # The dashboard's switch between the local model and Claude.
+            if _rank_running():
+                return self._send({"ok": False, "why": "a ranking is running; switch after it ends"})
+            try:
+                engine = rank_engine.set_engine(str(body.get("engine") or ""))
+            except ValueError as e:
+                return self._send({"ok": False, "why": str(e)})
+            # Its own step, so it shows in Activity without replacing the
+            # last ranking's result under the Rank step.
+            _event("rank-engine", "info", "ranking now uses " + (
+                f"Claude ({rank_engine.claude_model()})" if engine == "claude" else "the local model"))
+            return self._send({"ok": True, "engine": engine})
+
+        if route == "/restart":
+            # Answer first, then exit; whatever runs the bridge starts it
+            # again on the code now on disk. A build keeps running and is
+            # adopted by the new bridge.
+            if not _supervised():
+                return self._send({"ok": False, "why": "it was started by hand, so nothing "
+                                   "would start it again. Stop it and start it yourself"})
+            self._send({"ok": True})
+            threading.Timer(0.5, os._exit, args=(RESTART_EXIT,)).start()
+            return
 
         if route == "/scrape/stop":
             if not _scrape.get("running"):

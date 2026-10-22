@@ -41,12 +41,15 @@ import pathlib
 import os
 import re
 import signal
+import subprocess
 import sys
 import urllib.request
 
 import config
 import ollama_model
 import ledger
+import platform_util as pu
+import rank_engine
 from jobkey import job_key
 
 HERE = pathlib.Path(__file__).parent
@@ -93,24 +96,9 @@ def _read(path: pathlib.Path, default):
 
 
 # --------------------------------------------------------------- the model
-def build_prompt(job: dict, profile: str) -> str:
-    desc = (job.get("description") or "")[: config.OLLAMA_DESC_CHARS]
-    return f"""You are screening job postings for one specific candidate.
-
-{profile}
-
-=== THE POSTING ===
-Title: {job.get('title') or ''}
-Company: {job.get('company') or ''}
-Location: {job.get('location') or ''}
-
-{desc}
-=== END POSTING ===
-
-Answer with ONE JSON object and nothing else. No markdown, no explanation.
-
-{{
-  "german_level": one of "none","a1","a2","b1","b2","c1","native" — the German
+# The fields asked for, shared by the local prompt (one posting) and Claude's
+# (several postings in one call).
+ANSWER_FIELDS = """  "german_level": one of "none","a1","a2","b1","b2","c1","native" — the German
       the posting REQUIRES. "German is a plus" is "none". Only say "c1" or
       "native" when fluent or business-fluent German is stated as a requirement.
       A posting written in German does not by itself require German.
@@ -130,7 +118,50 @@ Answer with ONE JSON object and nothing else. No markdown, no explanation.
   "fit": integer 0-100, how close this work is to what the candidate has actually built.
       100 means it could have been written for them. 0 means a different field.
   "reason": one short sentence, at most 20 words, naming the deciding factor.
-}}"""
+"""
+
+
+def build_prompt(job: dict, profile: str) -> str:
+    desc = (job.get("description") or "")[: config.OLLAMA_DESC_CHARS]
+    return f"""You are screening job postings for one specific candidate.
+
+{profile}
+
+=== THE POSTING ===
+Title: {job.get('title') or ''}
+Company: {job.get('company') or ''}
+Location: {job.get('location') or ''}
+
+{desc}
+=== END POSTING ===
+
+Answer with ONE JSON object and nothing else. No markdown, no explanation.
+
+{{
+{ANSWER_FIELDS}}}"""
+
+
+def build_batch_prompt(jobs: list[tuple[str, dict]], profile: str) -> str:
+    """Several postings in one call, each answered under its id."""
+    parts = []
+    for jid, job in jobs:
+        desc = (job.get("description") or "")[: config.OLLAMA_DESC_CHARS]
+        parts.append(f"=== POSTING {jid} ===\nTitle: {job.get('title') or ''}\n"
+                     f"Company: {job.get('company') or ''}\nLocation: {job.get('location') or ''}\n\n"
+                     f"{desc}\n=== END POSTING {jid} ===")
+    return f"""You are screening job postings for one specific candidate. Do not use any
+tools: read the postings below and answer.
+
+{profile}
+
+{chr(10).join(parts)}
+
+Answer with ONE JSON object and nothing else. No markdown, no explanation:
+{{"answers": [ one object per posting, in any order ]}}
+where each object has "id" (the posting's id, as written above) and these fields:
+
+{{
+{ANSWER_FIELDS}}}"""
 
 
 def ask(model: str, prompt: str) -> dict:
@@ -147,6 +178,109 @@ def ask(model: str, prompt: str) -> dict:
     with urllib.request.urlopen(req, timeout=config.OLLAMA_TIMEOUT) as r:
         raw = json.loads(r.read())["response"]
     return _parse(raw)
+
+
+class StopRanking(Exception):
+    """A failure no retry fixes: Claude signed out, or its usage spent."""
+
+
+CLAUDE_AUTH = re.compile(r"OAuth access token|authentication_error|Failed to authenticate|"
+                         r"Invalid API key|Please run /login|Not logged in", re.I)
+CLAUDE_LIMIT = re.compile(r"hit your limit|usage limit|rate limit|quota", re.I)
+
+
+def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[str, dict]:
+    """
+    Several postings in one `claude -p` call; {id: answer} for those answered.
+    The prompt goes in on stdin: a batch is far longer than Windows allows on a
+    command line. Run from an empty folder so no project instructions load.
+    """
+    claude = pu.find_claude()
+    if not claude:
+        raise StopRanking("Claude Code is not installed, so Claude cannot rank. "
+                          "Switch the ranker to Local, or install Claude Code")
+    cwd = OUT / ".rank-claude"
+    cwd.mkdir(parents=True, exist_ok=True)
+    p = subprocess.run([claude, "-p", "--model", model, "--output-format", "json",
+                        "--max-turns", "1"],
+                       input=build_batch_prompt(jobs, profile), capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", cwd=cwd,
+                       timeout=config.CLAUDE_RANK_TIMEOUT, **pu.quiet_kwargs())
+    out = (p.stdout or "") + (p.stderr or "")
+    try:
+        env = json.loads(p.stdout)
+    except ValueError:
+        env = {"is_error": True, "result": out}
+    text = str(env.get("result") or "")
+    if env.get("is_error") or p.returncode != 0:
+        if CLAUDE_AUTH.search(out):
+            raise StopRanking("Claude is signed out. In a terminal run: claude update, "
+                              "then claude auth login, then rank again")
+        if CLAUDE_LIMIT.search(out):
+            raise StopRanking("Claude's usage limit is reached. Rank again after it resets, "
+                              "or switch the ranker to Local")
+        raise ValueError(f"Claude did not answer: {text[:160] or out[:160]}")
+    data = _parse(text)
+    answers = data.get("answers") if isinstance(data, dict) else data
+    return {str(a.get("id")): a for a in (answers or []) if isinstance(a, dict)}
+
+
+# ------------------------------------------------------- the pre-filter
+VEC_CACHE = OUT / "rank_similarity.json"
+
+
+def target_roles() -> list[str]:
+    """What the candidate is looking for, as the Arbeitnow searches put it."""
+    try:
+        import arbeitnow_match as am
+        st = am.load() or {}
+    except Exception:                                       # noqa: BLE001
+        return []
+    return [f"{q.get('name', '')}: {q.get('looking_for', '')}".strip()
+            for q in st.get("searches", []) if q.get("on", True) and q.get("looking_for")]
+
+
+def prefilter(pool: list[dict]) -> tuple[list[dict], list[tuple[dict, float]], str]:
+    """
+    Set aside jobs far from the target roles by meaning, before any model reads
+    them (config.EMBED_PREFILTER_FLOOR). Returns (kept, set aside with their
+    similarity, a note for the log). Anything that stops it (no target roles,
+    Ollama or the embedding model missing) keeps every job: it only ever saves
+    work, it is never a reason to fail.
+    """
+    floor = float(getattr(config, "EMBED_PREFILTER_FLOOR", 0) or 0)
+    if floor <= 0 or not pool:
+        return pool, [], ""
+    roles = target_roles()
+    if not roles:
+        return pool, [], "pre-filter skipped: no target roles yet (set them in the Arbeitnow window)"
+    import arbeitnow_match as am
+    qkey = hashlib.sha1(json.dumps([am.EMBED_MODEL, roles]).encode()).hexdigest()[:10]
+    cache = _read(VEC_CACHE, {})
+    if cache.get("q") != qkey:
+        cache = {"q": qkey, "sims": {}}
+
+    def key(j):
+        fp = hashlib.sha1((j.get("description") or "").encode()).hexdigest()[:12]
+        return f"{job_key(j['url'])}|{fp}"
+    todo = [j for j in pool if key(j) not in cache["sims"]]
+    try:
+        qv = am.embed(["search_query: " + r for r in roles])
+        for i in range(0, len(todo), 64):
+            chunk = todo[i:i + 64]
+            vecs = am.embed([f"search_document: {j.get('title') or ''}\n"
+                             f"{(j.get('description') or '')[:1500]}" for j in chunk])
+            for j, v in zip(chunk, vecs):
+                cache["sims"][key(j)] = round(max(sum(a * b for a, b in zip(q, v)) for q in qv), 4)
+    except Exception as e:                                  # noqa: BLE001
+        return pool, [], f"pre-filter skipped: {e}"[:160]
+    _atomic_write(VEC_CACHE, json.dumps(cache), encoding="utf-8")
+    kept, aside = [], []
+    for j in pool:
+        sim = cache["sims"][key(j)]
+        (aside.append((j, sim)) if sim < floor else kept.append(j))
+    return kept, aside, (f"pre-filter: {len(aside)} of {len(pool)} set aside as far from "
+                         f"your target roles (similarity below {floor})")
 
 
 def _parse(raw: str) -> dict:
@@ -539,9 +673,17 @@ def main() -> int:
     ap.add_argument("--day", default=None, help="only this scrape date, e.g. 2026-09-13")
     ap.add_argument("--limit", type=int, default=0, help="only the first N, for testing")
     ap.add_argument("--recheck", action="store_true", help="ignore cached answers")
+    ap.add_argument("--engine", choices=rank_engine.ENGINES, default=None,
+                    help="local (Ollama) or claude; default: the dashboard's choice")
     args = ap.parse_args()
-    # OLLAMA_MODEL if it is installed, otherwise one Ollama already has.
-    args.model = args.model or ollama_model.resolve(config) or ollama_model.wanted(config)
+    engine = args.engine or rank_engine.get()
+    if engine == "claude":
+        args.model = args.model or rank_engine.claude_model()
+        # Claude's fit scores run lower than the local model's: its own floor.
+        config.MIN_FIT = getattr(config, "CLAUDE_MIN_FIT", config.MIN_FIT)
+    else:
+        # OLLAMA_MODEL if it is installed, otherwise one Ollama already has.
+        args.model = args.model or ollama_model.resolve(config) or ollama_model.wanted(config)
 
     OUT.mkdir(exist_ok=True)
     profile = PROFILE_PATH.read_text(encoding="utf-8")
@@ -567,9 +709,14 @@ def main() -> int:
         print("Nothing to rank. Scrape some jobs first.")
         return 1
     print(pool_rules.explain(breakdown))
+    pool, aside, note = prefilter(pool)
+    if note:
+        print(note)
 
     cache = _read(CACHE_PATH, {})
-    print(f"model {args.model} · {config.OLLAMA_CONCURRENCY} at a time\n")
+    per = (f"{config.CLAUDE_RANK_BATCH} per call, {config.CLAUDE_RANK_CONCURRENCY} calls at a time"
+           if engine == "claude" else f"{config.OLLAMA_CONCURRENCY} at a time")
+    print(f"model {args.model} ({rank_engine.LABELS[engine]}) · {per}\n")
 
     def cache_key(job: dict) -> str:
         """
@@ -584,13 +731,22 @@ def main() -> int:
         fp = hashlib.sha1((job.get("description") or "").encode()).hexdigest()[:12]
         return f"{job_key(job['url'])}|{args.model}|{PROMPT_VERSION}|{fp}"
 
+    fresh: set[str] = set()       # answered by Claude in this run, not from an older one
+
     def one(job: dict) -> tuple[dict, dict | None, str]:
         ck = cache_key(job)
-        if not args.recheck and ck in cache:
-            return job, cache[ck], "cached"
+        if ck in cache and (not args.recheck or ck in fresh):
+            return job, cache[ck], ("asked" if ck in fresh else "cached")
         try:
+            if engine == "claude":
+                got = ask_claude(args.model, [("1", job)], profile).get("1")
+                if not got:
+                    raise ValueError("Claude gave no answer for it")
+                return job, normalise(got), "asked"
             return job, normalise(ask(args.model, build_prompt(job, profile))), "asked"
-        except (OSError, ValueError, KeyError) as e:
+        except StopRanking as e:
+            return job, None, f"failed: {e}"[:120]
+        except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
             return job, None, f"failed: {type(e).__name__}: {e}"[:120]
 
     rows, failures, asked = [], [], 0
@@ -618,6 +774,40 @@ def main() -> int:
         os._exit(143)
     for _sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(_sig, _stop)
+
+    if engine == "claude":
+        todo = [j for j in pool if args.recheck or cache_key(j) not in cache]
+        batches = [todo[i:i + config.CLAUDE_RANK_BATCH]
+                   for i in range(0, len(todo), config.CLAUDE_RANK_BATCH)]
+
+        def batch(jobs: list[dict]) -> tuple[list[dict], dict]:
+            # Only the call runs in a worker. The answers are stored by the
+            # main thread below: a worker writing the cache while another
+            # thread saves it can fail with "dictionary changed size".
+            return jobs, ask_claude(args.model, [(str(n), j) for n, j in enumerate(jobs, 1)], profile)
+        done = len(pool) - len(todo)
+        if todo:
+            print(f"asking Claude about {len(todo)} job(s) in {len(batches)} call(s)")
+        try:
+            with futures.ThreadPoolExecutor(max_workers=config.CLAUDE_RANK_CONCURRENCY) as ex:
+                for fut in futures.as_completed([ex.submit(batch, b) for b in batches]):
+                    try:
+                        jobs, got = fut.result()
+                        for n, j in enumerate(jobs, 1):
+                            if str(n) in got:
+                                cache[cache_key(j)] = normalise(got[str(n)])
+                                fresh.add(cache_key(j))
+                        done += len(jobs)
+                    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
+                        # Left uncached; the per-job pass below asks once more.
+                        print(f"  !! a call failed ({type(e).__name__}: {str(e)[:100]})")
+                    _save_cache(cache)
+                    print(f"  {min(done, len(pool))}/{len(pool)} judged", flush=True)
+        except StopRanking as e:
+            _save_cache(cache)
+            print(f"\nRANKING STOPPED: {e}", flush=True)
+            return 3
+
     with futures.ThreadPoolExecutor(max_workers=config.OLLAMA_CONCURRENCY) as pool_ex:
         for i, (job, v, how) in enumerate(pool_ex.map(one, pool), 1):
             if v is None:
@@ -692,11 +882,19 @@ def main() -> int:
             print(f"  {i:>3}/{len(pool)}  {mark} {v['fit']:>3} {(job.get('title') or '')[:46]:<46} "
                   f"{vd:<11} {v['reason'][:44]}")
 
+    # Set aside by the pre-filter: decided, so recorded as judged, but no
+    # model read them, so they are not counted as read.
+    judged_now.extend(j for j, _ in aside)
     _save_cache(cache)
     _flush_judged()
 
     passed = sorted([r for r in rows if r["verdict"] == "passed"], key=sort_key)
     dropped = [r for r in rows if r["verdict"] != "passed"]
+    dropped += [{"title": j.get("title") or "", "company": j.get("company") or "",
+                 "location": j.get("location") or "", "url": j["url"],
+                 "source": j.get("source") or "", "verdict": "far-from-target",
+                 "why": f"far from your target roles by meaning (similarity {sim:.2f})",
+                 "rank_score": 0, "reason": ""} for j, sim in aside]
     # --all: the build stops at its target anyway, so a short list only costs
     # roles. On 29 September a build of 4 got the top 6, Claude rejected 4 of
     # them as out of lane, and it stopped at 2 with 8 good roles never shown.
@@ -719,11 +917,12 @@ def main() -> int:
                    indent=2, ensure_ascii=False), encoding="utf-8")
     _atomic_write(OUT / "ollama_rank.json", json.dumps({
         "generated": dt.datetime.now().isoformat(timespec="seconds"),
-        "model": args.model, "top_n": args.top,
+        "model": args.model, "engine": engine, "top_n": args.top,
         "health": health,
         "counts": {"scraped": breakdown["collected"], "judged": len(rows), "passed": len(passed),
                    "dropped": len(dropped), "sent_to_claude": len(top),
-                   "failed": len(failures), "seen_earlier": len(repeats)},
+                   "failed": len(failures), "seen_earlier": len(repeats),
+                   "set_aside": len(aside)},
         # Why the rest of what was collected was not read, bucket by bucket.
         "not_read": {k: breakdown[k] for k in ("repeat", "applied", "no_description", "too_old")},
         "top": top, "passed": passed, "dropped": dropped, "repeats": repeats,

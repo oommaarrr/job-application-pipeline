@@ -26,6 +26,7 @@ async function tick(){
   const h=d.health||{};
   $("health").innerHTML='<span class="dot" style="background:'+(h.ok?"var(--green)":"var(--red)")+'"></span>'+(h.ok?"all good":"needs attention");
   staleBanner(d);
+  rankEngine(d);
   window._autobuild=!!d.autobuild;
   const ab=$("autobuild");
   ab.textContent="autobuild "+(d.autobuild?"ON":"OFF");
@@ -98,8 +99,9 @@ async function tick(){
     sub=(d.scrape.done||0)+" of "+(d.scrape.total||0)+" searches done"; }
   else if(ph==="ranking"){ head="Ranking the pool";
     const ac=d.active||{};
-    sub=ac.total? ("the local model has judged "+(ac.done||0)+" of "+ac.total+" jobs")
-                : ("the local model is scoring "+poolN+" jobs"); }
+    const who=window._engine==="claude"?"Claude":"the local model";
+    sub=ac.total? (who+" has judged "+(ac.done||0)+" of "+ac.total+" jobs")
+                : (who+" is scoring "+poolN+" jobs"); }
   else if(ph==="building"){ head="Building documents";
     sub=(bpr.built||0)+" of "+(bpr.target||0)+" built"+(bld.reason?(" · "+bld.reason):""); }
   else if(ph==="done"){ head="Done — last run complete";
@@ -219,8 +221,10 @@ async function tick(){
     passed=ac.total||poolN; unit="being judged";
     rkSub="judged "+(ac.done||0)+" of "+(ac.total||poolN)+" so far · from "+coll+" collected"+(why?(" · "+why):"");
   } else if(rrr){
-    passed=rrr.buildable; unit="passed the local model";
-    rkSub=(rrr.judged!=null?("of "+rrr.judged+" judged, "):"")+"from "+coll+" collected · "+rrr.strong+" strong · verdict "+rrr.verdict;
+    passed=rrr.buildable; unit=rrr.engine==="claude"?"passed Claude's ranking":"passed the local model";
+    // The pre-filter's share is said, so "81 to judge" and "72 judged" add up.
+    rkSub=(rrr.judged!=null?("of "+rrr.judged+" judged"+(rrr.set_aside?(" ("+rrr.set_aside+" more set aside as far from your roles)"):"")+", "):"")
+      +"from "+coll+" collected · "+rrr.strong+" strong · verdict "+rrr.verdict;
   } else {
     passed=(poolN>0||!d.erased_at)?poolN:null; unit="to judge";
     rkSub=(d.pool_explain||(coll+" collected"))+" · "+(d.erased_at?"not ranked since the erase":"not ranked yet")+(poolN>0?", press Rank pool":"");
@@ -254,7 +258,7 @@ async function tick(){
       now.map(c=>'<div class="bd-item now"><span class="spin"></span><span class="t">'+esc(c.company)+
         '</span><span class="bd-phase">'+esc(c.phase)+'</span></div>').join("")
     : bdWaiting
-      ? '<h3>&#9203; Ranking first</h3><div class=muted style="padding:2px 2px 0">The local model is judging the pool'+
+      ? '<h3>&#9203; Ranking first</h3><div class=muted style="padding:2px 2px 0">'+(window._engine==="claude"?"Claude":"The local model")+' is judging the pool'+
         ((d.active&&d.active.total)?(' ('+d.active.done+' of '+d.active.total+')'):'')+'. Writing starts once it picks the roles.</div>'
     : (b.running && !builtR.length
         ? '<h3>&#9998; Writing now</h3><div class=muted style="padding:2px 2px 0">Preparing — reading the shortlist and planning (no documents on disk yet).</div>'
@@ -294,7 +298,8 @@ async function tick(){
  * searches already done, ranking reuses its cache, and a build skips every
  * application already on disk. */
 const STEP_NAME={scrape:"Extension",arbeitnow:"Arbeitnow",collect:"Collect",rank:"Rank",
-  build:"Build",reset:"Erase",applied:"Applied",searches:"Searches",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model"};
+  build:"Build",reset:"Erase",applied:"Applied",searches:"Searches",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model",
+  "rank-engine":"Ranker"};
 const WORD={failed:"Failed",stopped:"Stopped",ok:"Done",info:"Note",started:"Running"};
 const hhmm=s=>{try{return new Date(s).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}catch(e){return "";}};
 const sameDay=(a,b)=>a.toDateString()===b.toDateString();
@@ -370,23 +375,71 @@ async function post(path,body){
     return j;}catch(e){return {ok:false,why:"bridge not answering"};}
 }
 
+/* Which model ranks: the local one or Claude. The pipeline keeps the choice. */
+function rankEngine(d){
+  window._engine=d.rank_engine||"local";
+  const busy=d.phase==="ranking"||!!(d.rank_run&&d.rank_run.running);
+  document.querySelectorAll('input[name="rankEngine"]').forEach(i=>{
+    if(document.activeElement!==i) i.checked=(i.value===window._engine);
+    i.disabled=busy;
+  });
+}
+document.querySelectorAll('input[name="rankEngine"]').forEach(i=>i.onchange=async()=>{
+  const r=await post("/rank/engine",{engine:i.value});
+  if(!r||r.ok===false){ toast((r&&r.why)||"Couldn\u2019t switch",false); tick(); return; }
+  toast(i.value==="claude"
+    ? "Claude ranks from now on: minutes instead of hours, using some Claude usage."
+    : "The local model ranks from now on: free and private, slower.");
+  tick();
+});
+
 /* The page is read from disk on every load, the pipeline keeps running the code
    it started with, so an update needs a restart before the two agree. */
-const PIPELINE_API=4;     // keep equal to API_VERSION in scraper/serve.py
+const PIPELINE_API=6;     // keep equal to API_VERSION in scraper/serve.py
 function staleBanner(d){
   const old=d.api==null||d.api<PIPELINE_API, changed=!!d.code_changed;
   const el=$("staleBanner"); if(!el) return;
-  el.classList.toggle("hide",!(old||changed));
-  if(!(old||changed)) return;
-  el.innerHTML="<b>"+(old?"The running pipeline is older than this page.":"The pipeline was updated but is still running the old version.")+
-    "</b> Restart it so your changes are saved"+(old?" (until then, saving searches and other new features fail)":"")+". "+
-    "If it starts at login, run <code>scripts/install-agent.sh</code> (Windows: <code>scripts\\install-agent.bat</code>). "+
-    "Otherwise close the window running <code>./start.sh</code> (or <code>start.bat</code>) and start it again. Then reload this page.";
+  const show=old||changed;
+  el.classList.toggle("hide",!show);
+  if(!show||el.dataset.busy) return;
+  // One state per message, so the 2-second refresh does not rebuild it (and
+  // lose a click) while it stays the same.
+  const kind=old?"old":(d.can_restart?"button":"manual");
+  if(el.dataset.kind===kind) return;
+  el.dataset.kind=kind;
+  if(kind==="button"){
+    el.innerHTML='<span><b>Job Pipeline was updated.</b> Restart it to use the new version.</span>'+
+      '<button class="go primary sm" type="button" id="staleRestart">Restart now</button>';
+    $("staleRestart").onclick=restartPipeline;
+  } else if(kind==="manual"){
+    el.innerHTML='<span><b>Job Pipeline was updated.</b> Stop it (Ctrl+C in its window) and start it again to use the new version.</span>';
+  } else {
+    // An older pipeline has no Restart route: one command that restarts it.
+    const win=/Win/i.test(navigator.platform||navigator.userAgent);
+    const cmd=win?"scripts\\install-agent.bat":"scripts/install-agent.sh";
+    el.innerHTML='<span><b>Job Pipeline was updated, but the running copy is older</b>, so some changes are not saved. '+
+      'Restart it: in the project folder, run</span><code>'+cmd+'</code>'+
+      '<button class="go sm" type="button" id="staleCopy">Copy</button>';
+    $("staleCopy").onclick=async()=>{ try{ await navigator.clipboard.writeText(cmd); toast("Copied. Paste it in a terminal in the project folder."); }catch(e){} };
+  }
 }
-const ACT={
+async function restartPipeline(){
+  const el=$("staleBanner"); el.dataset.busy="1";
+  el.innerHTML="<span><b>Restarting\u2026</b> back in a few seconds.</span>";
+  const r=await post("/restart",{});
+  if(!r||r.ok===false){ delete el.dataset.busy; delete el.dataset.kind; toast("Couldn\u2019t restart: "+((r&&r.why)||"no answer"),false); return; }
+  // Wait for the new copy, then reload so the page and the pipeline agree.
+  for(let i=0;i<40;i++){
+    await new Promise(res=>setTimeout(res,1000));
+    try{ const p=await fetch("/progress",{cache:"no-store"}).then(x=>x.json());
+      if(p.api>=PIPELINE_API&&!p.code_changed){ location.reload(); return; } }catch(e){}
+  }
+  delete el.dataset.busy; delete el.dataset.kind;
+  toast("It hasn\u2019t come back yet. Start it again with ./start.sh (start.bat on Windows).",false);
+}const ACT={
   scrape:{path:"/trigger",ok:"Scrape queued — the extension starts it within a minute.",confirm:null},
   arbeitnow:{path:"/arbeitnow",ok:"Arbeitnow pulling \u2014 its jobs join the pool in a few minutes (the first pull takes longer).",confirm:null},
-  rank:{path:"/rank",ok:"Ranking started — scoring the pool with the local model.",confirm:null},
+  rank:{path:"/rank",ok:"Ranking started.",confirm:null},
   build:{path:"/build",ok:"Local run started — ranking, then building CVs with Claude.",
     confirm:"Start the local run?\n\nThis ranks the pool locally and builds CVs & cover letters with Claude (spends usage)."},
 };

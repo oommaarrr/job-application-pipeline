@@ -76,6 +76,17 @@ mode = MODE_FILE.read_text().strip() if MODE_FILE.exists() else "ok"
 args = sys.argv[1:]
 if args[:2] == ["auth", "status"]:
     print(json.dumps({"loggedIn": True})); sys.exit(0)
+if "--output-format" in args:
+    # The ranker's Claude engine: postings on stdin, answers by id. Like real
+    # Haiku now and then, a batch leaves its last posting unanswered.
+    import re
+    ids = re.findall(r"=== POSTING (\S+) ===", sys.stdin.read())
+    keep = ids[:-1] if len(ids) > 1 else ids
+    ans = [{"id": i, "german_level": "none", "years_required": 2, "role_family": "ai_engineer",
+            "is_management": False, "berlin": True, "remote_germany": False, "fit": 80,
+            "reason": "selftest"} for i in keep]
+    print(json.dumps({"type": "result", "is_error": False, "result": json.dumps({"answers": ans})}))
+    sys.exit(0)
 prompt = args[args.index("-p") + 1] if "-p" in args else ""
 parts = prompt.split()
 want = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 3
@@ -202,7 +213,13 @@ def answering_ollama(port: int, models: list[dict] | None = None) -> None:
                        else {"version": "selftest"})
 
         def do_POST(self):
-            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            if "embed" in self.path:
+                # The pre-filter: a gardener points one way, everything else
+                # (target roles included) the other.
+                texts = json.loads(body or b"{}").get("input") or []
+                return self._send({"embeddings": [[0.0, 1.0] if "Gardener" in t else [1.0, 0.0]
+                                                  for t in texts]})
             self._send({"response": json.dumps({
                 "german_level": "none", "years_required": 2, "role_family": "ml",
                 "is_management": False, "berlin": True, "remote_germany": False,
@@ -310,7 +327,7 @@ def ps(py: pathlib.Path, work: pathlib.Path, code: str) -> str:
 
 
 # ------------------------------------------------------------------ the tests
-def pool_section(py: pathlib.Path, work: pathlib.Path) -> None:
+def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) -> None:
     """
     One job of each kind, through the real rank_ollama.py and pool.py:
       Alpha    judged on an earlier day        -> dropped as a repeat
@@ -376,6 +393,51 @@ def pool_section(py: pathlib.Path, work: pathlib.Path) -> None:
     s2 = status()
     check(s2.get("usable") == 3, "ranking the same pool again the same day drops nothing",
           json.dumps(s2.get("breakdown")))
+
+    # The Claude engine (October 2026): the same real ranker, Claude answering
+    # several postings per call. The stand-in leaves one posting out of each
+    # batch, which must be asked about again on its own rather than lost.
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\nCLAUDE_RANK_BATCH = 3\n')
+    r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5", "--engine", "claude"],
+                       cwd=sc, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=300, env=dict(os.environ, PYTHONUTF8="1",
+                                             PATH=str(fakebin) + os.pathsep + os.environ.get("PATH", "")))
+    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8")) \
+        if (sc / "out" / "ollama_rank.json").exists() else {}
+    c = rank.get("counts", {})
+    read = [x for x in rank.get("passed", []) + rank.get("dropped", []) if "reason" in x and x.get("verdict") != "far-from-target"]
+    check(r.returncode == 0 and rank.get("engine") == "claude" and c.get("judged") == 3
+          and not c.get("failed") and len(read) == 3 and all(x["reason"] == "selftest" for x in read),
+          "Claude ranks in batches and asks again about a posting a batch left out",
+          f"exit {r.returncode}, counts {c}: {(r.stdout + r.stderr)[-400:]}")
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
+
+    # The pre-filter: with target roles set, a job far from them is set aside
+    # before any model reads it, and what is read plus what is set aside is
+    # still exactly what the dashboard counts as "to judge".
+    settings = sc / "out" / "arbeitnow_settings.json"
+    settings.write_text(json.dumps({"searches": [{"name": "ML Engineer", "on": True,
+                                    "looking_for": "machine learning engineer, Python"}]}),
+                        encoding="utf-8")
+    inbox_f = sc / "inbox" / f"job-collector-{DAY}.json"
+    before_inbox = inbox_f.read_text(encoding="utf-8")
+    inbox_f.write_text(json.dumps({"jobs": jobs + [{
+        "url": "https://www.linkedin.com/jobs/view/999", "company": "Gartenbau", "title": "Gardener",
+        "location": "Berlin", "source": "linkedin", "description": "Gardener " * 60}]}), encoding="utf-8")
+    s3 = status()
+    r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5", "--engine", "local"],
+                       cwd=sc, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=300, env=dict(os.environ, PYTHONUTF8="1"))
+    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8"))
+    c = rank.get("counts", {})
+    far = [x for x in rank.get("dropped", []) if x.get("verdict") == "far-from-target"]
+    check(r.returncode == 0 and c.get("set_aside") == 1 and len(far) == 1
+          and far[0]["company"] == "Gartenbau"
+          and c.get("judged", 0) + c.get("set_aside", 0) == s3.get("usable"),
+          "the pre-filter sets aside a job far from the target roles, and the counts still add up",
+          f"exit {r.returncode}, counts {c}, dashboard {s3.get('usable')}: {(r.stdout + r.stderr)[-300:]}")
+    settings.unlink(missing_ok=True)
+    inbox_f.write_text(before_inbox, encoding="utf-8")
 
     # A history written before the judged column: filled in once from the cache.
     (hist / ".judged-backfilled").unlink()
@@ -905,6 +967,25 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           and e.get("/web/searches.js")[0] == 200,
           "the dashboard has the searches window and Start over")
 
+    # Restart now: start.py runs this bridge, as ./start.sh does, so the bridge
+    # exits and comes straight back as a new process on the code on disk.
+    who = lambda: ps(py, work, f"""
+        import platform_util as pu, pathlib
+        print(pu.find_script_procs(pathlib.Path(r'{sc / 'serve.py'}')))""")
+    before, p = who(), e.get("/progress")[1]
+    r = e.post("/restart", {})
+    back = False
+    for _ in range(60):
+        time.sleep(0.5)
+        try:
+            back = e.get("/status", timeout=2)[0] == 200 and who() not in ("", "[]", before)
+        except OSError:
+            back = False
+        if back:
+            break
+    check(p.get("can_restart") and r.get("ok") and back,
+          "Restart now brings the bridge back as a new process", json.dumps({"r": r, "before": before}))
+
     node = shutil.which("node")
     if node:
         r = subprocess.run([node, str(work / "scripts" / "extension_test.mjs"), str(e.port),
@@ -1118,7 +1199,7 @@ def main() -> int:
         recovery_section(py, work, e.port)
 
         section("which jobs the ranker reads (real ranker, real pool rules)")
-        pool_section(py, work)
+        pool_section(py, work, fakebin)
 
         section("Arbeitnow: searches by meaning, rules, and the dashboard panel")
         arbeitnow_section(e, py, work)

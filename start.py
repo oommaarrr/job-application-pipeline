@@ -165,6 +165,10 @@ def main() -> int:
         # 130 is Ctrl+C on POSIX; 0xC000013A is the same on Windows.
         if code in (0, 130, 3221225786, -2):
             return 0
+        # The dashboard's Restart now (serve.py RESTART_EXIT): back at once.
+        if code == 75:
+            restarts = 0
+            continue
         # Only quick crashes count: a bridge that ran for an hour and then
         # died is worth restarting however many times that happens.
         restarts = restarts + 1 if time.time() - began < 60 else 1
