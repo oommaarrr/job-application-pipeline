@@ -462,7 +462,11 @@ pre.log .err{color:var(--log-err)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast[style*="--red"]{background:var(--bad-solid)!important;color:var(--on-color)!important}
 
-.foot{margin-top:var(--sp-5);color:var(--dim);font-size:var(--fs-xs)}
+.foot{margin-top:var(--sp-5);color:var(--dim);font-size:var(--fs-xs);display:flex;align-items:center;
+  gap:var(--sp-3);flex-wrap:wrap}
+.foot .ver{font-variant-numeric:tabular-nums}
+.foot .ver.bad{color:var(--bad)}
+.foot .linkish{font-size:inherit}
 
 /* ====================================================================== 12 */
 @media (max-width:900px){

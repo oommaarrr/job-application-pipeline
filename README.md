@@ -365,7 +365,9 @@ profile, collected jobs, CVs and settings, restarts itself and reloads the
 page, and the Chrome extension reloads itself too. The replaced files are kept
 in `_backups/` in case anything needs undoing.
 
-It checks GitHub once a day for the version number and sends nothing about you.
+It checks GitHub every three hours for the version number and sends nothing
+about you. To look right away, press **Check for updates** at the bottom of the
+dashboard, next to the version you have.
 To turn it off, add `UPDATE_CHECK=0` to `local.env`. If you cloned with git,
 **Update now** runs `git pull`, and refuses (naming the files) while you have
 edited any of the program's files.

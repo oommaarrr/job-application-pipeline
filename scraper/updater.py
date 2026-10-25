@@ -3,8 +3,8 @@ Keep an installed copy up to date from GitHub, from the dashboard.
 
 Most people install from Download ZIP, which has no way to update: until
 October 2026 every fix meant downloading again and moving the profile, jobs
-and CVs across by hand. Now the pipeline checks once a day whether GitHub has
-a newer version, and Update now installs it:
+and CVs across by hand. Now the pipeline checks every few hours whether GitHub
+has a newer version, and Update now installs it:
 
   - a git clone:  git pull --ff-only (refused while a program file has local
                   edits, naming them, rather than overwriting them)
@@ -14,6 +14,8 @@ a newer version, and Update now installs it:
                   Files the new version no longer has are removed, the old
                   files are kept in _backups/update-<time>/ first, and any
                   failure puts them back.
+
+The check also runs whenever Check for updates is pressed on the dashboard.
 
 Then new Python packages are installed if requirements.txt changed, and the
 bridge restarts itself (serve.py, RESTART_EXIT). The extension reloads itself
@@ -47,7 +49,10 @@ CACHE = ROOT / "scraper" / "out" / "update.json"
 BACKUPS = ROOT / "_backups"
 API = os.environ.get("UPDATE_API", "https://api.github.com")
 ZIP_URL = os.environ.get("UPDATE_ZIP", "https://codeload.github.com/{repo}/zip/{sha}")
-CHECK_EVERY_H = 24
+# Hours between automatic checks. 24 hid a fix pushed in the morning until the
+# next day (October 2026); the dashboard's Check for updates asks at once. Each
+# check is two GitHub API calls, far under its 60 an hour without a login.
+CHECK_EVERY_H = 3
 
 # Never written by an update, whatever a ZIP holds: these are the user's.
 KEEP = ("local.env", "config_local.py", "scraper/config_local.py", ".installed.json")

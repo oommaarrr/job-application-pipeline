@@ -1159,6 +1159,8 @@ def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None
     js_code = e.get("/web/profile-chat.js")[0]
     check(b'id="btnProfile"' in page and js_code == 200,
           "the dashboard has the Edit profile button and its script", f"{status} {js_code}")
+    check(b'id="checkUpdate"' in page and b'id="verInfo"' in page,
+          "the dashboard has Check for updates, next to the version", str(status))
 
     projects = me / "reference" / "PROJECTS.md"
     original = projects.read_text(encoding="utf-8")

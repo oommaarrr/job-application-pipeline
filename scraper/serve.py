@@ -607,7 +607,8 @@ def update_info() -> dict:
     info = updater.status()
     if info.pop("due", False):
         _update_check_async()
-    return {**info, "checking": _update["checking"], "applying": _update["applying"],
+    return {**info, "version": updater.installed(), "mode": updater.mode(),
+            "checking": _update["checking"], "applying": _update["applying"],
             "step": _update["step"], "apply_error": _update["error"],
             "can_restart": _supervised()}
 
@@ -2835,8 +2836,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ok": True, "logged": len(_search_log)})
 
         if route == "/update/check":
-            updater.check()
-            return self._send({"ok": True, "update": update_info()})
+            # Check for updates on the dashboard: ask GitHub now, not at the
+            # next scheduled check.
+            if not updater.enabled():
+                return self._send({"ok": False, "why": "updates are turned off here "
+                                   "(UPDATE_CHECK=0 in local.env)", "update": update_info()})
+            info = updater.check()
+            return self._send({"ok": not info.get("error"), "why": info.get("error") or "",
+                               "update": update_info()})
 
         if route == "/update/apply":
             return self._send(start_update())

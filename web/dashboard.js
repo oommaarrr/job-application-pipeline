@@ -25,6 +25,7 @@ async function tick(){
   $("health").innerHTML='<span class="dot" style="background:'+(h.ok?"var(--green)":"var(--red)")+'"></span>'+(h.ok?"all good":"needs attention");
   staleBanner(d);
   updateBanner(d);
+  versionLine(d);
   rankEngine(d);
   window._autobuild=!!d.autobuild;
   const ab=$("autobuild");
@@ -445,6 +446,45 @@ function updateBanner(d){
   el.dataset.kind=kind; el.innerHTML=html;
   const b=el.querySelector("[data-update]"); if(b) b.onclick=applyUpdate;
 }
+/* The footer: which version this is, when GitHub was last asked, and Check for
+   updates, which asks now. Automatic checks are hours apart (updater.py), so
+   without this a fix pushed this morning stayed invisible until later. */
+function versionLine(d){
+  const u=d.update||{}, el=$("verInfo"); if(!el) return;
+  const v=u.version?("version "+String(u.version).slice(0,7)):(u.mode==="zip"?"version unknown":"");
+  let when="";
+  if(!u.enabled) when="updates off";
+  else if(u.checking) when="checking\u2026";
+  else if(u.error) when="last check failed";
+  else if(u.checked_at) when="checked "+ago(u.checked_at);
+  el.textContent=[v,when].filter(Boolean).join(" \u00b7 ");
+  el.title=u.error||"";
+  el.classList.toggle("bad",!!(u.enabled&&u.error&&!u.checking));
+}
+function ago(iso){
+  const s=Math.max(0,(Date.now()-new Date(iso).getTime())/1000);
+  if(!isFinite(s)) return "";
+  if(s<90) return "just now";
+  if(s<5400) return Math.round(s/60)+" min ago";
+  if(s<129600) return Math.round(s/3600)+" h ago";
+  return Math.round(s/86400)+" days ago";
+}
+async function checkForUpdates(){
+  const btn=$("checkUpdate"); if(!btn||btn.disabled) return;
+  btn.disabled=true; btn.textContent="Checking\u2026";
+  const r=await post("/update/check",{});
+  btn.disabled=false; btn.textContent="Check for updates";
+  const u=(r&&r.update)||{};
+  if(r&&r.update){ updateBanner({update:u}); versionLine({update:u}); }
+  if(!r||r.ok===false) toast("Couldn\u2019t check for updates: "+((r&&r.why)||"no answer"),false);
+  else if(u.available){
+    // The button is at the bottom of the page and the banner at the top.
+    $("updateBanner").scrollIntoView({behavior:"smooth",block:"center"});
+    toast("An update is available.");
+  }
+  else toast("You\u2019re on the newest version.");
+}
+if($("checkUpdate")) $("checkUpdate").onclick=checkForUpdates;
 async function applyUpdate(){
   if(!confirm("Update Job Pipeline now?\n\nIt downloads the new version, keeps your profile, jobs, CVs and settings, and restarts itself. Takes about a minute.")) return;
   const r=await post("/update/apply",{});

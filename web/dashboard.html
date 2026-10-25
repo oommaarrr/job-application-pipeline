@@ -471,7 +471,12 @@
     </div>
   </dialog>
 
-  <footer class="foot">Refreshes every 2 s · <span id="collInfo"></span></footer>
+  <footer class="foot">
+    <span>Refreshes every 2 s · <span id="collInfo"></span></span>
+    <span class="grow"></span>
+    <span id="verInfo" class="ver"></span>
+    <button class="linkish" id="checkUpdate" type="button" title="ask GitHub now whether a newer version is out">Check for updates</button>
+  </footer>
   <div id="toast" class="toast" role="status"></div>
 </div>
 <script src="/web/theme.js"></script>
