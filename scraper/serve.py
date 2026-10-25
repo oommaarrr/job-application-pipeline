@@ -30,6 +30,7 @@ import pathlib
 import re
 import os
 import subprocess
+import urllib.parse
 import urllib.request
 import threading
 import time
@@ -547,16 +548,19 @@ saved_searches.load()
 # Persisted, so a bridge restart does not report a working extension as
 # missing until its next poll.
 _EXT_SEEN = OUT / ".extension_seen"
-_ext_seen: dict = {"at": (_read_json(_EXT_SEEN, {}) or {}).get("at"), "written": 0.0}
+_ext_seen: dict = {"at": (_read_json(_EXT_SEEN, {}) or {}).get("at"), "written": 0.0,
+                   "running": (_read_json(_EXT_SEEN, {}) or {}).get("running")}
 
 
-def _mark_extension_seen() -> None:
+def _mark_extension_seen(running: str | None = None) -> None:
     now = dt.datetime.now()
     _ext_seen["at"] = now.isoformat(timespec="seconds")
+    if running is not None and running != _ext_seen.get("running"):
+        _ext_seen["running"], _ext_seen["written"] = running, 0.0
     if now.timestamp() - _ext_seen["written"] > 60:
         _ext_seen["written"] = now.timestamp()
         try:
-            _write_json(_EXT_SEEN, {"at": _ext_seen["at"]})
+            _write_json(_EXT_SEEN, {"at": _ext_seen["at"], "running": _ext_seen.get("running")})
         except OSError:
             pass
 
@@ -566,18 +570,26 @@ def _mark_extension_seen() -> None:
 EXT_QUIET_S = 180
 
 
+# The extension's code, in the order both sides hash it. background.js keeps
+# the same list (CODE_FILES); the selftest checks the two agree and that no
+# code file is missing from them.
+EXT_CODE = ("manifest.json", "background.js", "content.js", "popup.html", "popup.js")
+
+
 def extension_build() -> str:
     """
-    A fingerprint of the extension's files on disk. The extension compares it
-    with the one it was loaded with and reloads itself when they differ, so an
-    update reaches it without a visit to chrome://extensions.
+    A fingerprint of the extension's code on disk. The extension takes the same
+    fingerprint of the code it is running and sends it with every sync: when
+    the two differ it reloads itself once, and the dashboard says so if that
+    did not help (Chrome loading the extension from another folder).
     """
     h = hashlib.sha1()
     ext = REPO / "extension"
     try:
-        for f in sorted(ext.rglob("*")):
+        for name in EXT_CODE:
+            f = ext / name
             if f.is_file():
-                h.update(f.relative_to(ext).as_posix().encode())
+                h.update(name.encode())
                 h.update(f.read_bytes())
     except OSError:
         return ""
@@ -654,7 +666,13 @@ def extension_state() -> dict:
             age = max(0, int(dt.datetime.now().timestamp() - dt.datetime.fromisoformat(at).timestamp()))
         except ValueError:
             age = None
-    return {"seen_at": at, "age_s": age, "connected": age is not None and age <= EXT_QUIET_S}
+    connected = age is not None and age <= EXT_QUIET_S
+    running, disk = _ext_seen.get("running"), extension_build()
+    # "old": an extension from before it reported its code at all.
+    code = ("unknown" if not connected or not disk
+            else "old" if not running else "current" if running == disk else "stale")
+    return {"seen_at": at, "age_s": age, "connected": connected, "code": code,
+            "running": running, "on_disk": disk, "folder": str(REPO / "extension")}
 
 
 def searches_state() -> dict:
@@ -2194,6 +2212,17 @@ def doctor() -> dict:
         "Load extension/ unpacked at chrome://extensions, then press Run scrape",
         weight="optional")
 
+    # The extension is connected but runs older code than is on disk: the
+    # LinkedIn fix of 25 October 2026 sat on a friend's disk while Chrome kept
+    # reading 1 job of 25 with the code it was first loaded with.
+    ext = extension_state()
+    if ext["connected"] and ext["code"] in ("stale", "old"):
+        add("extension-code", "Chrome runs the current extension", False,
+            "Chrome is running an older copy of the extension than the one in "
+            + ext["folder"],
+            "chrome://extensions: press the reload arrow on Job Collector. If this stays, "
+            "remove it and Load unpacked from " + ext["folder"])
+
     # --- the document builder -------------------------------------------
     add("builder", "Builder directory found", BUILDER.exists(),
         str(BUILDER) if BUILDER.exists() else f"missing: {BUILDER}",
@@ -2571,7 +2600,10 @@ class Handler(BaseHTTPRequestHandler):
             # The extension, on every wake. Same answer as /searches/list; the
             # only difference is that this one counts as the extension being
             # alive, which the dashboard shows beside the searches.
-            _mark_extension_seen()
+            # ?running= is the fingerprint of the code the extension runs; an
+            # extension older than that sends none.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            _mark_extension_seen(re.sub(r"[^0-9a-f]", "", (q.get("running") or [""])[0])[:12])
             return self._send({**searches_state(), "extension_build": extension_build()})
 
         if route == "/searches-audit":

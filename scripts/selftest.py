@@ -1029,6 +1029,17 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           and e.get("/web/searches.js")[0] == 200,
           "the dashboard has the searches window and Start over")
 
+    # Both sides fingerprint the same code files, or the dashboard would call a
+    # current extension stale (serve.EXT_CODE, background.js CODE_FILES).
+    bg = (work / "extension" / "background.js").read_text(encoding="utf-8")
+    listed = re.search(r"const CODE_FILES = \[([^\]]*)\]", bg)
+    in_js = re.findall(r'"([^"]+)"', listed.group(1)) if listed else []
+    in_py = ps(py, work, "import serve; print(','.join(serve.EXT_CODE))").split(",")
+    code_files = sorted(f.name for f in (work / "extension").iterdir()
+                        if f.is_file() and f.suffix in (".js", ".json", ".html"))
+    check(in_js == in_py and sorted(in_js) == code_files,
+          "the extension and the pipeline fingerprint the same code files", f"{in_js} {in_py} {code_files}")
+
     node = shutil.which("node")
     if node:
         r = subprocess.run([node, str(work / "scripts" / "extension_test.mjs"), str(e.port),

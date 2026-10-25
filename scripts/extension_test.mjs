@@ -13,14 +13,23 @@
  */
 import fs from "node:fs";
 import vm from "node:vm";
+import path from "node:path";
 const PORT = process.argv[2], SRC = process.argv[3];
 const store = {};
 const listeners = { msg: [], alarm: [], updated: [] };
 const notes = [];
+let reloads = 0;
+// fetch, plus the ext: addresses getURL hands out (Node cannot fetch those).
+const extDir = path.dirname(fs.realpathSync(SRC)) + path.sep;
+const fetchExt = (u, o) => String(u).startsWith("ext:")
+  ? fs.promises.readFile(extDir + String(u).slice(4)).then((b) => new Response(b), () => new Response("", { status: 404 }))
+  : fetch(u, o);
 const chrome = {
   runtime: { onMessage: { addListener: (f) => listeners.msg.push(f) },
              onStartup: { addListener() {} }, onInstalled: { addListener() {} },
-             getPlatformInfo: async () => ({}), lastError: null },
+             getPlatformInfo: async () => ({}), lastError: null,
+             // The extension's own files, served from the folder SRC is in.
+             getURL: (f) => "ext:" + f, reload: () => { reloads++; } },
   storage: { local: {
     get: async (k) => { const ks = k == null ? Object.keys(store) : Array.isArray(k) ? k : [k];
       const o = {}; for (const x of ks) if (x in store) o[x] = JSON.parse(JSON.stringify(store[x])); return o; },
@@ -36,7 +45,7 @@ const chrome = {
 let code = fs.readFileSync(SRC, "utf8").replace('"http://127.0.0.1:8765"', `"http://127.0.0.1:${PORT}"`);
 // Exposed for the checks below; runSchedule is replaced before any run.
 code += "\n;globalThis.__t = { syncSearches, checkTrigger, flushToBridge, getSched, setSched, runSchedule };";
-const ctx = { chrome, fetch, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, console, URL, JSON, Date, Math, Promise, Set, Map, globalThis: null };
+const ctx = { chrome, fetch: fetchExt, crypto, TextEncoder, Uint8Array, Response, AbortController, setTimeout, clearTimeout, setInterval, clearInterval, console, URL, JSON, Date, Math, Promise, Set, Map, globalThis: null };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInContext(code, ctx);
@@ -144,6 +153,23 @@ const none = await post("/trigger", {});
 ok(none.ok === false && /switched on/.test(none.why), "Run scrape with every search off says so", JSON.stringify(none));
 const ext = (await get("/searches/list")).extension;
 ok(ext.connected, "the extension's check-ins show as connected");
+
+// 9. Which code Chrome runs. The extension fingerprints its own files the way
+// the pipeline fingerprints extension/ on disk; equal means current.
+await t.syncSearches();
+const cur = (await get("/searches/list")).extension;
+ok(cur.code === "current" && cur.running === cur.on_disk && reloads === 0,
+   "the extension reports the code it runs, and it matches the files on disk", JSON.stringify(cur));
+// Older code running than is on disk: reload once, and only once, for that
+// version (a second identical answer means Chrome loads another folder).
+vm.runInContext('runningMemo = "000000000000";', ctx);
+await t.syncSearches(); await t.syncSearches();
+const old = (await get("/searches/list")).extension;
+ok(reloads === 1 && old.code === "stale" && /extension$/.test(old.folder),
+   "older code than on disk: the extension reloads itself once, and the dashboard is told",
+   JSON.stringify({ reloads, old }));
+vm.runInContext("runningMemo = null;", ctx);
+await t.syncSearches();
 
 const failed = results.filter((x) => !x[0]).length;
 console.log(`${results.length - failed} passed, ${failed} failed`);

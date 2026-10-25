@@ -188,11 +188,17 @@ async function tick(){
   const ext=d.extension||{}, ss=d.saved_searches||{};
   const extEl=$("scrExt");
   if(extEl){
-    const show=ss.on>0 && !ext.connected;
-    extEl.classList.toggle("hide",!show);
-    const html=show?((ext.seen_at?"The Chrome extension has not checked in since "+esc(whenText(ext.seen_at))+". ":"No Chrome extension has connected yet. ")+
+    const missing=ss.on>0 && !ext.connected;
+    // Connected, but running older code than is on disk: it reads too few
+    // jobs on a LinkedIn layout only the newer code knows (25 October 2026).
+    const stale=ext.connected && (ext.code==="stale"||ext.code==="old");
+    extEl.classList.toggle("hide",!missing&&!stale);
+    const html=missing?((ext.seen_at?"The Chrome extension has not checked in since "+esc(whenText(ext.seen_at))+". ":"No Chrome extension has connected yet. ")+
       "Your "+ss.on+" saved search"+(ss.on===1?"":"es")+" on LinkedIn, Indeed and StepStone run through it. "+
-      '<button class="linkish" type="button" data-open-searches>How to set it up</button>'):"";
+      '<button class="linkish" type="button" data-open-searches>How to set it up</button>')
+      :stale?("<b>Chrome is running an older copy of the extension</b>, so LinkedIn, Indeed and StepStone can read too few jobs. "+
+      "Open <code>chrome://extensions</code> and press the reload arrow on Job Collector. If this message stays, "+
+      "Chrome is loading it from another folder: remove it there, then use Load unpacked and pick <code>"+esc(ext.folder||"extension")+"</code>"):"";
     if(extEl.dataset.html!==html){       // unchanged: keep focus and hover
       extEl.dataset.html=html; extEl.innerHTML=html;
       const b=extEl.querySelector("[data-open-searches]"); if(b) b.onclick=()=>window.openSearches&&window.openSearches();

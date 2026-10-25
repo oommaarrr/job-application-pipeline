@@ -137,28 +137,61 @@ const setSched = async (patch) =>
  *     otherwise the next resend would bring the whole erased pool back.
  */
 /*
- * Reload when the extension's files on disk change, as they do after the
- * dashboard's Update now, so an update reaches the extension without a visit
- * to chrome://extensions. The pipeline sends a fingerprint of the files
- * (extension_build); the one seen when this copy was loaded is kept, and a
- * different one means newer code is on disk. Never in the middle of a scrape.
+ * Which code this extension is running, as a fingerprint of its own files.
+ *
+ * The same fingerprint the pipeline takes of extension/ on disk
+ * (serve.extension_build): SHA-1 over each file's name and bytes, in this
+ * order. Sent with every sync, so the dashboard can say when Chrome runs older
+ * code than the pipeline has. 25 October 2026: a friend's Windows PC read 1
+ * LinkedIn job of 25 with a fix already on disk, because Chrome was still
+ * running the extension as it was first loaded, and nothing said so.
+ */
+const CODE_FILES = ["manifest.json", "background.js", "content.js", "popup.html", "popup.js"];
+let runningMemo = null;
+async function runningBuild() {
+  if (runningMemo !== null) return runningMemo;
+  try {
+    const enc = new TextEncoder(), parts = [];
+    for (const f of CODE_FILES) {
+      const r = await fetch(chrome.runtime.getURL(f));
+      if (!r.ok) continue;
+      parts.push(enc.encode(f), new Uint8Array(await r.arrayBuffer()));
+    }
+    const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { all.set(p, at); at += p.length; }
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-1", all));
+    runningMemo = [...hash].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+  } catch {
+    runningMemo = "";
+  }
+  return runningMemo;
+}
+async function sync() {
+  const mine = await runningBuild();
+  return call("/searches/sync" + (mine ? "?running=" + mine : ""), null, 4000);
+}
+
+/*
+ * Reload when the code on disk differs from the code running, as it does after
+ * the dashboard's Update now, so an update reaches the extension without a
+ * visit to chrome://extensions. Once per new version: if the reload brings
+ * back the same old code, Chrome is loading the extension from another
+ * folder, which only the user can change, and the dashboard says so. Never in
+ * the middle of a scrape.
  */
 async function maybeReload(build) {
   if (!build || !chrome.runtime.reload) return;
-  const { loadedBuild } = await chrome.storage.local.get("loadedBuild");
-  if (!loadedBuild) { await chrome.storage.local.set({ loadedBuild: build }); return; }
-  if (loadedBuild === build || (await getSched()).running) return;
-  await chrome.storage.local.set({ loadedBuild: build });
+  const mine = await runningBuild();
+  if (!mine || mine === build) return;
+  const { reloadedFor } = await chrome.storage.local.get("reloadedFor");
+  if (reloadedFor === build || (await getSched()).running) return;
+  await chrome.storage.local.set({ reloadedFor: build });
   chrome.runtime.reload();
 }
-chrome.runtime.onInstalled?.addListener?.(async () => {
-  // Just (re)loaded: what is on disk now is what is running.
-  const r = await call("/searches/sync", null, 4000);
-  await chrome.storage.local.set({ loadedBuild: (r.ok && r.extension_build) || null });
-});
 
 async function syncSearches() {
-  let r = await call("/searches/sync", null, 4000);
+  let r = await sync();
   if (!r.ok || !Array.isArray(r.searches)) return false;
   await maybeReload(r.extension_build);
   const st = await chrome.storage.local.get(["searchesMoved", "resetSeen"]);
@@ -168,7 +201,7 @@ async function syncSearches() {
     if (mine.length) {
       const m = await call("/searches/merge", { searches: mine });
       if (!m.ok) return false;
-      const again = await call("/searches/sync", null, 4000);
+      const again = await sync();
       if (!again.ok || !Array.isArray(again.searches)) return false;
       r = again;
     }
