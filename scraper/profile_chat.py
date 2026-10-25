@@ -134,7 +134,10 @@ def _call(claude: str, folder: pathlib.Path, message: str, session: str, resume:
            "--tools", "Read,Edit,Write,Glob,Grep",
            "--permission-mode", "acceptEdits",
            "--strict-mcp-config", "--disable-slash-commands",
-           "--append-system-prompt", SYSTEM,
+           # One line: on Windows an npm install runs claude.cmd, and cmd.exe
+           # cuts an argument at its first line break (the selftest's Windows
+           # run got "...The files are in the" and nothing more).
+           "--append-system-prompt", " ".join(SYSTEM.split()),
            "--max-turns", "40"]
     cmd += ["--resume", session] if resume else ["--session-id", session]
     try:

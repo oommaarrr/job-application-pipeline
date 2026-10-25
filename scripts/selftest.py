@@ -1187,8 +1187,10 @@ def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None
               and c["args"][c["args"].index("--permission-mode") + 1] == "acceptEdits"
               and "claude-sonnet" in c["args"][c["args"].index("--model") + 1]
               and pathlib.Path(c["cwd"]).resolve() == me.resolve()
+              # cmd.exe (claude.cmd on Windows) cuts an argument at a line break.
+              and "\n" not in c["args"][c["args"].index("--append-system-prompt") + 1]
               and c["msg"] in ("Add a project: Selftest Tracker", "Add a skill: Rust") for c in seen),
-          "Claude runs on Sonnet in the profile folder, with file tools only and no shell",
+          "Claude runs on Sonnet in the profile folder, with file tools only, no shell, a one-line prompt",
           json.dumps([c["args"] for c in seen])[:500])
 
     r = e.post("/profile/chat/undo", {})
