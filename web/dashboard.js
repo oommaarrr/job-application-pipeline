@@ -93,7 +93,7 @@ async function tick(){
   // one plain sentence for the current state
   const LC={scraping:"var(--blue)",ranking:"var(--purple)",building:"var(--amber)",
     done:"var(--green)","built-partial":"var(--teal)",idle:"var(--dim)"};
-  let head, sub="";
+  let head, sub;
   if(ph==="scraping"){ head="Scraping in progress";
     sub=(d.scrape.done||0)+" of "+(d.scrape.total||0)+" searches done"; }
   else if(ph==="ranking"){ head="Ranking the pool";

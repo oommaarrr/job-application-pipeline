@@ -846,7 +846,7 @@
     if (!el || el.nodeType !== 1) return false;
     if (el.scrollHeight <= el.clientHeight + 40) return false;
     const win = el.ownerDocument?.defaultView;
-    let st = null;
+    let st;
     try { st = win ? win.getComputedStyle(el) : null; } catch { return true; }
     if (!st) return true;                 // unreadable: judge on size alone
     return /(auto|scroll|overlay)/.test(st.overflowY);

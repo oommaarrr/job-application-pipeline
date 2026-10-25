@@ -142,7 +142,7 @@ const BUILD={
   },
 };
 function siteOf(url){
-  let h=""; try{ h=new URL(url).hostname.toLowerCase(); }catch(e){ return ""; }
+  let h; try{ h=new URL(url).hostname.toLowerCase(); }catch(e){ return ""; }
   if(/(^|\.)linkedin\.com$/.test(h)) return "LinkedIn";
   if(/(^|\.)indeed\.com$/.test(h)) return "Indeed";
   if(/(^|\.)stepstone\.de$/.test(h)) return "StepStone";
