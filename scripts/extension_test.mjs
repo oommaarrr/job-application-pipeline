@@ -98,6 +98,16 @@ for (const f of listeners.updated) f(1, { url: "https://www.linkedin.com/jobs/se
 await sleep(500);
 const geo = (await get("/searches/list")).geo;
 ok(geo["hamburg, germany"] === "106430557" && geo["hamburg"] === "106430557", "a LinkedIn place id is learned from an open search", JSON.stringify(geo));
+// The /jobs/search-results/ address has a geoId but no location=; the
+// content script sends the place from LinkedIn's results header instead.
+await send({ type: "geo:learn", location: "Saudi Arabia", geoId: "100459316" });
+// And a place id already learned for another place is not learned again
+// under an unrelated name: that pair is LinkedIn falling back, not a place.
+for (const f of listeners.updated) f(1, { url: "https://www.linkedin.com/jobs/search/?keywords=x&location=Netherlands&geoId=106430557" }, {});
+await sleep(500);
+const geo2 = (await get("/searches/list")).geo;
+ok(geo2["saudi arabia"] === "100459316", "a place id is learned on the layout whose address has no location", JSON.stringify(geo2));
+ok(!("netherlands" in geo2), "a place id that belongs to another place is not learned for this one", JSON.stringify(geo2));
 
 // 6. A trigger resumes a cut-off run, and otherwise starts fresh.
 const order = store.schedule.searches.slice(0, 3);

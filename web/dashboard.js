@@ -11,8 +11,6 @@ const PHASE={scraping:["Scraping","var(--blue)"],ranking:["Ranking","var(--purpl
   "built-partial":["Partly built","var(--teal)"],idle:["Idle","var(--gray)"]};
 const SST={ok:["var(--green)","full"],close:["var(--green)","close"],
   short:["var(--red)","short"],thin:["var(--amber)","thin"],failed:["var(--red)","failed"]};
-const CPH={done:"var(--green)",rendering:"var(--amber)",writing:"var(--blue)",
-  planning:"var(--purple)",started:"var(--gray)"};
 
 async function tick(){
   let d;
@@ -191,7 +189,7 @@ async function tick(){
   if(extEl){
     const show=ss.on>0 && !ext.connected;
     extEl.classList.toggle("hide",!show);
-    const html=show?((ext.seen_at?"The Chrome extension has not checked in since "+esc(when(ext.seen_at))+". ":"No Chrome extension has connected yet. ")+
+    const html=show?((ext.seen_at?"The Chrome extension has not checked in since "+esc(whenText(ext.seen_at))+". ":"No Chrome extension has connected yet. ")+
       "Your "+ss.on+" saved search"+(ss.on===1?"":"es")+" on LinkedIn, Indeed and StepStone run through it. "+
       '<button class="linkish" type="button" data-open-searches>How to set it up</button>'):"";
     if(extEl.dataset.html!==html){       // unchanged: keep focus and hover
@@ -244,7 +242,7 @@ async function tick(){
   const builtNone=!b.running&&!(bp.built>0);
   // A build ranks first and writes after; until the hand-off it is waiting.
   const bdWaiting=b.running&&ph==="ranking";
-  $("bdState").textContent=bdWaiting?("waiting for the ranking · "+(b.reason||"")):b.running?("building… "+(b.reason||"")):(b.finished?("finished "+when(b.finished))
+  $("bdState").textContent=bdWaiting?("waiting for the ranking · "+(b.reason||"")):b.running?("building… "+(b.reason||"")):(b.finished?("finished "+whenText(b.finished))
     :(d.erased_at&&builtNone?"nothing built since the erase":"idle"));
   $("bdPrev").innerHTML=(d.erased_at&&builtNone&&be.build)
     ?lastTime(be.build)+(be.build.status==="ok"?" · those documents are in applications/archive":""):"";
@@ -306,7 +304,7 @@ const hhmm=s=>{try{return new Date(s).toLocaleTimeString([],{hour:"2-digit",minu
 const sameDay=(a,b)=>a.toDateString()===b.toDateString();
 // A time for today, a date and time for anything older. A bare "05:53 PM" on
 // a result from three days ago read as today's (28 September 2026).
-function when(s){ try{ const d=new Date(s);
+function whenText(s){ try{ const d=new Date(s);
   return sameDay(d,new Date())?hhmm(s):d.toLocaleDateString([],{month:"short",day:"numeric"})+", "+hhmm(s);
 }catch(e){ return ""; } }
 function dayLabel(s){ const d=new Date(s), now=new Date(), y=new Date(); y.setDate(now.getDate()-1);
@@ -315,12 +313,12 @@ function dayLabel(s){ const d=new Date(s), now=new Date(), y=new Date(); y.setDa
 // is dropped from its message: it was today when it was written.
 function lastTime(e){ if(!e) return "";
   const msg=(e.built!=null&&e.step==="build")?(e.built+" application(s) built"):String(e.message||"").replace(/ today$/,"");
-  return 'Before the erase, <b>'+esc(when(e.at))+'</b>: '+esc(msg); }
+  return 'Before the erase, <b>'+esc(whenText(e.at))+'</b>: '+esc(msg); }
 function outcomeHTML(e,withRetry,noTime){
   const retry=(withRetry&&(e.status==="failed"||e.status==="stopped")&&ACT[e.step])
     ?'<button class="go sm" type="button" data-retry="'+esc(e.step)+'">&#8635; Retry</button>':"";
   return '<span class="st-word">'+(WORD[e.status]||esc(e.status))+'</span> '+
-    (noTime?'':'<span class="muted">'+when(e.at)+'</span> · ')+esc(e.message)+
+    (noTime?'':'<span class="muted">'+whenText(e.at)+'</span> · ')+esc(e.message)+
     (e.fix&&(e.status==="failed"||e.status==="stopped"||e.status==="info")
       ?'<div class="fix-line">&#8594; '+esc(e.fix)+'</div>':"")+retry;
 }
@@ -672,7 +670,7 @@ async function loadFunnel(){
     // showing its numbers as if they were this pool's.
     card.classList.remove("hide");
     $("funnel").innerHTML='<p class="muted">Nothing yet since the erase'+
-      (f.erased_at?' ('+esc(when(f.erased_at))+')':'')+
+      (f.erased_at?' ('+esc(whenText(f.erased_at))+')':'')+
       '. The funnel fills again after the next scrape and rank.</p>';
     $("funnelWhy").textContent="";
     $("funnelDrops").innerHTML="";

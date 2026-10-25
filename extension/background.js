@@ -203,7 +203,6 @@ async function syncSearches() {
   return true;
 }
 
-const today = () => new Date().toLocaleDateString("en-CA");   // YYYY-MM-DD, local
 const jitter = (a, b) => a + Math.random() * (b - a);
 
 /*
@@ -443,6 +442,13 @@ async function runOneSearch(search, pages) {
       everMoved: pagesSeen.some((r) => r.everMoved),
       scrollables: pagesSeen[0]?.scrollables ?? 0,
       trace: pagesSeen[0]?.trace || [],
+      // How many cards the pages should have held, and which reader found them
+      // ("card selectors", "job links" or "text reader", with what each found):
+      // a LinkedIn layout change shows up here first.
+      expected: sum("expected"),
+      path: pagesSeen[0]?.path || "",
+      paths: pagesSeen[0]?.paths || "",
+      readyMs: pagesSeen[0]?.readyMs ?? 0,
       refused: pagesSeen.filter((r) => !r.ok).length,
       why: pagesSeen.find((r) => !r.ok)?.why || "",
       ms: Date.now() - t0,
@@ -701,9 +707,24 @@ chrome.tabs.onUpdated.addListener((_id, info, tab) => {
   let q;
   try { q = new URL(url).searchParams; } catch { return; }
   const geoId = q.get("geoId"), location = (q.get("location") || "").trim();
-  if (!geoId || !location || geoSent.has(location + "|" + geoId)) return;
+  learnGeo(location, geoId);
+});
+function learnGeo(location, geoId) {
+  location = String(location || "").trim();
+  geoId = String(geoId || "");
+  if (!/^\d{3,15}$/.test(geoId) || !location || geoSent.has(location + "|" + geoId)) return;
   geoSent.add(location + "|" + geoId);
   call("/searches/geo", { location, geoId }, 4000);
+}
+/*
+ * The /jobs/search-results/ layout (25 October 2026) puts only the geoId in
+ * the address, no location=, so the listener above learns nothing there. The
+ * content script reads the place LinkedIn shows in the results header
+ * ("Location <place>") and sends it with the geoId from the address.
+ */
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === "geo:learn") learnGeo(msg.location, msg.geoId);
+  return false;
 });
 
 

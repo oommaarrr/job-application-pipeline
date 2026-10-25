@@ -308,6 +308,16 @@ def learn_geo(location: str, geo_id: str) -> bool:
     short = loc.split(",")[0].strip()
     with _lock:
         state = _load()
+        # An id already learned for an unrelated place is not learned again
+        # under this name (25 October 2026). When LinkedIn cannot place the
+        # text it searches the profile's country, and if its address then pairs
+        # "location=Netherlands" with Germany's geoId, learning that pair would
+        # make every later Netherlands search pin Germany for good. A real
+        # second name for one place nests ("berlin" in "berlin, berlin,
+        # germany"), so only names that share nothing are refused.
+        for name, gid in state["geo"].items():
+            if gid == str(geo_id) and name not in loc and loc not in name:
+                return False
         before = dict(state["geo"])
         state["geo"][loc] = str(geo_id)
         if short and short != loc:

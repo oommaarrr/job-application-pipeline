@@ -102,6 +102,22 @@
     return u.split("?")[0].replace(/\/+$/, "").toLowerCase();
   }
 
+  /*
+   * True for anything in LinkedIn's messaging overlay. A job someone sent you
+   * in a chat is rendered there as a /jobs/view/<id> link, and the overlay sits
+   * on every LinkedIn page (inside a shadow root, which deepAll walks). On the
+   * /jobs/search-results/ layout, whose cards carry no job link, those were the
+   * ONLY job links on the page, so the link readers collected the chat's jobs
+   * instead of the results (25 October 2026).
+   */
+  function inMessaging(el) {
+    try {
+      return !!(el && el.closest && el.closest(
+        "[data-view-name^='message'], [class*='msg-overlay'], [class*='msg-s-'], " +
+        "[class*='msg-convo'], [class*='msg-thread'], [class*='msg-conversation']"));
+    } catch { return false; }
+  }
+
   // ------------------------------------------------------------ site adapters
   const SITES = {
     indeed: {
@@ -281,13 +297,36 @@
       // instruction, 7 September 2026: scroll to the bottom first, and only
       // start fetching once the page has given up all its cards.
       requireCards: true,
+      /*
+       * Wait for the page before touching it, and wait for each screen of
+       * cards to fill in before moving on. 25 October 2026, from a Windows
+       * run that scrolled to the bottom correctly and then read ONE job.
+       *
+       * Two timing faults, neither of them in the scrolling. The run started
+       * the moment any card existed, and on a slow machine the first "card"
+       * is often the open job in the detail pane, so the list had not been
+       * built yet when the scroller was picked and the counting began. And a
+       * virtualised row is only filled in some hundreds of milliseconds after
+       * it scrolls into view; on a slow PC that is longer than a pass, so the
+       * list was travelled past rows that were still empty. A headless Chrome
+       * on Windows showed the second one exactly: scrolled to the bottom, the
+       * count stuck at the first screen.
+       *
+       * waitReady holds the run until the document has loaded, the list has
+       * cards and the count has stopped moving, then settles. fillWait gives
+       * every scroll step time for its rows to mount before the next one.
+       */
+      waitReady: true,
+      fillWait: true,
       cards: () =>
-        document.querySelectorAll(
+        [...document.querySelectorAll(
           "div.job-card-container, li.jobs-search-results__list-item, " +
           "li[data-occludable-job-id], div[data-job-id], " +
           // Cards often carry the posting id as an URN and nothing else.
-          "[data-entity-urn*='jobPosting'], [data-view-name='job-card']"
-        ),
+          "[data-entity-urn*='jobPosting'], [data-view-name='job-card'], " +
+          // The /jobs/search-results/ layout of 25 October 2026: see parse().
+          "[componentkey^='job-card-component-ref-']"
+        )].filter((el) => !inMessaging(el)),
       link: "a[href*='/jobs/view/'], a[href*='currentJobId=']",
       climb: "li, div[data-job-id], div.job-card-container, " +
              "[class*='job-card'], [class*='jobs-search-results__list-item'], article",
@@ -309,6 +348,43 @@
        * job would mean applying to something already applied for.
        */
       parse(card) {
+        /*
+         * The /jobs/search-results/ layout, as saved from a Windows user's
+         * browser on 25 October 2026. Every class is a hash, there is no
+         * data-job-id, no occludable slot and no link to the job anywhere in
+         * the card: the card is a clickable div whose componentkey is
+         * "job-card-component-ref-<id>" (twice, outer and inner). Inside, in
+         * order: the title paragraph (a screen-reader span "Selected, <title>"
+         * on the open job, and the visible title in an aria-hidden span), the
+         * company, the place, then badges ("Viewed", "Easy Apply"). Without
+         * this branch nothing here matched, and the only job links left on
+         * the page were in the messaging overlay, so the collector read the
+         * handful of jobs people had sent in chat instead of the 25 results.
+         */
+        const refId = (card.getAttribute?.("componentkey") || "")
+          .match(/^job-card-component-ref-(\d+)$/)?.[1];
+        if (refId) {
+          const shown = card.querySelector("p span[aria-hidden='true']");
+          const titleP = shown ? shown.closest("p") : card.querySelector("p");
+          const dismiss = [...card.querySelectorAll("button[aria-label]")]
+            .map((b) => b.getAttribute("aria-label").match(/^Dismiss (.+) job$/)?.[1])
+            .find(Boolean) || "";
+          const title = dedupeRepeat(
+            txt(shown) ||
+            txt(titleP).replace(/^Selected,\s*/, "") ||
+            dismiss);
+          if (!title) return null;
+          const rest = [...card.querySelectorAll("p")]
+            .filter((p) => p !== titleP && !titleP?.contains(p))
+            .map(txt).filter((t) => t && t !== "·");
+          return {
+            title,
+            company: rest[0] || "",
+            location: rest[1] || "",
+            url: `https://www.linkedin.com/jobs/view/${refId}/`,
+            _el: card,
+          };
+        }
         const a =
           card.querySelector("a.job-card-container__link") ||
           card.querySelector("a.job-card-list__title") ||
@@ -383,7 +459,7 @@
       records() {
         const byId = new Map();
         const offer = (id, el) => {
-          if (!/^\d{8,10}$/.test(id || "")) return;
+          if (!/^\d{8,12}$/.test(id || "")) return;
           const len = (el.innerText || "").trim().length;
           // Below the floor is an empty wrapper, above the ceiling is the
           // detail pane or a whole column. A card sits between.
@@ -392,10 +468,14 @@
           if (!prev || len > (prev.innerText || "").trim().length) byId.set(id, el);
         };
 
-        for (const el of deepAll("[componentkey]"))
-          offer(el.getAttribute("componentkey"), el);
+        for (const el of deepAll("[componentkey]")) {
+          const ck = el.getAttribute("componentkey") || "";
+          offer(ck.match(/^(?:job-card-component-ref-)?(\d{8,12})$/)?.[1], el);
+        }
 
         for (const a of deepAll("a[href]")) {
+          // Jobs someone sent in a chat message are links to /jobs/view/ too.
+          if (inMessaging(a)) continue;
           const href = a.getAttribute("href") || "";
           const id = href.match(/[?&]currentJobId=(\d+)/)?.[1] ||
                      href.match(/\/jobs\/view\/(\d+)/)?.[1];
@@ -834,8 +914,161 @@
 
   // Filled by loadAllCards, read by runCollect on accumulating sites.
   let lastHarvest = new Map();
+  // Which collectCards path won last, and what each path found, for the audit.
+  let lastPath = "";
+  let pathCounts = "";
+
+  /*
+   * The job ids the list has slots for, filled in or not.
+   *
+   * LinkedIn's virtualised list keeps a placeholder for every row it has laid
+   * out: an li[data-occludable-job-id] on /jobs/search/, a componentkey that is
+   * a bare job id on /jobs/search-results/. Only the rows near the viewport
+   * carry content, so the slots say how many jobs the page holds and which
+   * ones are still empty, while the cards only say which ones have painted.
+   */
+  const SLOT_SEL = "li[data-occludable-job-id], [componentkey]";
+  const JOB_LINK = "a[href*='/jobs/view/'], a[href*='currentJobId=']";
+  function slotId(el) {
+    const id = el.getAttribute("data-occludable-job-id") ||
+      (el.getAttribute("componentkey") || "").replace(/^job-card-component-ref-/, "");
+    return /^\d{6,12}$/.test(id) ? id : "";
+  }
+  function slotIds() {
+    const ids = new Set();
+    for (const el of deepAll(SLOT_SEL)) { const id = slotId(el); if (id) ids.add(id); }
+    return ids;
+  }
+  // A slot that is on screen but has not been filled in yet: no job link and
+  // next to no text. While any is showing, the virtualiser is still working.
+  function emptySlotsInView(container) {
+    const box = container && container.getBoundingClientRect
+      ? container.getBoundingClientRect() : null;
+    const top = Math.max(0, box ? box.top : 0);
+    const bottom = Math.min(window.innerHeight, box ? box.bottom : window.innerHeight);
+    let n = 0;
+    for (const el of deepAll(SLOT_SEL)) {
+      if (!slotId(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height <= 0 || r.bottom <= top || r.top >= bottom) continue;
+      if (el.querySelector(JOB_LINK)) continue;
+      if ((el.innerText || "").trim().length >= 15) continue;
+      n++;
+    }
+    return n;
+  }
+
+  /*
+   * How many jobs this results page can hold, from LinkedIn's own count.
+   *
+   * A full page is 25, but the last page of a search, or a search with few
+   * results, holds fewer, and waiting for 25 there would only burn the
+   * timeout. The header says "12 results" (or "12 Ergebnisse"); with ?start=
+   * that gives what is left for this page. A rounded count ("1,000+") is a
+   * lower bound and says nothing about this page, so it is ignored, and so is
+   * anything that does not read cleanly: the default is the full 25.
+   */
+  function resultTotal() {
+    const rx = /^\s*(\d{1,3}(?:[.,\s]\d{3})*|\d+)\s+(results?|ergebnisse|résultats|resultados|risultati|resultaten)\s*$/i;
+    for (const el of deepAll("small, span, div, p, h1, h2, h3, header")) {
+      if (el.childElementCount > 2) continue;
+      const t = (el.textContent || "").replace(/\s+/g, " ").trim();
+      if (!t || t.length > 40 || /\+|more than|mehr als|over/i.test(t)) continue;
+      const m = t.match(rx);
+      if (m) return parseInt(m[1].replace(/[.,\s]/g, ""), 10);
+    }
+    return countFromPageData();
+  }
+
+  /*
+   * The same count from the data LinkedIn ships with the page.
+   *
+   * The logged-in /jobs/search/ layout of 25 October 2026 does not render the
+   * "880 results" line at all; it is only in the JobSearchMetadata JSON inside
+   * a hidden <code> block, as `"subtitle":{…"text":"880 results"…}`. Reading
+   * 1-2 MB of JSON on every poll would be wasteful, so the answer is kept per
+   * search URL (pagination in place changes ?start=, not the total).
+   */
+  let pageDataCount = { key: null, value: null };
+  function countFromPageData() {
+    const q = new URLSearchParams(location.search);
+    q.delete("currentJobId"); q.delete("start");
+    const key = location.pathname + "?" + q.toString();
+    if (pageDataCount.key === key) return pageDataCount.value;
+    let value = null;
+    try {
+      const rx = /"subtitle":\{[^{}]*?"text":"(\d{1,3}(?:[.,]\d{3})*|\d+) (?:results?|ergebnisse|résultats|resultados|risultati|resultaten)"/i;
+      for (const code of document.querySelectorAll("code")) {
+        const t = code.textContent || "";
+        if (!t.includes("JobSearchMetadata")) continue;
+        const m = t.match(rx);
+        if (m) { value = parseInt(m[1].replace(/[.,]/g, ""), 10); break; }
+      }
+    } catch { value = null; }
+    // A miss is only final once the document has finished loading.
+    if (value != null || document.readyState === "complete") pageDataCount = { key, value };
+    return value;
+  }
+  function pageExpect() {
+    const full = site?.expectCards || 0;
+    if (!full || !site?.waitReady) return full;
+    const total = resultTotal();
+    if (total == null) return full;
+    const start = parseInt(new URLSearchParams(location.search).get("start") || "0", 10) || 0;
+    return Math.max(0, Math.min(full, total - start));
+  }
+
+  /*
+   * Hold the run until the results page has actually loaded.
+   *
+   * "A card exists" was the old signal, and on a slow PC it fires on the open
+   * job in the detail pane before the list itself has been built. Everything
+   * after that was decided against a half-built page: which element scrolls,
+   * how many cards there are, when the list is finished. So wait for all of
+   * it: the document loaded, more than the pane's one card (or a page that
+   * says it has one result or none), the count unchanged for a moment, and
+   * then a fixed settle on top. A page that never gets there is still read
+   * after the timeout, exactly as before, rather than dropped.
+   */
+  async function waitForListReady(onProgress, ms = 45000) {
+    const t0 = Date.now();
+    let last = -1, since = Date.now(), timedOut = true;
+    while (Date.now() - t0 < ms && !cancelled) {
+      const n = collectCards().length;
+      if (n !== last) { last = n; since = Date.now(); }
+      const total = resultTotal();
+      const enough = n >= 2 || (total != null && n >= Math.min(total, 1));
+      // "complete" also waits on every image and tracker, and one that hangs
+      // would hold a finished list for the whole timeout; a parsed document
+      // whose count has held for 8 s is loaded as far as the list goes.
+      const held = Date.now() - since;
+      const loaded = document.readyState === "complete" ? held >= 1500
+        : document.readyState === "interactive" && held >= 8000;
+      if (enough && loaded) {
+        timedOut = false;
+        break;
+      }
+      onProgress?.(`waiting for the page to load… (${n} card${n === 1 ? "" : "s"} so far)`);
+      await sleep(300);
+    }
+    if (!cancelled) {
+      onProgress?.("page loaded, letting it settle…");
+      await sleep(jitter(2000, 3000));
+    }
+    return { ms: Date.now() - t0, cards: collectCards().length, timedOut };
+  }
 
   async function loadAllCards(onProgress) {
+    // Before anything is measured or scrolled: the scroller is picked from the
+    // cards on the page, so picking it from a half-built page picks wrong.
+    let ready = null;
+    if (site?.waitReady) {
+      ready = await waitForListReady(onProgress);
+      if (cancelled) {
+        return { count: 0, dead: false, passes: 0, userScrolled: false, everMoved: false,
+                 scrollables: 0, trace: [], container: "", ready, expected: 0 };
+      }
+    }
     const container = scrollContainer();
 
     /*
@@ -1093,6 +1326,29 @@
       }
     };
 
+    /*
+     * After a scroll step, let the rows that came into view fill in.
+     *
+     * settle() only waits for the scroll position to stop, which says nothing
+     * about the virtualiser: on a slow machine the rows it just exposed are
+     * still empty placeholders when the next step moves them out of view
+     * again, and those jobs are never seen. So poll until no placeholder on
+     * screen is empty and the count has held for two polls, up to `ms`. Sites
+     * without fillWait skip this entirely.
+     */
+    const waitFill = async (ms) => {
+      if (!site?.fillWait || !ms) return;
+      const end = Date.now() + ms;
+      let last = harvest(), quiet = 0;
+      while (Date.now() < end && !cancelled && !userScrolled) {
+        await sleep(250);
+        const n = harvest();
+        if (n === last && !emptySlotsInView(container)) { if (++quiet >= 2) break; }
+        else quiet = 0;
+        last = n;
+      }
+    };
+
     const toTop = async () => {
       driving = true;
       try {
@@ -1127,7 +1383,8 @@
        * number, and treat a plateau as evidence only after it has persisted for
        * several passes.
        */
-      const target = site?.expectCards || 0;
+      // LinkedIn's own result count can lower this for a short last page.
+      let target = pageExpect();
       const patience = target ? 6 : 2;
       let prev = -1;
       let stable = 0;
@@ -1147,6 +1404,7 @@
         // Anchor on the last card and let the browser find the scroller.
         const before = n;
         const moved = await advance();
+        await waitFill(1500);
         scrollPasses++;
         // New cards are progress even when we cannot see what moved, and that
         // is the common case on a pane we did not identify. Counting only
@@ -1181,14 +1439,41 @@
        * requested once, and a second pass picks up anything that mounted after
        * we had already scrolled past its slot.
        */
-      if (target && harvest() < target && !cancelled && !userScrolled) {
+      /*
+       * On LinkedIn, sweep more than once, each time giving the rows longer to
+       * fill in (25 October 2026): a machine slow enough to miss rows on the
+       * first walk is slow on the second too, so the second has to wait
+       * longer, not just repeat. It stops as soon as the page is full, when
+       * every slot the list has laid out has been read and the number of slots
+       * has held over a whole sweep (a short page, not a slow one), or when
+       * the time budget runs out. Other sites keep their single sweep.
+       */
+      const fills = site?.fillWait ? [2500, 4000, 6000] : [0];
+      const budgetEnd = Date.now() + (site?.fillWait ? 180000 : 0);
+      let slotsBefore = slotIds();
+      for (let s = 0; s < fills.length; s++) {
+        target = pageExpect() || target;
+        if (!(target && harvest() < target) || cancelled || userScrolled) break;
+        if (site?.fillWait) {
+          if (Date.now() > budgetEnd) break;
+          const slots = slotIds();
+          const allRead = slots.size > 0 && [...slots].every((id) =>
+            lastHarvest.has(`https://www.linkedin.com/jobs/view/${id}/`));
+          if (s > 0 && allRead && slots.size === slotsBefore.size) {
+            onProgress?.(`${harvest()} cards: every row the list holds has been read`);
+            break;
+          }
+          slotsBefore = slots;
+        }
         onProgress?.(`only ${harvest()}/${target}, sweeping again…`);
         await toTop();
         await sleep(jitter(500, 800));
+        await waitFill(fills[s]);
         let dead = 0;
         for (let i = 0; i < 30 && !cancelled && !userScrolled; i++) {
           if (harvest() >= target) break;
           if (!(await advance())) { if (++dead >= 3) break; } else dead = 0;
+          await waitFill(fills[s]);
           await sleep(site?.slow ? jitter(600, 900) : jitter(350, 600));
           onProgress?.(`sweeping… ${harvest()}/${target}`);
         }
@@ -1216,16 +1501,19 @@
       await advance();
       onProgress?.("at the bottom, letting the last cards render…");
       await sleep(jitter(1500, 2200));
+      await waitFill(3000);
     }
     const final = harvest();
-    if (site?.expectCards && final < site.expectCards && !cancelled && !userScrolled) {
+    const expected = pageExpect();
+    if (expected && final < expected && !cancelled && !userScrolled) {
       console.warn(
-        `[job collector] only ${final} of ${site.expectCards} cards rendered ` +
+        `[job collector] only ${final} of ${expected} cards rendered ` +
         `after ${scrollPasses} scroll pass(es)` +
         (scrollDead ? " — THE LIST NEVER MOVED" : " — this may simply be the last page"));
     }
     return { count: final, dead: scrollDead, passes: scrollPasses, userScrolled,
-             everMoved, scrollables: allScrollables(60).length,
+             everMoved, scrollables: allScrollables(60).length, ready, expected,
+             path: lastPath, paths: pathCounts, slots: slotIds().size,
              trace, container: container
                ? `${container.tagName}${container.id ? "#" + container.id : ""}`
                : "none (window)" };
@@ -1286,7 +1574,13 @@
     if (!site.link) return [];
     const cards = new Set();
     for (const a of document.querySelectorAll(site.link)) {
-      const card = (site.climb && a.closest(site.climb)) || a.parentElement;
+      if (inMessaging(a)) continue;
+      // Climb from the link's PARENT. closest() matches the element itself, and
+      // on the logged-in layout of 25 October 2026 the title link carries
+      // job-card-container__link, which [class*='job-card'] matches, so the
+      // "card" was the anchor alone. parse() looks for the link inside the
+      // card, found none, and this whole fallback read 1 job of 25.
+      const card = (site.climb && a.parentElement?.closest(site.climb)) || a.parentElement;
       if (card) cards.add(card);
     }
     return parseAll(cards);
@@ -1343,6 +1637,13 @@
     const filled = (recs) => recs.filter((r) => r.company).length;
     paths.sort((a, b) => b[1].length - a[1].length || filled(b[1]) - filled(a[1]));
     const [name, best] = paths[0];
+    // Which reader produced the records, kept for the audit. When LinkedIn
+    // changes its markup the first sign is this moving from "card selectors"
+    // to "job links" or "text reader", long before the count drops to zero.
+    if (best.length) {
+      lastPath = name;
+      pathCounts = paths.map(([n, r]) => `${n} ${r.length}`).join(", ");
+    }
     if (name !== "card selectors" && best.length) {
       console.warn(`[job collector] using the ${name} path: ` +
         paths.map(([n, r]) => `${n} ${r.length} (${filled(r)} with company)`).join(", "));
@@ -1473,6 +1774,12 @@
                expected: site.expectCards, dead: true };
     }
 
+    // Short after every wait and every sweep: say so before reading, so the
+    // status line shows it was not the descriptions starting early.
+    if (!skipScroll && site?.waitReady && load.expected && loaded < load.expected && !cancelled) {
+      onProgress?.(`only ${loaded} of ${load.expected} cards rendered after waiting, reading those`);
+    }
+
     // On a virtualised list the accumulated map is the whole page; a fresh read
     // here would return only what is still mounted.
     const found = (site?.accumulate && lastHarvest.size)
@@ -1494,7 +1801,9 @@
       return { ...saved, found: found.length, loaded, scrollPasses: load.passes,
                scrollDead: load.dead, userScrolled: load.userScrolled,
                trace: load.trace, container: load.container,
-               everMoved: load.everMoved, scrollables: load.scrollables };
+               everMoved: load.everMoved, scrollables: load.scrollables,
+               expected: load.expected, path: load.path, paths: load.paths,
+               slots: load.slots, readyMs: load.ready?.ms };
     }
 
     const recs = [];
@@ -1535,6 +1844,8 @@
              scrollDead: load.dead, userScrolled: load.userScrolled,
              trace: load.trace, container: load.container,
              everMoved: load.everMoved, scrollables: load.scrollables,
+             expected: load.expected, path: load.path, paths: load.paths,
+             slots: load.slots, readyMs: load.ready?.ms,
              withDesc: recs.filter((r) => r.description).length,
              mismatch: alignmentWarning(recs) };
   }
@@ -1678,7 +1989,9 @@
     // Indeed loads its list behind more redirects than LinkedIn and, when it
     // decides to, behind a verification wall; give it longer before judging the
     // page empty so a slow-but-fine load is not read as a failure.
-    const waitMs = site.name === "Indeed" ? 22000 : 12000;
+    // LinkedIn on a slow PC can take longer than 12s to show its first card;
+    // loadAllCards then waits for the rest of the page itself.
+    const waitMs = site.name === "Indeed" ? 22000 : site.waitReady ? 30000 : 12000;
     if (!(await waitForCards(waitMs))) {
       const blocked = pageBlockReason();
       await setStatus(blocked ? "blocked by a verification page — stopped"
@@ -1692,8 +2005,11 @@
     const pageNo = auto.total - auto.remaining + 1;
     const res = await collectPage({
       withDescriptions: auto.withDescriptions,
+      // The loader reports in words ("waiting for the page to load…"), the
+      // description loop in numbers; both have to read right on the status line.
       onProgress: (i, n) =>
-        setStatus(`page ${pageNo}/${auto.total} · job ${i}/${n}`, true),
+        setStatus(`page ${pageNo}/${auto.total} · ` +
+                  (typeof i === "string" ? i : `job ${i}/${n}`), true),
     });
 
     // One line per page, sent to the worker and on to the bridge. Without this
@@ -1719,6 +2035,14 @@
       container: res.container || "",
       everMoved: !!res.everMoved,
       scrollables: res.scrollables ?? 0,
+      // How many the page should have held, which reader found the cards and
+      // what every reader found, so a layout change shows up in the audit as
+      // a change of path rather than as a mysteriously short page.
+      expected: res.expected ?? 0,
+      path: res.path || "",
+      paths: res.paths || "",
+      slots: res.slots ?? 0,
+      readyMs: res.readyMs ?? 0,
       page: pageNo,
     });
 
@@ -1859,4 +2183,36 @@
     }
     return false;
   });
+
+  /*
+   * Tell the extension which place this search is pinned to, for the
+   * dashboard's search builder. The newer /jobs/search-results/ address
+   * carries geoId but no location=, so read the place from the results header,
+   * where LinkedIn labels it "Location <place>". That label is LinkedIn's own
+   * answer for the geoId, so the pair is right even when the text a user typed
+   * was not. Only on LinkedIn search pages, once, a few seconds after load.
+   */
+  async function reportPlace() {
+    if (!/linkedin\.com$/.test(location.hostname) || !/^\/jobs\/search/.test(location.pathname)) return;
+    for (let i = 0; i < 20; i++) {
+      const geoId = new URLSearchParams(location.search).get("geoId") || "";
+      const label = [...document.querySelectorAll("[aria-label^='Location ']")]
+        .map((el) => el.getAttribute("aria-label").slice(9).trim())
+        .find((t) => t && t.length <= 80);
+      if (geoId && label) {
+        chrome.runtime.sendMessage({ type: "geo:learn", location: label, geoId }).catch(() => {});
+        return;
+      }
+      await sleep(1000);
+    }
+  }
+  if (site?.name === "LinkedIn") reportPlace().catch(() => {});
+
+  // For scripts/selftest.py only: its LinkedIn-like test page sets this flag
+  // and drives the loader directly. A content script runs in an isolated
+  // world, so no real site can set it or see the hook.
+  if (window.__JOB_COLLECTOR_TEST__) {
+    window.__jobCollectorTest = { loadAllCards, collectCards, scrollContainer,
+                                 resultTotal, slotIds, site: () => site };
+  }
 })();

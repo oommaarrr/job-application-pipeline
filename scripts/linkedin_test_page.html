@@ -1,0 +1,185 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Jobs | LinkedIn</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 14px sans-serif; }
+  header { height: 52px; background: #eee; }
+  .scaffold-layout__list-detail { display: flex; height: calc(100% - 52px); }
+  .scaffold-layout__list { width: 480px; display: flex; flex-direction: column; }
+  .scaffold-layout__list > div { flex: 1; overflow-y: auto; }
+  .scaffold-layout__list ul { list-style: none; margin: 0; padding: 0; }
+  .slot { height: 128px; border-bottom: 1px solid #ddd; box-sizing: border-box; padding: 8px; }
+  .jobs-details__main-content { flex: 1; overflow-y: auto; padding: 12px; }
+  .jobs-details__main-content p { margin: 0 0 14px; }
+</style>
+<script>
+/*
+ * A LinkedIn-like results page for scripts/selftest.py (25 October 2026).
+ *
+ * The classic layout copies the STRUCTURE of a real logged-in /jobs/search/
+ * page saved that day: a scaffold-layout__list column whose scrolling child
+ * has a hashed class, li[data-occludable-job-id] rows, a job-card-container
+ * card whose title link is job-card-container__link, the company in
+ * artdeco-entity-lockup__subtitle, the place in a metadata list, and the open
+ * job repeated in the detail pane. Every text is a placeholder.
+ *
+ * The page behaves like a slow PC: the detail pane (with one job link) comes
+ * first, the list later, and every row is an empty slot that fills in only
+ * some time after it comes near the view, and empties again when far away.
+ *
+ *   ?layout=classic|hashed|refs
+ *                           hashed: hashed class names, rows are
+ *                           [componentkey=<id>] divs.
+ *                           refs: the /jobs/search-results/ layout saved from a
+ *                           real Windows browser the same day, in structure
+ *                           only: cards are clickable divs keyed
+ *                           componentkey="job-card-component-ref-<id>" (outer
+ *                           and inner), with no job link in them; the title is
+ *                           an aria-hidden span, then company and place
+ *                           paragraphs; the header says "N results"; and a
+ *                           messaging overlay in a shadow root holds links to
+ *                           OTHER jobs (sent in chat), which must not be read.
+ *   ?n=25                   jobs on this page
+ *   ?list=4000              ms before the list exists
+ *   ?fill=600               ms a row takes to fill in
+ *   ?json=12                put "12 results" in the page data, as LinkedIn does
+ *
+ * When the collector is done the result is written to body[data-result].
+ */
+window.__JOB_COLLECTOR_TEST__ = true;
+const P = new URLSearchParams(location.search);
+const N = +(P.get("n") || 25), LIST_MS = +(P.get("list") || 4000), FILL_MS = +(P.get("fill") || 600);
+const LAYOUT = P.get("layout") || "classic";
+const IDS = Array.from({ length: N }, (_, i) => String(4100000000 + i * 7919));
+window.chrome = {
+  runtime: { onMessage: { addListener() {} }, sendMessage: () => Promise.resolve() },
+  storage: {
+    local: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+    onChanged: { addListener() {} },
+  },
+};
+function cardHtml(i) {
+  const id = IDS[i];
+  if (LAYOUT === "refs") {
+    // The inner of the two job-card-component-ref divs; the slot is the outer.
+    return `<div componentkey="job-card-component-ref-${id}" class="_k3"><div>` +
+      `<figure aria-hidden="true"></figure>` +
+      `<div><div data-display-contents="true"><p class="_p1">` +
+      `<span class="_sr">${i === 0 ? "Selected, " : ""}Role ${i + 1} Engineer</span>` +
+      `<span aria-hidden="true">Role ${i + 1} Engineer</span></p></div>` +
+      `<div><p class="_p2">Company ${i + 1}</p></div>` +
+      `<p class="_p3">City ${i + 1} (On-site)</p></div>` +
+      `<div><button type="button" aria-label="Dismiss Role ${i + 1} Engineer job"><span></span></button></div>` +
+      `<div><p>Posted 3 days ago</p><p>·</p><p>Easy Apply</p></div>` +
+      `</div></div>`;
+  }
+  if (LAYOUT === "hashed") {
+    return `<div class="_a1b2c3"><p class="_9f8e7d">Role ${i + 1} Engineer</p>` +
+           `<div class="_77aa01">Company ${i + 1} · City ${i + 1}</div><span>Easy Apply</span></div>`;
+  }
+  return `<div><div data-job-id="${id}" class="display-flex job-card-container relative job-card-list">` +
+    `<div><div class="job-card-list__entity-lockup artdeco-entity-lockup">` +
+    `<div class="flex-grow-1 artdeco-entity-lockup__content">` +
+    `<div class="full-width artdeco-entity-lockup__title">` +
+    `<a class="disabled ember-view job-card-container__link xHashAbcDefGhiJklMnoPqr job-card-list__title--link" ` +
+    `href="https://www.linkedin.com/jobs/view/${id}/?eBP=x&trk=y" aria-label="Role ${i + 1} Engineer with verification">` +
+    `<span aria-hidden="true"><strong>Role ${i + 1} Engineer</strong></span>` +
+    `<span class="visually-hidden">Role ${i + 1} Engineer with verification</span></a></div>` +
+    `<div class="artdeco-entity-lockup__subtitle"><span class="yHashAbcDefGhiJklMnoPqr" dir="ltr">Company ${i + 1}</span></div>` +
+    `<div class="artdeco-entity-lockup__caption"><ul class="job-card-container__metadata-wrapper">` +
+    `<li class="zHashAbcDefGhiJklMnoPqr"><span dir="ltr">City ${i + 1} (Hybrid)</span></li></ul></div>` +
+    `</div></div>` +
+    `<ul class="job-card-list__footer-wrapper"><li class="job-card-container__footer-item">Viewed</li></ul>` +
+    `</div></div></div>`;
+}
+function build() {
+  const col = document.createElement("div");
+  col.className = "scaffold-layout__list";
+  const list = document.createElement("div");
+  list.className = LAYOUT === "hashed" ? "_5c4d3e" : "KPshaHNxAbcDefGhiJklMnoPqr";
+  const slots = IDS.map((id) => LAYOUT === "refs"
+      ? `<div class="slot" role="button" tabindex="0" componentkey="job-card-component-ref-${id}"></div>`
+      : LAYOUT === "hashed"
+      ? `<div class="slot" componentkey="${id}"></div>`
+      : `<li class="ember-view occludable-update p0 relative scaffold-layout__list-item slot" data-occludable-job-id="${id}"></li>`).join("");
+  list.innerHTML = LAYOUT === "classic" ? `<ul>${slots}</ul>`
+    : LAYOUT === "refs" ? `<div componentkey="SearchResultsMainContent" data-testid="lazy-column">${slots}</div>`
+    : `<div>${slots}</div>`;
+  if (LAYOUT === "refs") {
+    col.insertAdjacentHTML("afterbegin", `<header componentkey="searchResultsHeaderComponent"><p>${N} results</p>` +
+      `<div aria-label="Location Somewhere"><p>Somewhere</p></div></header>`);
+  }
+  col.appendChild(list);
+  document.querySelector(".scaffold-layout__list-detail").prepend(col);
+  const pending = new Map();
+  const tick = () => {
+    const top = list.scrollTop, h = list.clientHeight;
+    list.querySelectorAll(".slot").forEach((el, i) => {
+      const y = el.offsetTop - list.offsetTop;
+      const near = y + 128 > top - h * 0.5 && y < top + h * 1.5;
+      const far = y + 128 < top - h * 2 || y > top + h * 3;
+      if (near && !el.firstChild && !pending.has(i)) {
+        pending.set(i, setTimeout(() => { pending.delete(i); el.innerHTML = cardHtml(i); }, FILL_MS));
+        // (On refs the slot is the outer job-card-component-ref div and the
+        // card fills in as its inner one, as on the real page.)
+      } else if (!near && pending.has(i)) {
+        clearTimeout(pending.get(i)); pending.delete(i);
+      } else if (far && el.firstChild) {
+        el.innerHTML = "";
+      }
+    });
+  };
+  list.addEventListener("scroll", tick, { passive: true });
+  setInterval(tick, 150);
+  tick();
+}
+document.addEventListener("DOMContentLoaded", () => {
+  if (P.get("json")) {
+    const code = document.createElement("code");
+    code.style.display = "none";
+    code.textContent = JSON.stringify({ data: { $type: "com.linkedin.voyager.dash.jobs.search.JobSearchMetadata",
+      fuzzyCount: { text: P.get("json") + "+ results" }, subtitle: { textDirection: "USER_LOCALE", text: P.get("json") + " results" } } });
+    document.body.appendChild(code);
+  }
+  setTimeout(() => {
+    const id = IDS[0];
+    document.querySelector(".jobs-details__main-content").innerHTML = (LAYOUT === "hashed"
+        ? `<div componentkey="${id}-details"><h1><a href="/jobs/search-results/?currentJobId=${id}">Role 1 Engineer</a></h1></div>`
+        : `<div class="job-details-jobs-unified-top-card__job-title"><h1 class="t-24 t-bold"><a href="https://www.linkedin.com/jobs/view/${id}/?x=1">Role 1 Engineer</a></h1></div>`) +
+      Array.from({ length: 80 }, (_, i) => `<p>Description paragraph ${i} lorem ipsum dolor sit amet.</p>`).join("");
+  }, 800);
+  setTimeout(build, LIST_MS);
+  // LinkedIn's messaging overlay, in a shadow root as on the real page, with
+  // links to jobs that are NOT in this search (sent by a contact in chat).
+  const host = document.createElement("div");
+  host.setAttribute("data-testid", "interop-shadowdom");
+  document.body.appendChild(host);
+  host.attachShadow({ mode: "open" }).innerHTML =
+    `<aside class="msg-overlay-container"><ul>` + [1, 2, 3].map((k) =>
+      `<li data-view-name="message-list-item" class="msg-s-event-listitem"><div class="msg-s-event-listitem__body">` +
+      `<a href="https://www.linkedin.com/jobs/view/${3900000000 + k}/">Chat job ${k} at Chat company ${k} - a message somebody sent</a></div></li>`).join("") +
+    `</ul></aside>`;
+  const s = document.createElement("script");
+  s.src = "content.js";
+  s.onload = async () => {
+    const t = window.__jobCollectorTest;
+    const t0 = Date.now();
+    // The same gate stepAuto uses: start as soon as any card is on the page.
+    while (!t.collectCards().length && Date.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 300));
+    let res;
+    try { res = await t.loadAllCards(() => {}); } catch (e) { res = { count: -1, err: String(e) }; }
+    const recs = t.collectCards();
+    document.body.setAttribute("data-result", JSON.stringify({
+      count: res.count, expected: res.expected, path: res.path, ms: Date.now() - t0, err: res.err,
+      // Spot-check the parse of what is mounted at the end: placeholders in, placeholders out.
+      // The detail pane's copy of the open job has no company, so only the
+      // titles and urls are checked on every record.
+      chatJobs: recs.filter((r) => /\/jobs\/view\/39000000\d\//.test(r.url)).length,
+      parsedOk: recs.filter((r) => r.company).length >= 3
+                && recs.every((r) => /^Role \d+ Engineer$/.test(r.title)
+                  && /^https:\/\/www\.linkedin\.com\/jobs\/view\/\d+\/$/.test(r.url)
+                  && (!r.company || (/^Company \d+$/.test(r.company) && /^City \d+/.test(r.location)))) }));
+  };
+  document.head.appendChild(s);
+});
+</script></head>
+<body><header>LinkedIn</header><main class="scaffold-layout__list-detail"><div class="jobs-details__main-content"></div></main></body></html>

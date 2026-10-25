@@ -871,6 +871,45 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     _write_local(sc, None)
 
 
+def origin_section(e: "Env") -> None:
+    """
+    Only the bridge's own pages and the extension may change anything from a
+    browser. POST /applied with no URLs answers 400 when let in and 403 when
+    refused, and changes nothing either way.
+    """
+    def ask(method: str, path: str, headers: dict, data: bytes | None = b"{}"):
+        req = urllib.request.Request(f"http://127.0.0.1:{e.port}{path}", method=method,
+                                     data=data if method == "POST" else None,
+                                     headers={"Content-Type": "application/json", **headers})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.headers.get("Access-Control-Allow-Origin")
+        except urllib.error.HTTPError as ex:
+            return ex.code, ex.headers.get("Access-Control-Allow-Origin")
+
+    code, acao = ask("POST", "/applied", {"Origin": "https://evil.example"})
+    check(code == 403 and acao is None, "a POST from another website is refused", f"{code} {acao}")
+    own = f"http://127.0.0.1:{e.port}"
+    for origin in (own, f"http://localhost:{e.port}", "chrome-extension://abc"):
+        code, acao = ask("POST", "/applied", {"Origin": origin})
+        check(code == 400 and acao == origin, f"a POST from {origin} is accepted", f"{code} {acao}")
+    code, _ = ask("POST", "/applied", {})
+    check(code == 400, "a POST with no Origin (curl, scripts) is accepted", str(code))
+    code, _ = ask("POST", "/applied", {"Origin": "null"})
+    check(code == 403, "a POST from Origin null (sandboxed frame, file://) is refused", str(code))
+    code, _ = ask("POST", "/applied", {"Origin": own, "Content-Type": "text/plain"})
+    check(code == 403, "a POST that is not JSON is refused (it would skip the CORS preflight)", str(code))
+    code, _ = ask("GET", "/trigger", {"Origin": "https://evil.example"})
+    check(code == 403, "GET /trigger (hands out a queued run) from another website is refused", str(code))
+    code, _ = ask("GET", "/trigger", {"Sec-Fetch-Site": "cross-site"})
+    check(code == 403, "GET /trigger from another site's <img> (no Origin) is refused", str(code))
+    code, acao = ask("GET", "/status", {"Origin": "https://evil.example"})
+    check(code == 200 and acao is None, "another website gets no CORS header to read answers with",
+          f"{code} {acao}")
+    code, acao = ask("OPTIONS", "/applied", {"Origin": "https://evil.example"}, None)
+    check(acao is None, "a preflight from another website is not approved", f"{code} {acao}")
+
+
 def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     """
     Saved searches kept by the pipeline and edited on the dashboard (28
@@ -974,6 +1013,46 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
         check(r.returncode == 0, "the extension pulls searches, moves its own list, clears after an erase, "
                                  "adds a page and continues a cut-off run", (r.stdout + r.stderr)[-1500:])
+        # The dashboard's search builder, loaded in Node (25 October 2026): a
+        # search in another country must carry that country's geoId, or say
+        # plainly that LinkedIn will search the profile's country instead.
+        js = textwrap.dedent(r'''
+            const u = require(require("path").resolve(process.argv[1]));
+            const map = u.geoMapOf({"netherlands": "123456789"});
+            const f = {kw: "Data Engineer", radius: 0, posted: 7, remote: false};
+            const li = (loc) => u.BUILD.linkedin({...f, loc}, u.geoFor(loc, map));
+            const geo = (url) => new URL(url).searchParams.get("geoId");
+            const out = {
+              germany: geo(li("Germany")), deutschland: geo(li("Deutschland")),
+              egypt: geo(li("Egypt")), saudi: geo(li("Saudi Arabia")),
+              learned: geo(li("The Netherlands")),
+              unknownWarns: /profile/.test(u.placeIssue(li("France"), map).warn) && !geo(li("France")),
+              fixed: geo(u.placeIssue("https://www.linkedin.com/jobs/search/?keywords=x&location=Egypt", map).fix),
+              mismatch: geo(u.placeIssue("https://www.linkedin.com/jobs/search/?keywords=x&location=Egypt&geoId=101282230", map).fix),
+              fine: u.placeIssue(li("Germany"), map).warn === "",
+              indeed: [u.indeedCountry("Netherlands"), u.indeedCountry("Paris, France"), u.indeedCountry("UK"), u.indeedCountry("Cairo")],
+              indeedWrong: !!u.placeIssue("https://de.indeed.com/jobs?q=x&l=Netherlands", map).warn,
+              stepstone: !!u.placeIssue("https://www.stepstone.de/jobs?what=x&where=Spain", map).warn
+                         && !u.placeIssue("https://www.stepstone.de/jobs?what=x&where=Berlin", map).warn,
+            };
+            console.log(JSON.stringify(out));
+        ''')
+        r = subprocess.run([node, "-e", js, str(work / "web" / "searches.js")], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=60)
+        try:
+            o = json.loads(r.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            o = {}
+        check(o.get("germany") == o.get("deutschland") == "101282230" and o.get("egypt") == "106155005"
+              and o.get("saudi") == "100459316" and o.get("learned") == "123456789",
+              "the search builder pins known and learned countries by geoId, however they are spelled",
+              (r.stdout + r.stderr)[-600:])
+        check(o.get("unknownWarns") and o.get("fixed") == "106155005" and o.get("mismatch") == "106155005"
+              and o.get("fine"),
+              "an unknown place is warned about, a missing or wrong geoId is filled in", json.dumps(o))
+        check(o.get("indeed") == ["nl", "fr", "uk", ""] and o.get("indeedWrong") and o.get("stepstone"),
+              "Indeed follows the typed country; Indeed and StepStone warn when it is another country's",
+              json.dumps(o))
     else:
         print("  (Node is not installed, so the extension's own checks are skipped)")
 
@@ -1126,6 +1205,106 @@ def _days_ago(n: int) -> str:
     return (dt.date.today() - dt.timedelta(days=n)).isoformat()
 
 
+def find_chrome() -> str | None:
+    """Chrome or Chromium on this machine, or None. GitHub's runners have it on
+    all three systems; a machine without it skips the collector checks."""
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+        p = shutil.which(name)
+        if p:
+            return p
+    for p in (r"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+              r"/Applications/Chromium.app/Contents/MacOS/Chromium",
+              os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+              os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+              os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe")):
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def collector_section(work: pathlib.Path) -> None:
+    """
+    The LinkedIn collector on a LinkedIn-like page in headless Chrome
+    (25 October 2026). The page (scripts/linkedin_test_page.html) is slow on
+    purpose: the list appears seconds after the job-details pane and every row
+    of its virtualised list fills in only some time after it scrolls into view.
+    The collector used to start on the first card, which is the pane's, pick
+    the pane as the scroller and come back short; it must now wait for the page
+    and read all 25, and never the jobs linked in the messaging overlay. Chrome runs with a virtual clock, so the timings are the
+    same on a fast laptop and a slow CI machine and the counts are exact.
+    """
+    chrome = find_chrome()
+    if not chrome:
+        print("  (Chrome is not installed, so the collector checks are skipped)")
+        return
+    import http.server
+    import threading
+    site = pathlib.Path(tempfile.mkdtemp(prefix="jp-li-"))
+    for sub in ("search", "search-results"):
+        d = site / "jobs" / sub
+        d.mkdir(parents=True)
+        shutil.copy(work / "scripts" / "linkedin_test_page.html", d / "index.html")
+        shutil.copy(work / "extension" / "content.js", d / "content.js")
+
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *a, **k):
+            super().__init__(*a, directory=str(site), **k)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+    def run(path: str, query: str) -> dict:
+        prof = tempfile.mkdtemp(prefix="jp-chrome-")
+        args = [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
+                "--no-default-browser-check", f"--user-data-dir={prof}",
+                # The content script only wakes up on linkedin.com.
+                f"--host-resolver-rules=MAP www.linkedin.com 127.0.0.1:{port}",
+                "--window-size=1280,800", "--virtual-time-budget=240000", "--dump-dom",
+                f"http://www.linkedin.com:{port}/jobs/{path}/?{query}"]
+        if sys.platform.startswith("linux"):
+            args.insert(1, "--no-sandbox")       # CI containers have no user namespaces
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=180)
+            out = r.stdout
+        except subprocess.TimeoutExpired:
+            out = ""
+        finally:
+            shutil.rmtree(prof, ignore_errors=True)
+        import html as _html
+        import re as _re
+        m = _re.search(r'data-result="([^"]*)"', out)
+        try:
+            return json.loads(_html.unescape(m.group(1))) if m else {"error": "no result in the page"}
+        except ValueError:
+            return {"error": "unreadable result"}
+
+    try:
+        cases = [
+            ("search", "list=4000&fill=600", 25, "a slow page: list late, rows fill in 0.6s"),
+            ("search", "list=8000&fill=2500", 25, "a very slow page: list after 8s, rows fill in 2.5s"),
+            ("search-results", "layout=hashed&list=4000&fill=1500", 25,
+             "the hashed-class layout, rows keyed by componentkey"),
+            ("search-results", "layout=refs&list=4000&fill=1500", 25,
+             "the job-card-component-ref layout, no job links in the cards"),
+            ("search", "n=12&json=12", 12, "a 12-result search, counted from the page data"),
+            ("search", "n=7&fill=1000", 7, "a short last page with no count on it"),
+        ]
+        for path, query, want, label in cases:
+            r = run(path, query)
+            # chatJobs: links to other jobs in the messaging overlay, never results.
+            check(r.get("count") == want and r.get("parsedOk") is True and not r.get("err")
+                  and r.get("chatJobs") == 0,
+                  f"LinkedIn collector reads {want} of {want}: {label}", json.dumps(r))
+    finally:
+        srv.shutdown()
+        shutil.rmtree(site, ignore_errors=True)
+
+
 def main() -> int:
     print(f"Job Pipeline self-test on {sys.platform}, Python {sys.version.split()[0]}")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="jp-selftest-"))
@@ -1214,6 +1393,7 @@ def main() -> int:
         doc = e.get("/doctor")[1]
         claude = next((c for c in doc.get("checks", []) if c["id"] == "claude"), {})
         check(claude.get("ok"), "doctor finds claude", json.dumps(claude))
+        origin_section(e)
 
         section("builds run by hand")
         cases = [
@@ -1318,6 +1498,9 @@ def main() -> int:
 
         section("saved searches: kept by the pipeline, run by the extension")
         searches_section(e, py, work)
+
+        section("LinkedIn collector: waits for the page, then reads every card (headless Chrome)")
+        collector_section(work)
 
         section("Update now: a new version from GitHub, the user's files kept")
         updater_section(py, work)

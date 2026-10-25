@@ -573,6 +573,7 @@ pre.log .err{color:var(--log-err)}
 .an-field{display:flex;flex-direction:column;gap:6px}
 .an-label{font-size:var(--fs-sm);font-weight:var(--fw-medium)}
 .an-hint{color:var(--dim);font-size:var(--fs-xs)}
+.an-hint.warn{color:var(--warn);font-weight:var(--fw-medium)}
 .an-countries{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .an-countries input{width:12em}
 .an-countries .chip button{border:0;background:none;padding:0 0 0 2px;margin:0;cursor:pointer;

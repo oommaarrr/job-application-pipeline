@@ -866,6 +866,12 @@ def _write_scrape_audit() -> None:
                     f"element(s) seen, container={r.get('container') or '?'}")
         else:
             note = "auto-scrolled"
+        # Which reader found the LinkedIn cards, and how many a full page should
+        # have held, so a layout change or a short page is visible here.
+        if r.get("path"):
+            note += f" · {r['path']}"
+        if r.get("expected") and int(r.get("loaded") or 0) < int(r["expected"]):
+            note += f" · {r.get('loaded')}/{r['expected']} rendered"
         lines.append(
             f"{(r.get('label') or '')[:40]:<40} {(r.get('site') or r.get('host') or '')[:10]:<10} "
             f"{int(r.get('found') or 0):>6} {int(r.get('added') or 0):>5} "
@@ -2353,19 +2359,61 @@ def _render_report(batch_dir: pathlib.Path) -> str | None:
         return None
 
 
+def _origin_allowed(origin: str) -> bool:
+    """
+    Whether a browser request from this Origin may change anything.
+
+    The bridge's own pages (on either spelling of loopback) and the extension
+    are the only browser callers. Its unpacked id differs per machine, so any
+    chrome-extension:// origin passes; a site cannot send one. "null" (file://,
+    sandboxed frames) is refused: any site can produce it with a sandboxed
+    iframe.
+    """
+    if origin.startswith("chrome-extension://"):
+        return True
+    return origin in {f"http://{h}:{PORT}" for h in ("127.0.0.1", "localhost", "[::1]", HOST)}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "JobCollectorBridge/1.0"
+
+    def _cors(self) -> None:
+        # Name the caller's origin only when it is one of ours. A wildcard let
+        # any open web page read the bridge's answers (and, with no preflight
+        # for a simple POST, act on it).
+        origin = self.headers.get("Origin")
+        if origin and _origin_allowed(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
+    def _refused(self) -> str | None:
+        """
+        Why a state-changing request must be refused, or None to let it in.
+
+        No Origin and no Sec-Fetch-Site is curl, Python, Node or run_batch.py:
+        not a browser, so allowed. A browser always sends Origin on a POST;
+        a GET from an <img> or a link sends only Sec-Fetch-Site, and one from
+        another site is refused. A POST in a form encoding is refused too:
+        those are the content types a page can send without a preflight.
+        """
+        origin = self.headers.get("Origin")
+        if origin is not None:
+            if not _origin_allowed(origin):
+                return f"requests from {origin} are not accepted"
+        elif self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site"):
+            return "requests from another site are not accepted"
+        if self.command == "POST":
+            ct = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if ct and ct != "application/json":
+                return "send JSON (Content-Type: application/json)"
+        return None
 
     def _send(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        # The extension calls this from its service worker, which host
-        # permissions already cover. These headers just make curl and any
-        # future page-context call work too.
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
@@ -2373,7 +2421,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", ct)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._cors()
         # The report is rewritten every build; a cached copy is how a browser
         # keeps showing an old batch.html whose PDF links point at files that
         # have since been renamed or moved, which reads as "file not on site".
@@ -2461,7 +2509,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
@@ -2475,10 +2523,14 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def do_OPTIONS(self):
+        # The preflight a JSON POST from the report page (127.0.0.1 vs
+        # localhost) triggers. No allow-origin for anyone else, so the browser
+        # never sends their real request.
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._cors()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def _guarded(self, handler):
@@ -2582,6 +2634,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/trigger":
             global _trigger, _trigger_only
+            # Hands the queued run over and clears it: a change, so guarded
+            # like a POST.
+            if why := self._refused():
+                return self._send({"ok": False, "error": why}, 403)
             _mark_extension_seen()
             global _trigger_skip, _last_skip
             pending, _trigger = _trigger, None
@@ -2654,6 +2710,10 @@ class Handler(BaseHTTPRequestHandler):
         # Route on the path alone. No handler reads a query string, and
         # matching the raw path made "/dashboard?x" a 404.
         route = self.path.split("?", 1)[0].rstrip("/")
+        # Every POST changes something, so every one is checked before the
+        # body is even read.
+        if why := self._refused():
+            return self._send({"ok": False, "error": why}, 403)
         body = self._body()
 
         if route == "/ingest":

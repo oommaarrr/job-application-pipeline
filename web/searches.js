@@ -9,18 +9,111 @@
  * dashboard.js.
  */
 (function(){
-const dlg=$("srDlg"); if(!dlg) return;
-
 /* ------------------------------------------------------------ URL helpers
  * Each site spells the same ideas differently: radius, recency and remote are
- * named differently on all three, and LinkedIn's radius is in miles. */
+ * named differently on all three, and LinkedIn's radius is in miles.
+ *
+ * Nothing up to the dialog code touches the page, so scripts/selftest.py loads
+ * this file in Node and checks these helpers directly. */
 const INDEED=[["de","Germany"],["at","Austria"],["ch","Switzerland"],["nl","Netherlands"],
   ["be","Belgium"],["uk","United Kingdom"],["ie","Ireland"],["fr","France"],["es","Spain"],
   ["it","Italy"],["pl","Poland"],["www","United States"],["ca","Canada"],["au","Australia"],
   ["in","India"],["ae","United Arab Emirates"],["sg","Singapore"]];
-// LinkedIn pins a place by geoId; the extension learns ids from the searches
-// you open. Germany is known, because the example searches use it.
-const KNOWN_GEO={germany:"101282230"};
+/*
+ * LinkedIn pins a place by geoId and treats the location text as a hint: with
+ * no geoId it matches the text loosely and, when that fails, searches the
+ * country on your profile instead. With a profile in Germany that is the
+ * report of 25 October 2026, "a new search in another country falls back to
+ * Germany": this table knew only Germany, so every other country was built
+ * without a geoId, and the only sign of it was a grey footnote while the
+ * search saved as if nothing were wrong.
+ *
+ * Only ids seen on real LinkedIn URLs are listed: the example searches, and
+ * places LinkedIn itself resolved in searches opened with the extension. Any
+ * other place is learned the same way the first time a search for it is
+ * opened on LinkedIn, and until then the window says so plainly.
+ */
+const KNOWN_GEO={germany:"101282230",berlin:"106967730",egypt:"106155005",
+  // From a real /jobs/search-results/ page whose header labels this geoId
+  // "Location Saudi Arabia" and whose 25 results were all in that country.
+  "saudi arabia":"100459316"};
+// The same country typed another way. Without this "UK", "USA" or "The
+// Netherlands" never found an id learned under LinkedIn's own name for it.
+const ALIAS={"deutschland":"germany",
+  "uk":"united kingdom","u.k.":"united kingdom","great britain":"united kingdom","britain":"united kingdom",
+  "vereinigtes königreich":"united kingdom","großbritannien":"united kingdom","grossbritannien":"united kingdom",
+  "us":"united states","u.s.":"united states","usa":"united states","u.s.a.":"united states",
+  "united states of america":"united states","vereinigte staaten":"united states",
+  "uae":"united arab emirates","u.a.e.":"united arab emirates","vereinigte arabische emirate":"united arab emirates",
+  "holland":"netherlands","nederland":"netherlands","niederlande":"netherlands",
+  "frankreich":"france","spanien":"spain","españa":"spain","espana":"spain",
+  "ägypten":"egypt","aegypten":"egypt","ksa":"saudi arabia","saudi-arabien":"saudi arabia","österreich":"austria","oesterreich":"austria",
+  "schweiz":"switzerland","italien":"italy","polen":"poland","belgien":"belgium",
+  "irland":"ireland","kanada":"canada","australien":"australia","indien":"india","singapur":"singapore"};
+// One spelling per place: lower case, single spaces, no leading "the", aliases
+// folded. Places learned by saved_searches.learn_geo go through it too.
+function placeKey(s){
+  const k=String(s||"").toLowerCase().replace(/\s+/g," ").trim().replace(/^the /,"");
+  return ALIAS[k]||k;
+}
+function geoMapOf(learned){
+  const m={};
+  for(const [k,v] of Object.entries(KNOWN_GEO)) m[placeKey(k)]=v;
+  for(const [k,v] of Object.entries(learned||{})) m[placeKey(k)]=String(v);
+  return m;
+}
+function geoFor(loc,map){ return loc?(map[placeKey(loc)]||""):""; }
+function placeName(id,map){ const hit=Object.entries(map).find(([,v])=>v===id); return hit?hit[0]:""; }
+// The Indeed site of the country a typed place names: "Paris, France" and
+// "france" are both fr. "" when it names no country with a site in INDEED.
+function indeedCountry(loc){
+  const parts=String(loc||"").split(",").map(placeKey).filter(Boolean);
+  for(const p of [parts[parts.length-1],parts[0]]){
+    const hit=INDEED.find(c=>placeKey(c[1])===p);
+    if(hit) return hit[0];
+  }
+  return "";
+}
+const LEARN="To pin the place: press Open on LinkedIn with the extension loaded and choose it in "+
+  "LinkedIn's own location box, and it is remembered here for every later search. Or paste the "+
+  "address LinkedIn shows after that, under Paste an address.";
+/*
+ * What is wrong with where a search will look, in words. Returns {warn, fix}:
+ * warn is "" when nothing is, and fix is the same address with the right geoId
+ * when that is known.
+ */
+function placeIssue(url,map){
+  const none={warn:"",fix:""};
+  let u; try{ u=new URL(url); }catch(e){ return none; }
+  const q=u.searchParams, h=u.hostname.toLowerCase();
+  const loc=(q.get("location")||q.get("l")||q.get("where")||"").trim();
+  if(/(^|\.)linkedin\.com$/.test(h)){
+    const geo=q.get("geoId")||"", known=geoFor(loc,map);
+    if(!geo&&known){ q.set("geoId",known); return {warn:"",fix:u.toString()}; }
+    if(!geo&&loc) return {warn:"LinkedIn has no place id for “"+loc+"” yet, so it will most likely "+
+      "ignore it and search the country on your LinkedIn profile instead (Germany, for a German "+
+      "profile). "+LEARN,fix:""};
+    if(!geo) return {warn:"No location: LinkedIn will search the country on your profile.",fix:""};
+    if(loc&&known&&known!==geo){
+      const other=placeName(geo,map);
+      q.set("geoId",known);
+      return {warn:"The address says “"+loc+"” but carries the place id of "+
+        (other?"“"+other+"”":"another place")+", and LinkedIn goes by the id. Corrected to "+
+        "the id for “"+loc+"”.",fix:u.toString()};
+    }
+    return none;
+  }
+  const c=indeedCountry(loc);
+  if(/(^|\.)stepstone\.de$/.test(h)&&c&&c!=="de")
+    return {warn:"StepStone here is stepstone.de, which lists jobs in Germany, so a search for “"+loc+
+      "” mostly returns German jobs. Use LinkedIn or Indeed for that country.",fix:""};
+  if(/(^|\.)indeed\.com$/.test(h)){
+    const here=h.split(".")[0];
+    if(c&&c!==here) return {warn:"“"+loc+"” is not in the country of "+h+": each Indeed site only "+
+      "searches its own country. Pick "+INDEED.find(x=>x[0]===c)[1]+" as the Indeed site.",fix:""};
+  }
+  return none;
+}
 const BUILD={
   linkedin(f,geo){
     const p=new URLSearchParams({keywords:f.kw});
@@ -88,6 +181,10 @@ function describe(url){
   return bits.join(" · ");
 }
 
+const URLS={BUILD,geoMapOf,geoFor,indeedCountry,placeIssue};
+if(typeof module!=="undefined"&&module.exports) module.exports=URLS;   // the selftest, in Node
+const dlg=typeof $==="function"?$("srDlg"):null; if(!dlg) return;
+
 /* ------------------------------------------------------------ state */
 let draft=null, meta={}, dirty=false, pollTimer=null;
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -116,6 +213,7 @@ async function load(replace){
   $("srSave").disabled=$("srSaveRun").disabled=false;
   meta=d;
   extNote(d.extension);
+  built();               // a place learned meanwhile turns the warning off
   if(replace||!dirty){ draft={pages:d.pages,searches:clone(d.searches||[])}; setDirty(false); render(); }
   clearTimeout(pollTimer);
   // Something added from the extension while this is open shows up, as long as
@@ -187,8 +285,11 @@ function render(flash){
     const url=el.querySelector(".sr-url");
     url.onchange=()=>{ const v=url.value.trim();
       if(!siteOf(v)){ status("That address is not a LinkedIn, Indeed or StepStone page."); url.value=q.url; return; }
-      q.url=v; el.querySelector(".sr-sum").textContent=describe(v);
-      el.querySelector("a").href=v; el.querySelector(".sr-site").textContent=siteOf(v); setDirty(true); };
+      const issue=placeIssue(v,geoMapOf(meta.geo)), fixed=issue.fix||v;
+      if(issue.fix) url.value=fixed;
+      q.url=fixed; el.querySelector(".sr-sum").textContent=describe(fixed);
+      if(issue.warn) status(issue.warn);
+      el.querySelector("a").href=fixed; el.querySelector(".sr-site").textContent=siteOf(fixed); setDirty(true); };
     el.querySelector(".sr-on").onchange=e=>{ q.enabled=e.target.checked; el.classList.toggle("off",!q.enabled); setDirty(true); counts(); };
     el.querySelector(".sr-del").onclick=()=>{ draft.searches.splice(i,1); render(); setDirty(true);
       status("Removed “"+q.label+"”. Save to keep the change, or close without saving to undo."); };
@@ -205,13 +306,19 @@ function addToDraft(url,label){
   url=(url||"").trim();
   if(!/^https:\/\//i.test(url)){ status("A search address starts with https://"); return false; }
   if(!siteOf(url)){ status("That is not a LinkedIn, Indeed or StepStone page, so the extension cannot collect it."); return false; }
+  // Where will it really search? A known place id is filled in; an unknown one
+  // is said out loud and asked about, rather than saved to quietly search the
+  // profile's country instead (25 October 2026).
+  const issue=placeIssue(url,geoMapOf(meta.geo));
+  if(issue.fix) url=issue.fix;
+  if(issue.warn&&!issue.fix&&!confirm(issue.warn+"\n\nAdd it anyway?")){ status(issue.warn); return false; }
   const k=keyOf(url), hit=draft.searches.find(q=>keyOf(q.url)===k);
   if(hit){ status("Already in the list as “"+hit.label+"”."); return false; }
   let kw=""; try{ kw=kwOf(new URL(url)); }catch(e){}
   draft.searches.push({label:label||(siteOf(url)+": "+(kw||"search")),url,enabled:true});
   tabs.show("srTabList");
   render(draft.searches.length-1); setDirty(true);
-  status("Added. Save to keep it.");
+  status(issue.warn?"Added. "+issue.warn:"Added. Save to keep it.");
   return true;
 }
 dlg.querySelectorAll('input[name="srHow"]').forEach(r=>r.onchange=()=>{
@@ -231,15 +338,23 @@ function form(){
   return {kw:$("srKw").value.trim(),loc:$("srLoc").value.trim(),site:$("srSite").value,
     indeed:$("srIndeed").value,radius:+$("srRadius").value,posted:+$("srPosted").value,remote:$("srRemote").checked};
 }
+// The Indeed site follows the country typed into Location until it is picked
+// by hand: left on Germany, a search for "Netherlands" ran on de.indeed.com.
+let indeedPicked=false;
+function geoHint(text){
+  const h=$("srGeoHint"); h.textContent=text||""; h.classList.toggle("warn",!!text);
+}
 function built(){
+  const sel=$("srIndeed"), c=indeedCountry($("srLoc").value);
+  if(c&&!indeedPicked&&sel.value!==c) sel.value=c;
   const f=form();
   $("srIndeedWrap").classList.toggle("hide",f.site!=="indeed");
-  const geoMap=Object.assign({},KNOWN_GEO,meta.geo||{});
-  const geo=f.site==="linkedin"&&f.loc?geoMap[f.loc.toLowerCase().replace(/\s+/g," ")]:"";
-  $("srGeoHint").textContent=(f.site==="linkedin"&&f.loc&&!geo)
-    ? "LinkedIn may read “"+f.loc+"” loosely and fall back to the country on your profile. Open the search once (Open on the site) with the extension loaded and the place is remembered for next time; or set the place on LinkedIn and paste that address below."
-    : "";
+  const geoMap=geoMapOf(meta.geo);
+  const geo=f.site==="linkedin"?geoFor(f.loc,geoMap):"";
   const url=f.kw?BUILD[f.site](f,geo):"";
+  // Said for the address as it will be saved, so the builder and a pasted
+  // address are judged by the same rule.
+  geoHint(url?placeIssue(url,geoMap).warn:"");
   $("srBuilt").textContent=url||"Type a job title to build the link";
   $("srAddBuilt").disabled=!url;
   const a=$("srOpenBuilt");
@@ -247,6 +362,7 @@ function built(){
   else { a.removeAttribute("href"); a.setAttribute("aria-disabled","true"); a.classList.add("disabled"); }
   return url;
 }
+$("srIndeed").addEventListener("change",()=>{ indeedPicked=true; });
 ["srKw","srLoc","srSite","srIndeed","srRadius","srPosted","srRemote"].forEach(id=>{
   $(id).addEventListener("input",built); $(id).addEventListener("change",built); });
 function addBuilt(){ const url=built(); if(!url) return false;
