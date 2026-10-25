@@ -70,3 +70,6 @@ CLAUDE.local.md
 
 # Tooling
 .scannerwork/
+
+# Lint tools (npm ci), never shipped
+node_modules/

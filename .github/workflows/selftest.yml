@@ -18,3 +18,17 @@ jobs:
       - run: python scripts/selftest.py
         env:
           NO_NOTIFY: "1"
+
+  # ESLint and Knip over the extension, the dashboard and the test scripts.
+  # One OS is enough: neither looks at anything platform-specific.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run knip

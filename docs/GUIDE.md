@@ -486,6 +486,9 @@ read what you commit.
 - **Test your change**: `python scripts/selftest.py` runs setup, the bridge and
   real builds in a temporary copy, with a fake Claude and a fake ranker, so it
   costs nothing and takes under a minute. It runs on macOS, Linux and Windows.
+- **Lint the JavaScript**: `npm ci`, then `npm run lint` (ESLint) and
+  `npm run knip` (unused files and exports). CI runs both. Node is only needed
+  for this; the pipeline itself never uses it.
 - **Add a source**: copy `scraper/arbeitnow.py`, see [Job sources](#job-sources).
 - **Change a filter**: the rules are in `scraper/rank_ollama.py`; the gate tests
   in `scraper/test_gate.py` must still pass (`./scraper/.venv/bin/python

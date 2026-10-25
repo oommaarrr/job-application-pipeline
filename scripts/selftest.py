@@ -59,7 +59,7 @@ def section(title: str) -> None:
 def _ignore(dirpath: str, names: list[str]) -> set[str]:
     skip = {".git", ".venv", "venv", "applications", "logs", "inbox", "out", "history",
             "__pycache__", "local.env", "config_local.py", ".DS_Store", "_backups",
-            "docs"}
+            "docs", "node_modules"}
     out = {n for n in names if n in skip or n.startswith(("applied.json", "purged-", ".!"))}
     here = pathlib.Path(dirpath)
     if here.name == "profiles":

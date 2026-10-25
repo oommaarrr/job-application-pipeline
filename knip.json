@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "extension/background.js",
+    "extension/content.js",
+    "extension/popup.js",
+    "web/dashboard.js",
+    "web/arbeitnow.js",
+    "web/searches.js",
+    "web/ranking.js",
+    "scripts/extension_test.mjs"
+  ],
+  "project": [
+    "extension/**/*.js",
+    "web/**/*.js",
+    "scripts/**/*.{js,mjs}"
+  ]
+}
