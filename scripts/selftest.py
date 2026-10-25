@@ -27,6 +27,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import shutil
 import socket
 import subprocess
@@ -76,6 +77,28 @@ mode = MODE_FILE.read_text().strip() if MODE_FILE.exists() else "ok"
 args = sys.argv[1:]
 if args[:2] == ["auth", "status"]:
     print(json.dumps({"loggedIn": True})); sys.exit(0)
+if "--append-system-prompt" in args and "job-application profile" in args[args.index("--append-system-prompt") + 1]:
+    # Edit profile (profile_chat.py): the message on stdin, run in the profile
+    # folder. Records how it was called, then edits like Claude would.
+    msg = sys.stdin.read().strip()
+    with open(pathlib.Path(__file__).with_name("profile-calls.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"args": args, "cwd": os.getcwd(), "msg": msg}) + "\n")
+    if mode == "auth": print("Invalid API key · Please run /login"); sys.exit(1)
+    sid = args[args.index("--resume" if "--resume" in args else "--session-id") + 1]
+    if msg.startswith("Add a project:"):
+        name = msg.split(":", 1)[1].strip()
+        p = pathlib.Path("reference") / "PROJECTS.md"
+        p.write_text(p.read_text(encoding="utf-8") + f"| **{name}** | selftest Ü | any |\n", encoding="utf-8")
+        reply = f"Added {name} to reference/PROJECTS.md."
+    elif msg.startswith("Add a skill:"):
+        p = pathlib.Path("profile.md")
+        p.write_text(p.read_text(encoding="utf-8").replace("Strong: ", "Strong: " + msg.split(":", 1)[1].strip() + ", ", 1),
+                     encoding="utf-8")
+        reply = "Added it to Strong in profile.md."
+    else:
+        reply = "What are the dates?"
+    print(json.dumps({"type": "result", "is_error": False, "result": reply, "session_id": sid}))
+    sys.exit(0)
 if "--output-format" in args:
     # The ranker's Claude engine: postings on stdin, answers by id. Like real
     # Haiku now and then, a batch leaves its last posting unanswered.
@@ -1080,6 +1103,143 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           "Restart now brings the bridge back as a new process", json.dumps({"r": r, "before": before}))
 
 
+def topbar_check(e: "Env", when: str) -> None:
+    """
+    The three pages share one top bar: the nav in the middle with the same
+    three links, page status on the left, the theme button last on the right,
+    and the shared theme script. Read from the pages as the bridge serves them.
+    """
+    bars = {}
+    for path in ("/dashboard", "/report/", "/ranking"):
+        html = e.get(path, 30)[1]
+        html = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
+        # From <body on: the report inlines topbar.css, whose comment shows the markup.
+        m = re.search(r'<header class="topbar">(.*?)</header>', html[html.find("<body"):], re.S)
+        bar = m.group(1) if m else ""
+        order = [bar.find(k) for k in ('class="tb-left"', 'class="nav"', 'class="tb-right"')]
+        links = re.findall(r'class="ico (i-\w+)" aria-hidden="true"></span>([^<]+)</a>', bar)
+        bars[path] = (all(i >= 0 for i in order) and order == sorted(order),
+                      links, re.search(r'id="themeBtn"[^>]*></button>\s*</div>\s*$', bar) is not None,
+                      'src="/web/theme.js"' in html or "const THEMES" in html)
+    first = bars["/dashboard"][1]
+    check(all(b[0] for b in bars.values()) and len(first) == 3 and all(b[1] == first for b in bars.values()),
+          f"all three pages have the same top bar, nav in the middle ({when})", json.dumps(bars)[:400])
+    check(all(b[2] and b[3] for b in bars.values()),
+          f"every page has the theme button, last on the right, and the theme script ({when})",
+          json.dumps({k: v[2:] for k, v in bars.items()}))
+
+
+def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    Edit profile: what you type goes to Claude (the fake), which edits the
+    profile; the window shows the change and Undo puts it back.
+    """
+    me = work / "profiles" / "me"
+    calls = e.fakebin / "profile-calls.jsonl"
+    calls.unlink(missing_ok=True)
+    e.mode("ok")
+    # The Arbeitnow section replaces profile.md; start from a full one.
+    (me / "profile.md").write_text((work / "profiles" / "example" / "profile.md").read_text(encoding="utf-8")
+                                   + "\n<!-- selftest -->\n", encoding="utf-8")
+
+    def settle(seconds: float = 30) -> dict:
+        end = time.time() + seconds
+        while time.time() < end:
+            d = e.get("/profile/chat")[1]
+            if not d.get("running"):
+                return d
+            time.sleep(0.3)
+        return d
+
+    code, d = e.get("/profile/chat")
+    check(code == 200 and d.get("folder") == "profiles/me" and not d.get("blocked")
+          and "profile.md" in d.get("files", []),
+          "Edit profile opens on profiles/me", json.dumps(d)[:300])
+    status, page = e.get("/dashboard")
+    js_code = e.get("/web/profile-chat.js")[0]
+    check(b'id="btnProfile"' in page and js_code == 200,
+          "the dashboard has the Edit profile button and its script", f"{status} {js_code}")
+
+    projects = me / "reference" / "PROJECTS.md"
+    original = projects.read_text(encoding="utf-8")
+    r = e.post("/profile/chat", {"message": "Add a project: Selftest Tracker"})
+    d = settle()
+    last = (d.get("messages") or [{}])[-1]
+    ch = last.get("changes") or []
+    check(r.get("ok") and last.get("role") == "claude" and "Selftest Tracker" in last.get("text", "")
+          and "Selftest Tracker" in projects.read_text(encoding="utf-8"),
+          "a message is sent to Claude and its edit lands in the profile", json.dumps(d)[:400])
+    check([c["file"] for c in ch] == ["reference/PROJECTS.md"] and ch[0]["plus"] == 1
+          and "+| **Selftest Tracker**" in ch[0]["diff"],
+          "the reply lists the file it changed, with the diff", json.dumps(ch)[:400])
+
+    e.post("/profile/chat", {"message": "Add a skill: Rust"})
+    d = settle()
+    profile_md = (me / "profile.md").read_text(encoding="utf-8")
+    seen = [json.loads(ln) for ln in calls.read_text(encoding="utf-8").splitlines()] if calls.exists() else []
+    first = seen[0]["args"] if seen else []
+    second = seen[1]["args"] if len(seen) > 1 else []
+    sid = first[first.index("--session-id") + 1] if "--session-id" in first else None
+    check(len(seen) == 2 and sid and second[second.index("--resume") + 1] == sid
+          and "Strong: Rust, " in profile_md,
+          "a second message continues the same conversation (--resume)", json.dumps(seen)[:500])
+    check(all(c["args"][c["args"].index("--tools") + 1] == "Read,Edit,Write,Glob,Grep"
+              and c["args"][c["args"].index("--permission-mode") + 1] == "acceptEdits"
+              and "claude-sonnet" in c["args"][c["args"].index("--model") + 1]
+              and pathlib.Path(c["cwd"]).resolve() == me.resolve()
+              and c["msg"] in ("Add a project: Selftest Tracker", "Add a skill: Rust") for c in seen),
+          "Claude runs on Sonnet in the profile folder, with file tools only and no shell",
+          json.dumps([c["args"] for c in seen])[:500])
+
+    r = e.post("/profile/chat/undo", {})
+    check(r.get("ok") and "Strong: Rust" not in (me / "profile.md").read_text(encoding="utf-8")
+          and "Selftest Tracker" in projects.read_text(encoding="utf-8"),
+          "Undo puts back only the last change", json.dumps(r)[:300])
+    # A file changed by hand after Claude's edit is not overwritten by Undo.
+    projects.write_text(projects.read_text(encoding="utf-8") + "edited by hand\n", encoding="utf-8")
+    r = e.post("/profile/chat/undo", {})
+    check(not r.get("ok") and "reference/PROJECTS.md" in r.get("why", "")
+          and "edited by hand" in projects.read_text(encoding="utf-8"),
+          "Undo refuses to overwrite a file edited by hand since", json.dumps(r)[:300])
+    projects.write_text(original + "| **Selftest Tracker** | selftest Ü | any |\n", encoding="utf-8")
+    r = e.post("/profile/chat/undo", {})
+    check(r.get("ok") and projects.read_text(encoding="utf-8") == original,
+          "Undo again restores the file exactly", json.dumps(r)[:300])
+    r = e.post("/profile/chat/undo", {})
+    check(not r.get("ok"), "Undo with nothing left says so", json.dumps(r)[:200])
+
+    e.post("/profile/chat", {"message": "Add my new job"})
+    d = settle()
+    last = (d.get("messages") or [{}])[-1]
+    check(last.get("role") == "claude" and not last.get("changes") and not d.get("can_undo"),
+          "a question back from Claude changes nothing", json.dumps(last)[:300])
+
+    e.mode("auth")
+    e.post("/profile/chat", {"message": "Add a skill: Go"})
+    d = settle()
+    e.mode("ok")
+    last = (d.get("messages") or [{}])[-1]
+    check(last.get("role") == "error" and "signed out" in last.get("text", "")
+          and "Go," not in (me / "profile.md").read_text(encoding="utf-8"),
+          "a signed-out Claude is reported, with the fix", json.dumps(last)[:300])
+
+    r = e.post("/profile/chat/new", {})
+    d = e.get("/profile/chat")[1]
+    check(r.get("ok") and d.get("messages") == [], "New chat starts an empty conversation", json.dumps(d)[:200])
+
+    req = urllib.request.Request(f"http://127.0.0.1:{e.port}/profile/chat", method="POST",
+                                 data=b'{"message":"Add a skill: Evil"}',
+                                 headers={"Content-Type": "application/json", "Origin": "https://evil.example"})
+    try:
+        code = urllib.request.urlopen(req, timeout=10).status
+    except urllib.error.HTTPError as ex:
+        code = ex.code
+    check(code == 403 and "Evil" not in (me / "profile.md").read_text(encoding="utf-8"),
+          "another website cannot send Claude a message", str(code))
+    blocked = ps(py, work, "import profile_chat as pc; print(bool(pc._editable(pc.REPO / 'profiles' / 'example')))")
+    check(blocked == "True", "the fictional example profile is never edited", blocked)
+
+
 def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
     """
     Update now (scraper/updater.py) against a stand-in GitHub, in a throwaway
@@ -1394,6 +1554,7 @@ def main() -> int:
         claude = next((c for c in doc.get("checks", []) if c["id"] == "claude"), {})
         check(claude.get("ok"), "doctor finds claude", json.dumps(claude))
         origin_section(e)
+        topbar_check(e, "before any batch")
 
         section("builds run by hand")
         cases = [
@@ -1417,6 +1578,7 @@ def main() -> int:
         e.run_build("2", "ok")
         check(report.exists() and "Firma Ü" in report.read_text(encoding="utf-8"),
               "report written, umlauts intact")
+        topbar_check(e, "with a batch")
 
         code, o = e.run_build("2", "hang", STARTUP_GRACE_MIN="0.05", WATCHDOG_EVERY_S="1")
         log = (e.builder / "logs" / f"{DAY}.log").read_text(encoding="utf-8", errors="replace")
@@ -1498,6 +1660,9 @@ def main() -> int:
 
         section("saved searches: kept by the pipeline, run by the extension")
         searches_section(e, py, work)
+
+        section("Edit profile: tell Claude what to change, see it, undo it")
+        profile_chat_section(e, py, work)
 
         section("LinkedIn collector: waits for the page, then reads every card (headless Chrome)")
         collector_section(work)

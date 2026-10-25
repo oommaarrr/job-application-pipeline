@@ -52,6 +52,21 @@ button:hover{background:var(--bg2)}
 button[aria-pressed="true"]{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
 #reset{border-color:transparent;background:transparent;color:var(--dim)}
 #reset:hover{color:var(--bad);background:var(--bad-bg)}
+
+/* Applications before anything is built (batch_report.empty_page): one card
+   with a way to the dashboard. This page has no app.css, so the button is
+   styled here, the same as the dashboard's primary buttons. */
+.empty-card{margin-top:var(--sp-5);padding:var(--sp-6);border:1px solid var(--line);border-radius:var(--radius-lg);
+  background:var(--card);box-shadow:var(--shadow-sm)}
+.empty-card h1{font-size:var(--fs-xl)}
+.empty-card .sub{margin-bottom:var(--sp-4)}
+.cta{display:inline-flex;align-items:center;gap:6px;height:var(--control-h);padding:0 14px;
+  font-size:var(--fs-sm);font-weight:var(--fw-semi);text-decoration:none;border-radius:var(--radius-sm);
+  color:var(--accent-ink);background:var(--accent);border:1px solid var(--accent);box-shadow:var(--shadow-sm);
+  transition:background var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease)}
+.cta:hover{background:var(--accent-strong);border-color:var(--accent-strong)}
+.cta:active{transform:translateY(1px)}
+.cta:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 input[type=search]{height:var(--control-h);padding:0 10px;font:inherit;font-size:var(--fs-sm);border-radius:var(--radius-sm);
   border:1px solid var(--line-strong);background:var(--card);color:var(--ink);min-width:12rem}
 input[type=search]:focus-visible{outline:2px solid var(--focus);outline-offset:1px}

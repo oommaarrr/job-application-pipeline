@@ -782,3 +782,41 @@ pre.log .err{color:var(--log-err)}
 .update-banner{border-color:var(--accent);background:var(--accent-bg)}
 .update-banner details{flex-basis:100%;font-size:var(--fs-sm)}
 .update-banner details ul{margin:6px 0 0;padding-left:18px}
+
+/* Edit profile (web/profile-chat.js): a conversation with Claude about the
+   profile files, each answer followed by the files it changed. */
+.pc-dlg{width:min(820px,calc(100vw - 32px));height:min(720px,calc(100vh - 32px))}
+.pc-folder{font-size:var(--fs-xs)}
+.pc-body{gap:var(--sp-3)}
+.pc-intro{display:flex;flex-direction:column;gap:var(--sp-3)}
+.pc-examples{display:flex;flex-wrap:wrap;gap:6px}
+.pc-ex{cursor:pointer;border:1px solid var(--line-strong);background:var(--card);color:var(--ink)}
+.pc-ex:hover{background:var(--bg2)}
+.pc-log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--sp-3)}
+.pc-msg{max-width:88%;padding:var(--sp-2) var(--sp-3);border-radius:var(--radius);
+  background:var(--bg2);display:flex;flex-direction:column;gap:6px}
+.pc-msg.you{align-self:flex-end;background:var(--accent-bg)}
+.pc-msg.error{background:var(--bad-bg)}
+.pc-msg.undo{background:var(--info-bg)}
+.pc-msg.working .pc-text::after{content:"";display:inline-block;width:1em;text-align:left;
+  animation:pc-dots 1.2s steps(4) infinite}
+@keyframes pc-dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media (prefers-reduced-motion:reduce){.pc-msg.working .pc-text::after{animation:none}}
+.pc-who{font-size:var(--fs-xs);font-weight:var(--fw-semi);color:var(--dim)}
+.pc-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-sm)}
+.pc-after{margin:0;font-size:var(--fs-xs)}
+.pc-changes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.pc-changes summary{cursor:pointer;font-size:var(--fs-xs)}
+.pc-plus{color:var(--ok)} .pc-minus{color:var(--bad)}
+.pc-diff{margin:6px 0 0;max-height:320px;overflow:auto;padding:var(--sp-2);border-radius:var(--radius-sm);
+  background:var(--card);border:1px solid var(--line);font:var(--fs-xs)/1.5 var(--mono)}
+.pc-dl{display:block;white-space:pre-wrap;overflow-wrap:anywhere;padding:0 4px}
+.pc-dl.add{background:var(--ok-bg)} .pc-dl.del{background:var(--bad-bg)}
+.pc-dl.hunk{color:var(--dim)}
+.pc-foot{flex-direction:column;align-items:stretch}
+.pc-foot textarea{width:100%;resize:vertical;min-height:4.5em;padding:var(--sp-2);box-sizing:border-box;
+  font:var(--fs-sm)/var(--lh) var(--font);color:var(--ink);background:var(--card);
+  border:1px solid var(--line-strong);border-radius:var(--radius-sm)}
+.pc-foot textarea:focus{outline:2px solid var(--focus);outline-offset:1px}
+.pc-actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+@media (max-width:640px){.topbar #btnProfile{font-size:0;gap:0;width:var(--control-h);padding:0}}

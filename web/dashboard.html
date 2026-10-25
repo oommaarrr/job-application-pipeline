@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job Pipeline · Live</title>
 <link rel="icon" href="/web/favicon.svg" type="image/svg+xml">
+<script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="stylesheet" href="/web/tokens.css">
 <link rel="stylesheet" href="/web/topbar.css">
 <link rel="stylesheet" href="/web/app.css">
@@ -14,21 +15,25 @@
        Identity, phase and health on the left, navigation on the right.
        #phase and #health are what a glance from another tab reads first. -->
   <header class="topbar">
-    <a class="brand" href="/dashboard">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <h1 class="brand-name">Job Pipeline</h1>
-    </a>
-    <span id="phase" class="badge" style="background:var(--gray)">…</span>
-    <span id="health" class="health"></span>
-    <span class="grow"></span>
+    <div class="tb-left">
+      <a class="brand" href="/dashboard">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <h1 class="brand-name">Job Pipeline</h1>
+      </a>
+      <span id="phase" class="badge" style="background:var(--gray)">…</span>
+      <span id="health" class="health"></span>
+      <span id="stamp" class="stamp" title="last update"></span>
+    </div>
     <nav class="nav" aria-label="Pages">
       <a class="go ghost" href="/dashboard" aria-current="page"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>
       <a id="btnReport2" class="go ghost" href="/report/"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>
       <a id="btnRanking" class="go ghost" href="/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
     </nav>
-    <button id="autobuild" class="go switch" type="button" title="toggle autobuild after a scrape"></button>
-    <button id="themeBtn" class="go icon theme" type="button" title="light / dark / follow the system" aria-label="Theme">&#9789;</button>
-    <span id="stamp" class="stamp" title="last update"></span>
+    <div class="tb-right">
+      <button id="btnProfile" class="go ghost" type="button" title="tell Claude what to change in your profile"><span class="ico i-pencil" aria-hidden="true"></span>Edit profile</button>
+      <button id="autobuild" class="go switch" type="button" title="toggle autobuild after a scrape"></button>
+      <button id="themeBtn" class="go icon theme" type="button" title="Theme" aria-label="Theme"></button>
+    </div>
   </header>
 
   <div id="offline" class="offline hide" role="alert">
@@ -431,10 +436,47 @@
     </div>
   </dialog>
 
+  <!-- ============================================================ edit profile
+       Opened by Edit profile in the top bar. What you type goes to Claude,
+       which edits the files in your profile folder and says what it changed;
+       each change can be undone. Behaviour: web/profile-chat.js, the bridge
+       side: scraper/profile_chat.py. -->
+  <dialog id="pcDlg" class="an-dlg pc-dlg" aria-labelledby="pcTitle">
+    <div class="an-head">
+      <h2 id="pcTitle">Edit your profile</h2>
+      <span id="pcFolder" class="muted pc-folder"></span>
+      <span class="grow"></span>
+      <button class="go sm quiet" id="pcNew" type="button" title="start a new conversation; your files stay as they are">New chat</button>
+      <button class="go quiet icon" id="pcClose" type="button" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="an-body pc-body" id="pcBody">
+      <div id="pcNote" class="an-note hide" role="status"></div>
+      <div id="pcIntro" class="pc-intro">
+        <p class="pan-lead">Say what to add or change, the way you would tell a person. Claude
+          edits your profile files and shows you exactly what changed. Nothing is invented: if
+          something is missing, it asks.</p>
+        <div class="pc-examples" id="pcExamples"></div>
+      </div>
+      <ol id="pcLog" class="pc-log" aria-live="polite"></ol>
+    </div>
+    <div class="an-foot pc-foot">
+      <textarea id="pcIn" rows="3" aria-label="What to change"
+        placeholder="For example: add a project, a new job, a skill, or a kind of role to stop applying for"></textarea>
+      <div class="pc-actions">
+        <span id="pcStatus" class="muted" role="status"></span>
+        <span class="grow"></span>
+        <button class="go quiet" id="pcUndo" type="button" title="put back the files as they were before Claude's last change">Undo last change</button>
+        <button class="go primary" id="pcSend" type="button" title="Ctrl+Enter or Cmd+Enter">Send</button>
+      </div>
+    </div>
+  </dialog>
+
   <footer class="foot">Refreshes every 2 s · <span id="collInfo"></span></footer>
   <div id="toast" class="toast" role="status"></div>
 </div>
+<script src="/web/theme.js"></script>
 <script src="/web/dashboard.js"></script>
 <script src="/web/arbeitnow.js"></script>
 <script src="/web/searches.js"></script>
+<script src="/web/profile-chat.js"></script>
 </body></html>

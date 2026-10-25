@@ -60,6 +60,15 @@ The fastest way to create them is `claude "/make-profile path/to/cv.pdf"` in the
 project folder. Anything your CV does not say is marked `TODO:` rather than
 guessed.
 
+**Changing it later:** press **Edit profile** at the top of the dashboard and
+say what to change ("add a project: …", "I started a new job at …", "stop
+ranking frontend roles highly"). Claude (Sonnet, on your Claude Code sign-in)
+edits the files above, keeps them consistent with each other, and shows each
+changed file with the lines added and removed. **Undo last change** puts the
+files back. It asks rather than guessing when something is missing, can only
+touch files in your profile folder, and never edits the fictional example.
+The model is `CLAUDE_PROFILE_MODEL` in `scraper/config.py`.
+
 **Which profile is used:** `$PROFILE_DIR` if set, otherwise `profiles/me`,
 otherwise the fictional example. The ranker, the dashboard and the build all
 follow this one rule (`scraper/profile_dir.py`), and the Setup panel shows which

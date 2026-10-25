@@ -8,6 +8,8 @@
     "web/arbeitnow.js",
     "web/searches.js",
     "web/ranking.js",
+    "web/profile-chat.js",
+    "web/theme.js",
     "scripts/extension_test.mjs"
   ],
   "project": [

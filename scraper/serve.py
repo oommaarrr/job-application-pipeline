@@ -354,6 +354,7 @@ _data_lock = threading.Lock()
 import config
 import ledger
 import pool_status
+import profile_chat
 import rank_engine
 import saved_searches
 import updater
@@ -2323,6 +2324,20 @@ def funnel() -> dict:
 _report_mod = None
 
 
+def _report():
+    """builder/batch_report.py, loaded once, with the CSS and theme script read
+    again on every call so an edit to web/ shows without a restart."""
+    global _report_mod
+    if _report_mod is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("batch_report", BUILDER / "batch_report.py")
+        _report_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_report_mod)
+    _report_mod.CSS = _report_mod._load_css()
+    _report_mod.THEME_JS = _report_mod._load_theme_js()
+    return _report_mod
+
+
 def _render_report(batch_dir: pathlib.Path) -> str | None:
     """
     Re-render a batch's review page from its batch.json, with the CURRENT design.
@@ -2334,21 +2349,13 @@ def _render_report(batch_dir: pathlib.Path) -> str | None:
     batch.html opened straight from Finder is current too. Any failure falls
     back to the file on disk.
     """
-    global _report_mod
     src = batch_dir / "batch.json"
     if not src.exists():
         return None
     try:
-        if _report_mod is None:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(
-                "batch_report", BUILDER / "batch_report.py")
-            _report_mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(_report_mod)
-        _report_mod.CSS = _report_mod._load_css()        # pick up CSS edits live
         batch = json.loads(src.read_text(encoding="utf-8"))
         batch.setdefault("date", batch_dir.name)
-        html = _report_mod.render(batch)
+        html = _report().render(batch)
         try:
             (batch_dir / "batch.html").write_text(html, encoding="utf-8")
         except OSError:
@@ -2440,33 +2447,14 @@ class Handler(BaseHTTPRequestHandler):
         else:
             base, prefix = _latest_batch_dir(), "/report/"
         if not base:
-            return self._send_html(
-                # Styled with the shared tokens so it follows dark mode. This is
-                # the first thing a new user sees behind "Applications".
-                '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-                '<meta name="viewport" content="width=device-width, initial-scale=1">'
-                '<title>Applications · Job Pipeline</title>'
-                '<link rel="icon" href="/web/favicon.svg" type="image/svg+xml">'
-                '<link rel="stylesheet" href="/web/tokens.css">'
-                '<link rel="stylesheet" href="/web/topbar.css">'
-                '<link rel="stylesheet" href="/web/app.css">'
-                '<script>try{var t=localStorage.getItem("theme");'
-                'if(t&&t!=="auto")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>'
-                '</head><body><div class="wrap">'
-                # The same top bar as every other page (web/topbar.css).
-                '<header class="topbar"><a class="brand" href="/dashboard">'
-                '<span class="brand-mark" aria-hidden="true"></span>'
-                '<span class="brand-name">Job Pipeline</span></a><span class="grow"></span>'
-                '<nav class="nav" aria-label="Pages">'
-                '<a class="go ghost" href="/dashboard"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>'
-                '<a class="go ghost" href="/report/" aria-current="page"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>'
-                '<a class="go ghost" href="/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>'
-                '</nav></header>'
-                '<div class="card"><h2>No applications yet</h2>'
-                '<p class="muted">Nothing has been built. Rank the pool, then press '
-                '<b>Build</b> on the dashboard; each finished batch appears here.</p>'
-                '<p><a class="go" href="/dashboard">Go to the dashboard</a></p></div>'
-                '</div></body></html>')
+            # The first thing a new user sees behind "Applications": the same
+            # page as a batch, top bar and all, with nothing in it yet.
+            try:
+                return self._send_html(_report().empty_page())
+            except Exception as e:                          # noqa: BLE001
+                print(f"  report: empty page failed ({e})")
+                return self._send_html('<!doctype html><meta charset="utf-8"><title>Applications</title>'
+                                       '<p>No applications yet. <a href="/dashboard">Dashboard</a></p>')
         rel = rel or "batch.html"
         target = (base / rel).resolve()
         try:
@@ -2607,6 +2595,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/funnel":
             return self._send(funnel())
+
+        if route == "/profile/chat":
+            return self._send({"ok": True, **profile_chat.state()})
 
         if route.startswith("/web/"):
             return self._serve_static(route[len("/web/"):])
@@ -2849,6 +2840,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/update/apply":
             return self._send(start_update())
+
+        # Edit profile: tell Claude what to change (profile_chat.py).
+        if route == "/profile/chat":
+            ok, why = profile_chat.send(str(body.get("message") or ""))
+            return self._send({"ok": ok, "why": why})
+        if route == "/profile/chat/undo":
+            ok, why, undone = profile_chat.undo()
+            return self._send({"ok": ok, "why": why, "changes": undone})
+        if route == "/profile/chat/new":
+            ok, why = profile_chat.reset()
+            return self._send({"ok": ok, "why": why})
 
         if route == "/rank/engine":
             # The dashboard's switch between the local model and Claude.

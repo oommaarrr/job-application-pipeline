@@ -10,8 +10,8 @@
 import js from "@eslint/js";
 import globals from "globals";
 
-// dashboard.js defines these at the top level of the page, and arbeitnow.js
-// and searches.js, loaded after it on the same page, use them.
+// dashboard.js defines these at the top level of the page, and arbeitnow.js,
+// searches.js and profile-chat.js, loaded after it on the same page, use them.
 const DASHBOARD_SHARED = ["$", "esc", "post", "toast", "tick", "loadEvents", "dlgTabs"];
 
 const unused = { caughtErrors: "none", ignoreRestSiblings: true };
@@ -41,7 +41,7 @@ export default [
     rules: { "no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^dlgTabs$" }] },
   },
   {
-    files: ["web/arbeitnow.js", "web/searches.js"],
+    files: ["web/arbeitnow.js", "web/searches.js", "web/profile-chat.js"],
     languageOptions: {
       globals: Object.fromEntries(DASHBOARD_SHARED.map((g) => [g, "readonly"])),
     },

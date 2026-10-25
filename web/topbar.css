@@ -11,15 +11,25 @@
  * is self-contained: its buttons and icons are defined here, scoped to
  * .topbar, and it fetches nothing (the icons are data: URIs).
  *
- * Markup:
+ * Markup, the same three parts on every page:
  *   <header class="topbar">
- *     <a class="brand" href="/dashboard"><span class="brand-mark"></span>
- *       <span class="brand-name">Job Pipeline</span></a>
- *     ...page-specific status...
- *     <span class="grow"></span>
+ *     <div class="tb-left">
+ *       <a class="brand" href="/dashboard"><span class="brand-mark"></span>
+ *         <span class="brand-name">Job Pipeline</span></a>
+ *       ...page-specific status...
+ *     </div>
  *     <nav class="nav"> three links, the current one aria-current="page" </nav>
- *     <button class="go icon theme">
+ *     <div class="tb-right">
+ *       ...page-specific buttons...
+ *       <button id="themeBtn" class="go icon theme" title="Theme"></button>  (always last)
+ *     </div>
  *   </header>
+ *
+ * The bar is a grid of two equal sides around the nav, so the nav sits in the
+ * same place on every page whatever each page puts beside it. It used to
+ * follow the page's own status and buttons, and moved by 400 px between the
+ * Dashboard and Applications (25 October 2026). The theme button is always the
+ * last thing on the right; web/theme.js runs it.
  */
 .topbar{--i-doc:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E");
   --i-list:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 6h16M4 12h11M4 18h6'/%3E%3C/svg%3E");
@@ -28,11 +38,16 @@
   --i-moon:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/%3E%3C/svg%3E");
   --i-auto:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 3a9 9 0 0 1 0 18z' fill='black'/%3E%3C/svg%3E");
   --gutter:var(--sp-6);
-  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
+  position:sticky;top:0;z-index:20;display:grid;align-items:center;gap:var(--sp-2) var(--sp-3);
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-areas:"left nav right";
   margin:0 calc(-1 * var(--gutter)) var(--sp-5);padding:var(--sp-3) var(--gutter);
   background:var(--scrim);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   border-bottom:1px solid var(--line);font-family:var(--font);line-height:1.4}
-.topbar .grow{flex:1}
+.topbar .tb-left,.topbar .tb-right{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
+.topbar .tb-left{grid-area:left}
+.topbar .tb-right{grid-area:right;justify-content:flex-end}
+.topbar .tb-left>*{min-width:0}
+.topbar .nav{grid-area:nav}
 
 /* brand: the same on every page, and a way home from anywhere */
 .topbar .brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none}
@@ -60,7 +75,9 @@
 .topbar .nav{display:flex;align-items:center;gap:2px}
 .topbar .nav .go{color:var(--dim)}
 .topbar .nav .go:hover{color:var(--ink)}
-.topbar .nav .go[aria-current="page"]{color:var(--ink);background:var(--bg2);font-weight:var(--fw-semi);cursor:default}
+/* Marked by colour and background only: bold would widen the current link and
+   nudge the ones after it. */
+.topbar .nav .go[aria-current="page"]{color:var(--ink);background:var(--bg2);cursor:default}
 
 /* the theme button: the page's JS writes a glyph and a title of
    "Theme: auto|light|dark"; the glyph is hidden and an icon drawn instead. */
@@ -71,10 +88,16 @@
 .topbar .go.theme[title*="dark"]::before{-webkit-mask-image:var(--i-moon);mask-image:var(--i-moon)}
 .topbar .go.theme[title*="auto"]::before{-webkit-mask-image:var(--i-auto);mask-image:var(--i-auto)}
 
+/* Too narrow for both sides beside the nav: the nav takes its own row, centred,
+   on every page alike. */
+@media (max-width:1099px){
+  .topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"left right" "nav nav"}
+  .topbar .nav{justify-self:center}
+}
 @media (max-width:720px){
-  .topbar{--gutter:var(--sp-4);margin-bottom:var(--sp-4);padding-top:var(--sp-2);padding-bottom:var(--sp-2);row-gap:var(--sp-2)}
-  .topbar .grow{flex-basis:100%;order:10;height:0}
-  .topbar .nav,.topbar .switch,.topbar .theme,.topbar .stamp{order:11}
+  .topbar{--gutter:var(--sp-4);margin-bottom:var(--sp-4);padding-top:var(--sp-2);padding-bottom:var(--sp-2);
+    grid-template-columns:minmax(0,1fr);grid-template-areas:"left" "right" "nav"}
+  .topbar .tb-right{flex-wrap:wrap}
   .topbar .nav .go{padding:0 8px}
 }
 @media print{.topbar{display:none}}

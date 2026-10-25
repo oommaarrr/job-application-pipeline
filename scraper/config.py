@@ -200,6 +200,12 @@ CLAUDE_RANK_TIMEOUT = 45
 # many. Lower keeps more stretch roles; higher sends Sonnet fewer misfits.
 CLAUDE_MIN_FIT = 30
 
+# Edit profile (profile_chat.py): the dashboard window where you tell Claude
+# what to change in your profile. Sonnet, because it edits several files and
+# has to keep them consistent; seconds per message is the timeout.
+CLAUDE_PROFILE_MODEL = "claude-sonnet-5-5"
+CLAUDE_PROFILE_TIMEOUT = 300
+
 # Updates (updater.py): once a day the pipeline asks GitHub whether a newer
 # version exists, and the dashboard offers Update now. Only version numbers
 # are fetched. UPDATE_CHECK=0 in local.env turns it off; it must be off in the

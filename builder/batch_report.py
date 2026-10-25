@@ -65,46 +65,81 @@ CSS = _load_css()
 THEME_BOOT = ('try{var t=localStorage.getItem("theme");'
               'if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}')
 
+PAGES = (("dashboard", "/dashboard", "i-home", "Dashboard"),
+         ("report", "/report/", "i-doc", "Applications"),
+         ("ranking", "/ranking", "i-list", "Fit ranking"))
+
+
+def topbar(bridge: str, current: str) -> str:
+    """
+    The top bar of web/topbar.css, as the Applications pages need it: the same
+    three parts as dashboard.html and ranking.html, with the theme button last.
+    Links are absolute to the bridge, because batch.html is opened from disk too.
+    """
+    links = "".join(
+        f'<a class="go ghost" href="{bridge}{href}"'
+        + (' aria-current="page"' if key == current else "")
+        + f'><span class="ico {ico}" aria-hidden="true"></span>{label}</a>'
+        for key, href, ico, label in PAGES)
+    return f"""<div class="topbar-shell">
+  <header class="topbar">
+    <div class="tb-left">
+      <a class="brand" href="{bridge}/dashboard">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Job Pipeline</span>
+      </a>
+    </div>
+    <nav class="nav" aria-label="Pages">{links}</nav>
+    <div class="tb-right">
+      <button id="themeBtn" class="go icon theme" type="button" title="Theme" aria-label="Theme"></button>
+    </div>
+  </header>
+</div>"""
+
+
+def empty_page(bridge: str = "") -> str:
+    """Applications before anything has been built: the same page, one card."""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Applications · Job Pipeline</title>
+<link rel="icon" href="{bridge}/web/favicon.svg" type="image/svg+xml">
+<script>{THEME_BOOT}</script><style>{CSS}</style></head>
+<body>
+{topbar(bridge, "report")}
+<div class="wrap">
+  <section class="empty-card">
+    <h1>No applications yet</h1>
+    <p class="sub">Nothing has been built. Rank the pool, then press <b>Build</b> on the
+       dashboard; each finished batch appears here.</p>
+    <a class="cta" href="{bridge}/dashboard">Go to the dashboard &rarr;</a>
+  </section>
+</div>
+<script>{THEME_JS}</script>
+</body></html>
+"""
+
+
+def _load_theme_js() -> str:
+    """web/theme.js, the theme button every page shares, inlined like the CSS."""
+    try:
+        return (_WEB / "theme.js").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+THEME_JS = _load_theme_js()
+
 JS = r"""
-/* Theme: auto (follow the system), light, dark. Shared with the dashboard. */
+/* The batch toolbar is pinned directly under the shared top bar, whose height
+   changes when it wraps on a narrow screen. */
 (function () {
-  var THEMES = ["auto", "light", "dark"];
-  var LABEL = {auto: "\u263C Auto", light: "\u2600 Light", dark: "\u263E Dark"};
-  var btn = document.getElementById("theme");
-  var cur = "auto";
-  try { cur = localStorage.getItem("theme") || "auto"; } catch (e) {}
-  if (THEMES.indexOf(cur) < 0) cur = "auto";
-  function apply(t, persist) {
-    cur = t;
-    if (t === "auto") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", t);
-    if (btn) {
-      btn.innerHTML = LABEL[t];
-      btn.title = "Theme: " + t + " (click to change)";
-      btn.setAttribute("aria-label", "Theme: " + t);
-    }
-    if (persist) { try { localStorage.setItem("theme", t); } catch (e) {} }
-  }
-  apply(cur, false);
-  if (btn) btn.onclick = function () { apply(THEMES[(THEMES.indexOf(cur) + 1) % 3], true); };
-  // The batch toolbar is pinned directly under the shared top bar, whose
-  // height changes when it wraps on a narrow screen.
   var top = document.querySelector(".topbar");
   var fit = function () {
     if (top) document.documentElement.style.setProperty("--topbar-h", top.offsetHeight + "px");
   };
   fit();
   window.addEventListener("resize", fit);
-  // Changed on the dashboard in another tab: follow it.
-  window.addEventListener("storage", function (e) {
-    if (e.key === "theme") apply(THEMES.indexOf(e.newValue) >= 0 ? e.newValue : "auto", false);
-  });
-  // Paper is white: print in the light theme whatever is on screen.
-  var before = null;
-  window.addEventListener("beforeprint", function () {
-    before = cur; document.documentElement.setAttribute("data-theme", "light");
-  });
-  window.addEventListener("afterprint", function () { if (before) apply(before, false); });
 })();
 
 (function () {
@@ -443,21 +478,7 @@ def render(batch: dict) -> str:
 <link rel="icon" href="{BRIDGE}/web/favicon.svg" type="image/svg+xml">
 <script>{THEME_BOOT}</script><style>{CSS}</style></head>
 <body>
-<div class="topbar-shell">
-  <header class="topbar">
-    <a class="brand" href="{BRIDGE}/dashboard">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <span class="brand-name">Job Pipeline</span>
-    </a>
-    <span class="grow"></span>
-    <nav class="nav" aria-label="Pages">
-      <a class="go ghost" href="{BRIDGE}/dashboard"><span class="ico i-home" aria-hidden="true"></span>Dashboard</a>
-      <a class="go ghost" href="{BRIDGE}/report/" aria-current="page"><span class="ico i-doc" aria-hidden="true"></span>Applications</a>
-      <a class="go ghost" href="{BRIDGE}/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
-    </nav>
-    <button id="theme" class="go icon theme" type="button" title="Theme: auto" aria-label="Theme: auto">&#9788;</button>
-  </header>
-</div>
+{topbar(BRIDGE, "report")}
 <div class="wrap">
   <h1>Application batch &middot; {esc(date)}</h1>
   <p class="sub">{len(built)} built{f' from a pool of {esc(pool)}' if pool else ''},
@@ -491,6 +512,7 @@ def render(batch: dict) -> str:
        <code>./start.sh</code> (Windows: <code>start.bat</code>) in the project folder, then tick again.</p>
   </footer>
 </div>
+<script>{THEME_JS}</script>
 <script>{JS.replace("__DATE__", date).replace("__BRIDGE__", BRIDGE)}</script>
 </body></html>
 """

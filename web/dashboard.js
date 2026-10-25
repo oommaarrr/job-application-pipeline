@@ -545,28 +545,6 @@ tick(); setInterval(tick,2000);
 loadEvents(); setInterval(loadEvents,4000);
 
 
-/* ==================================================================== theme
- * Three states, not two: light, dark, and "follow the system".
- *
- * A two-state toggle silently overrides the OS forever after one click, which
- * is the thing people actually complain about. `auto` removes the attribute
- * and lets the media query in tokens.css decide.
- */
-const THEMES=["auto","light","dark"], THEME_ICON={auto:"☼",light:"☀",dark:"☽"};
-function applyTheme(t){
-  if(t==="auto") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme",t);
-  const b=$("themeBtn");
-  if(b){ b.textContent=THEME_ICON[t]; b.title="Theme: "+t+" (click to change)"; }
-  try{ localStorage.setItem("theme",t); }catch(e){}
-}
-let theme="auto";
-try{ theme=localStorage.getItem("theme")||"auto"; }catch(e){}
-applyTheme(THEMES.includes(theme)?theme:"auto");
-if($("themeBtn")) $("themeBtn").onclick=()=>{
-  theme=THEMES[(THEMES.indexOf(theme)+1)%THEMES.length]; applyTheme(theme);
-};
-
 /* ==================================================================== tabs
  * Tabs inside a settings window (Saved searches, Arbeitnow). The WAI-ARIA tab
  * pattern: one tab in the Tab order, arrow keys, Home and End move between

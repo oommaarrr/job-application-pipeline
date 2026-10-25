@@ -9,25 +9,6 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-/* Same three-state theme as the dashboard, same storage key, so the choice
- * follows you between the two pages. */
-const THEMES = ["auto", "light", "dark"];
-const THEME_ICON = { auto: "☼", light: "☀", dark: "☽" };
-function applyTheme(t) {
-  if (t === "auto") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", t);
-  const b = $("themeBtn");
-  if (b) { b.textContent = THEME_ICON[t]; b.title = "Theme: " + t; }
-  try { localStorage.setItem("theme", t); } catch (e) {}
-}
-let theme = "auto";
-try { theme = localStorage.getItem("theme") || "auto"; } catch (e) {}
-applyTheme(THEMES.includes(theme) ? theme : "auto");
-$("themeBtn").onclick = () => {
-  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
-  applyTheme(theme);
-};
-
 let DATA = { rows: [] };
 let sortKey = "score", sortDir = -1;
 
