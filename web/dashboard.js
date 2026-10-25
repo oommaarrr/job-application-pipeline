@@ -26,6 +26,7 @@ async function tick(){
   const h=d.health||{};
   $("health").innerHTML='<span class="dot" style="background:'+(h.ok?"var(--green)":"var(--red)")+'"></span>'+(h.ok?"all good":"needs attention");
   staleBanner(d);
+  updateBanner(d);
   rankEngine(d);
   window._autobuild=!!d.autobuild;
   const ab=$("autobuild");
@@ -395,7 +396,7 @@ document.querySelectorAll('input[name="rankEngine"]').forEach(i=>i.onchange=asyn
 
 /* The page is read from disk on every load, the pipeline keeps running the code
    it started with, so an update needs a restart before the two agree. */
-const PIPELINE_API=6;     // keep equal to API_VERSION in scraper/serve.py
+const PIPELINE_API=7;     // keep equal to API_VERSION in scraper/serve.py
 function staleBanner(d){
   const old=d.api==null||d.api<PIPELINE_API, changed=!!d.code_changed;
   const el=$("staleBanner"); if(!el) return;
@@ -423,6 +424,44 @@ function staleBanner(d){
     $("staleCopy").onclick=async()=>{ try{ await navigator.clipboard.writeText(cmd); toast("Copied. Paste it in a terminal in the project folder."); }catch(e){} };
   }
 }
+/* Update now (scraper/updater.py): GitHub has a newer version. */
+function updateBanner(d){
+  const u=d.update||{}, el=$("updateBanner"); if(!el) return;
+  let kind="", html="";
+  if(!u.enabled){ kind=""; }
+  else if(u.applying){ kind="applying:"+u.step;
+    html="<span><b>Updating\u2026</b> "+esc(u.step||"")+"</span>"; }
+  else if(u.apply_error){ kind="error:"+u.apply_error;
+    html="<span><b>The update did not finish.</b> "+esc(u.apply_error)+" Nothing was lost.</span>"+
+      '<button class="go sm" type="button" data-update>Try again</button>'; }
+  else if(u.available){
+    const n=u.behind, ch=u.changes||[];
+    kind="available:"+u.latest;
+    html="<span><b>An update is available</b>"+(n?(": "+n+" change"+(n===1?"":"s")):"")+
+      ". Your profile, jobs, CVs and settings are kept.</span>"+
+      '<button class="go primary sm" type="button" data-update>Update now</button>'+
+      (ch.length?("<details><summary>What\u2019s new</summary><ul>"+ch.map(c=>"<li>"+esc(c)+"</li>").join("")+"</ul></details>"):"");
+  }
+  el.classList.toggle("hide",!kind);
+  if(el.dataset.kind===kind) return;          // keep an open "What's new" open
+  el.dataset.kind=kind; el.innerHTML=html;
+  const b=el.querySelector("[data-update]"); if(b) b.onclick=applyUpdate;
+}
+async function applyUpdate(){
+  if(!confirm("Update Job Pipeline now?\n\nIt downloads the new version, keeps your profile, jobs, CVs and settings, and restarts itself. Takes about a minute.")) return;
+  const r=await post("/update/apply",{});
+  if(!r||r.ok===false){ toast("Couldn\u2019t update: "+((r&&r.why)||"no answer"),false); return; }
+  // Wait for it to come back on the new version, then load the new page.
+  for(let i=0;i<180;i++){
+    await new Promise(res=>setTimeout(res,1000));
+    try{ const p=await fetch("/progress",{cache:"no-store"}).then(x=>x.json());
+      const u=p.update||{};
+      if(!u.applying&&!u.available&&!p.code_changed&&!u.apply_error){ location.reload(); return; }
+      if(u.apply_error){ tick(); return; } }catch(e){}
+  }
+  tick();
+}
+
 async function restartPipeline(){
   const el=$("staleBanner"); el.dataset.busy="1";
   el.innerHTML="<span><b>Restarting\u2026</b> back in a few seconds.</span>";

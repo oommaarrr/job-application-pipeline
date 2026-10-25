@@ -136,9 +136,31 @@ const setSched = async (patch) =>
  *     browser keeps (to resend if the pipeline was down) are erased too;
  *     otherwise the next resend would bring the whole erased pool back.
  */
+/*
+ * Reload when the extension's files on disk change, as they do after the
+ * dashboard's Update now, so an update reaches the extension without a visit
+ * to chrome://extensions. The pipeline sends a fingerprint of the files
+ * (extension_build); the one seen when this copy was loaded is kept, and a
+ * different one means newer code is on disk. Never in the middle of a scrape.
+ */
+async function maybeReload(build) {
+  if (!build || !chrome.runtime.reload) return;
+  const { loadedBuild } = await chrome.storage.local.get("loadedBuild");
+  if (!loadedBuild) { await chrome.storage.local.set({ loadedBuild: build }); return; }
+  if (loadedBuild === build || (await getSched()).running) return;
+  await chrome.storage.local.set({ loadedBuild: build });
+  chrome.runtime.reload();
+}
+chrome.runtime.onInstalled?.addListener?.(async () => {
+  // Just (re)loaded: what is on disk now is what is running.
+  const r = await call("/searches/sync", null, 4000);
+  await chrome.storage.local.set({ loadedBuild: (r.ok && r.extension_build) || null });
+});
+
 async function syncSearches() {
   let r = await call("/searches/sync", null, 4000);
   if (!r.ok || !Array.isArray(r.searches)) return false;
+  await maybeReload(r.extension_build);
   const st = await chrome.storage.local.get(["searchesMoved", "resetSeen"]);
 
   if (!st.searchesMoved) {

@@ -24,6 +24,7 @@ just scraped rather than everything you have ever scraped. Nothing is deleted.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import pathlib
 import re
@@ -113,7 +114,7 @@ def _today() -> str:
 # on 29 September 2026 the new Saved searches window met a server without
 # /searches/save, and a new search was lost on Save. Raise it whenever the pages
 # start relying on a new endpoint, together with PIPELINE_API in web/dashboard.js.
-API_VERSION = 6
+API_VERSION = 7
 _CODE_FILES = sorted(pathlib.Path(__file__).resolve().parent.glob("*.py"))
 _CODE_AT_START = {f: f.stat().st_mtime for f in _CODE_FILES}
 
@@ -355,6 +356,7 @@ import ledger
 import pool_status
 import rank_engine
 import saved_searches
+import updater
 from jobkey import job_key as _key
 
 
@@ -561,6 +563,85 @@ def _mark_extension_seen() -> None:
 # The extension polls about once a minute while Chrome is open. Past this it is
 # either closed, not loaded, or its worker has stopped waking.
 EXT_QUIET_S = 180
+
+
+def extension_build() -> str:
+    """
+    A fingerprint of the extension's files on disk. The extension compares it
+    with the one it was loaded with and reloads itself when they differ, so an
+    update reaches it without a visit to chrome://extensions.
+    """
+    h = hashlib.sha1()
+    ext = REPO / "extension"
+    try:
+        for f in sorted(ext.rglob("*")):
+            if f.is_file():
+                h.update(f.relative_to(ext).as_posix().encode())
+                h.update(f.read_bytes())
+    except OSError:
+        return ""
+    return h.hexdigest()[:12]
+
+
+# Update now (updater.py). The check runs in the background so a slow GitHub
+# never holds up the dashboard; applying runs in the background too, and ends
+# with a restart onto the new code.
+_update: dict = {"checking": False, "applying": False, "step": "", "error": None}
+
+
+def _update_check_async() -> None:
+    if _update["checking"]:
+        return
+    _update["checking"] = True
+
+    def run():
+        try:
+            updater.check()
+        finally:
+            _update["checking"] = False
+    threading.Thread(target=run, daemon=True).start()
+
+
+def update_info() -> dict:
+    info = updater.status()
+    if info.pop("due", False):
+        _update_check_async()
+    return {**info, "checking": _update["checking"], "applying": _update["applying"],
+            "step": _update["step"], "apply_error": _update["error"],
+            "can_restart": _supervised()}
+
+
+def start_update() -> dict:
+    if _update["applying"]:
+        return {"ok": False, "why": "already updating"}
+    if not updater.enabled():
+        return {"ok": False, "why": "updates are turned off here (UPDATE_CHECK=0 in local.env)"}
+    if _scrape.get("running") or _build_running() or _rank_running():
+        return {"ok": False, "why": "a scrape, ranking or build is running; update after it ends"}
+    _update.update(applying=True, step="starting", error=None)
+
+    def step(msg):
+        _update["step"] = msg
+
+    def run():
+        try:
+            r = updater.apply(log=step)
+        except Exception as e:                              # noqa: BLE001
+            r = {"ok": False, "why": str(e)[:300]}
+        if not r.get("ok"):
+            _update.update(applying=False, error=r.get("why"), step="")
+            _event("update", "failed", f"update failed: {r.get('why')}",
+                   fix="Nothing was lost. Try again later, or download the new version by hand.")
+            return
+        _event("update", "ok", f"updated to {str(r.get('to') or '')[:7]}; restarting")
+        updater.check()
+        if _supervised():
+            _update["step"] = "restarting"
+            threading.Timer(1.0, os._exit, args=(RESTART_EXIT,)).start()
+        else:
+            _update.update(applying=False, step="updated: restart Job Pipeline to use it")
+    threading.Thread(target=run, daemon=True).start()
+    return {"ok": True}
 
 
 def extension_state() -> dict:
@@ -1714,6 +1795,7 @@ def progress() -> dict:
         "code_changed": _code_changed(),
         "can_restart": _supervised(),
         "rank_engine": rank_engine.get(),
+        "update": update_info(),
         "now": dt.datetime.now().isoformat(timespec="seconds"),
         "phase": phase,
         "autobuild": _autobuild,
@@ -2449,7 +2531,7 @@ class Handler(BaseHTTPRequestHandler):
             # only difference is that this one counts as the extension being
             # alive, which the dashboard shows beside the searches.
             _mark_extension_seen()
-            return self._send(searches_state())
+            return self._send({**searches_state(), "extension_build": extension_build()})
 
         if route == "/searches-audit":
             return self._send({"ok": True, "searches": _search_log})
@@ -2700,6 +2782,13 @@ class Handler(BaseHTTPRequestHandler):
                                 "at": dt.datetime.now().isoformat(timespec="seconds")})
             _write_scrape_audit()
             return self._send({"ok": True, "logged": len(_search_log)})
+
+        if route == "/update/check":
+            updater.check()
+            return self._send({"ok": True, "update": update_info()})
+
+        if route == "/update/apply":
+            return self._send(start_update())
 
         if route == "/rank/engine":
             # The dashboard's switch between the local model and Claude.

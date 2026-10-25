@@ -776,3 +776,8 @@ pre.log .err{color:var(--log-err)}
 /* Which model ranks, under Rank pool. */
 .step-acts .rank-engine{margin-top:2px}
 .step-acts .rank-engine label{padding:3px 10px}
+
+/* Update now: same shape as the restart banner, in the accent colour. */
+.update-banner{border-color:var(--accent);background:var(--accent-bg)}
+.update-banner details{flex-basis:100%;font-size:var(--fs-sm)}
+.update-banner details ul{margin:6px 0 0;padding-left:18px}

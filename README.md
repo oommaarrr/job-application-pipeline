@@ -357,6 +357,25 @@ these pages from anywhere.
 
 ---
 
+## Updating
+
+When a new version is out, the dashboard says **An update is available**, with
+what changed. Press **Update now**: it downloads the new version, keeps your
+profile, collected jobs, CVs and settings, restarts itself and reloads the
+page, and the Chrome extension reloads itself too. The replaced files are kept
+in `_backups/` in case anything needs undoing.
+
+It checks GitHub once a day for the version number and sends nothing about you.
+To turn it off, add `UPDATE_CHECK=0` to `local.env`. If you cloned with git,
+**Update now** runs `git pull`, and refuses (naming the files) while you have
+edited any of the program's files.
+
+Installed before the updater existed? Download the ZIP once more and copy your
+`profiles/me` folder, `local.env` and `scraper/out` across; from then on it is
+**Update now**.
+
+---
+
 ## Where your files are
 
 | What | Where |

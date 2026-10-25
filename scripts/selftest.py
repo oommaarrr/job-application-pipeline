@@ -1001,6 +1001,114 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           "Restart now brings the bridge back as a new process", json.dumps({"r": r, "before": before}))
 
 
+def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    Update now (scraper/updater.py) against a stand-in GitHub, in a throwaway
+    copy: the new version replaces the program's files, adds and removes
+    files, never touches the user's, keeps a backup, refuses a download that
+    is not this project, and refuses a git clone with local edits.
+    """
+    import http.server
+    import threading
+    import zipfile
+    import io
+    root = pathlib.Path(tempfile.mkdtemp()) / "jp"
+    (root / "scraper").mkdir(parents=True)
+    real = (work / "scraper" / "updater.py").read_text(encoding="utf-8")
+    old = {"start.py": "print('old')\n", "scraper/serve.py": "# old\n", "README.md": "old readme\n",
+           "scripts/old_tool.py": "# goes away\n", "scraper/requirements.txt": "psutil\n",
+           "scraper/updater.py": real, "profiles/example/profile.md": "example, old\n"}
+    mine = {"profiles/me/profile.md": "MY PROFILE\n", "scraper/out/jobs.json": "[1]\n",
+            "local.env": "X=1\n"}
+    for rel, text in {**old, **mine}.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text, encoding="utf-8")
+    (root / ".installed.json").write_text(json.dumps({"sha": "a" * 40, "files": sorted(old)}),
+                                          encoding="utf-8")
+
+    def zipped(files: dict) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            for rel, text in files.items():
+                z.writestr(f"job-application-pipeline-{'b' * 7}/{rel}", text)
+        return buf.getvalue()
+    new = {"start.py": "print('new')\n", "scraper/serve.py": "# new\n", "README.md": "new readme\n",
+           "scripts/new_tool.py": "# new\n", "scraper/requirements.txt": "psutil\n",
+           "scraper/updater.py": real, "profiles/example/profile.md": "example, new\n",
+           "local.env": "SHOULD NOT LAND\n"}
+    served = {"zip": zipped(new)}
+
+    class GitHub(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if "/commits/main" in self.path:
+                body = json.dumps({"sha": "b" * 40, "commit": {"committer": {"date": "2026-10-25"}}}).encode()
+            elif "/compare/" in self.path:
+                body = json.dumps({"status": "ahead", "ahead_by": 2, "commits": [
+                    {"commit": {"message": "Fix one\n\nmore"}}, {"commit": {"message": "Fix two"}}]}).encode()
+            else:
+                body = served["zip"]
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), GitHub)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    env = dict(os.environ, UPDATE_API=f"http://127.0.0.1:{port}", UPDATE_CHECK="1",
+               UPDATE_ZIP=f"http://127.0.0.1:{port}/zip/{{sha}}", PYTHONUTF8="1")
+
+    def run(code: str) -> dict:
+        out = subprocess.run([str(py), "-c", "import sys, json; sys.path.insert(0, r'%s')\n"
+                              "import updater\n%s" % (root / "scraper", code)],
+                             capture_output=True, text=True, encoding="utf-8", env=env, timeout=120)
+        try:
+            return json.loads(out.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return {"error": (out.stdout + out.stderr)[-400:]}
+    try:
+        c = run("print(json.dumps(updater.check()))")
+        check(c.get("available") and c.get("behind") == 2 and c.get("changes") == ["Fix two", "Fix one"],
+              "an update is found on GitHub, with what changed", json.dumps(c)[:300])
+        a = run("print(json.dumps(updater.apply(log=lambda m: None)))")
+        rd = lambda rel: (root / rel).read_text(encoding="utf-8") if (root / rel).exists() else None
+        backups = list((root / "_backups").glob("update-*/README.md"))
+        check(a.get("ok") and rd("README.md") == "new readme\n" and rd("scripts/new_tool.py")
+              and rd("scripts/old_tool.py") is None and rd("profiles/example/profile.md") == "example, new\n"
+              and backups and backups[0].read_text(encoding="utf-8") == "old readme\n"
+              and json.loads(rd(".installed.json"))["sha"] == "b" * 40,
+              "Update now replaces, adds and removes program files, keeping the old ones",
+              json.dumps(a)[:300])
+        check(rd("profiles/me/profile.md") == "MY PROFILE\n" and rd("scraper/out/jobs.json") == "[1]\n"
+              and rd("local.env") == "X=1\n",
+              "an update never touches the profile, the collected jobs or local.env")
+        served["zip"] = zipped({"README.md": "not this project\n"})
+        a = run("print(json.dumps({'r': repr(updater.apply(log=lambda m: None))}))")
+        check("does not look like Job Pipeline" in json.dumps(a) and rd("README.md") == "new readme\n",
+              "a download that is not this project changes nothing", json.dumps(a)[:300])
+    finally:
+        srv.shutdown()
+
+    git = shutil.which("git")
+    if git:
+        g = pathlib.Path(tempfile.mkdtemp()) / "clone"
+        (g / "scraper").mkdir(parents=True)
+        (g / "scraper" / "updater.py").write_text(real, encoding="utf-8")
+        (g / "README.md").write_text("x\n", encoding="utf-8")
+        for args in (["init", "-q"], ["add", "-A"],
+                     ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"]):
+            subprocess.run([git, *args], cwd=g, capture_output=True)
+        (g / "README.md").write_text("edited\n", encoding="utf-8")
+        out = subprocess.run([str(py), "-c", "import sys, json; sys.path.insert(0, r'%s')\n"
+                              "import updater; print(json.dumps(updater.apply(log=lambda m: None)))"
+                              % (g / "scraper")], capture_output=True, text=True, encoding="utf-8",
+                             env=dict(env), timeout=120).stdout
+        check('"ok": false' in out and "README.md" in out and (g / "README.md").read_text() == "edited\n",
+              "a git clone with local edits is not updated, and the edited files are named", out[-300:])
+
+
 def _write_local(sc: pathlib.Path, text: str | None) -> None:
     """Write (or remove) the copy's config_local.py, and drop its compiled
     copy: Python checks that by size and a timestamp in whole seconds, so two
@@ -1210,6 +1318,9 @@ def main() -> int:
 
         section("saved searches: kept by the pipeline, run by the extension")
         searches_section(e, py, work)
+
+        section("Update now: a new version from GitHub, the user's files kept")
+        updater_section(py, work)
 
     finally:
         section("cleanup")

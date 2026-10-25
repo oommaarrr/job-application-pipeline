@@ -200,6 +200,13 @@ CLAUDE_RANK_TIMEOUT = 45
 # many. Lower keeps more stretch roles; higher sends Sonnet fewer misfits.
 CLAUDE_MIN_FIT = 30
 
+# Updates (updater.py): once a day the pipeline asks GitHub whether a newer
+# version exists, and the dashboard offers Update now. Only version numbers
+# are fetched. UPDATE_CHECK=0 in local.env turns it off; it must be off in the
+# copy the project is developed in, so it never overwrites unpushed work.
+UPDATE_REPO = "oommaarrr/job-application-pipeline"
+UPDATE_CHECK = True
+
 # Before either model reads anything, jobs far from your target roles (the
 # Arbeitnow searches) by meaning are set aside, using EMBED_MODEL. Measured on
 # 1,270 collected jobs, 22 October 2026: a floor of 0.62 set aside about 15%

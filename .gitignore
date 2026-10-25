@@ -25,6 +25,7 @@ profiles/*
 !profiles/example/**
 
 # Local overrides
+.installed.json
 config_local.py
 local.env
 config.local.py
