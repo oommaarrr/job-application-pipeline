@@ -252,6 +252,11 @@ tbody tr:hover td{background:var(--bg2)}
 .steps:not(:has(.done,.active)) .step:first-child .go:not(.quiet):not(.split .go):not(:disabled){
   background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:var(--fw-semi)}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* Motion only says "running"; the words and the badge say it too. */
+@media (prefers-reduced-motion:reduce){
+  .step.active::before,.step.active i::after,.wrap:has(.step.active) #stageline::before,
+  .badge::before{animation:none}
+}
 
 /* ======================================================================= 8 */
 /* ---- setup ---- */

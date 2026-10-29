@@ -90,6 +90,23 @@ def say(msg: str) -> None:
     _append(f"[{dt.datetime.now():%H:%M:%S}] {msg}\n")
 
 
+# Which part of the build is running, for the dashboard's stage row: "starting"
+# (checks, waiting for a scrape), "ranking", then "writing" once the roles go to
+# Claude. The bridge used to work this out from the last 16 lines of the log,
+# and once Claude's output or a traceback pushed the hand-off line out of them,
+# a build that was writing showed Rank as the running step (30 October 2026).
+STAGE = LOG_DIR / ".stage"
+
+
+def stage(name: str) -> None:
+    try:
+        STAGE.write_text(json.dumps({"stage": name, "pid": os.getpid(),
+                                     "at": dt.datetime.now().isoformat(timespec="seconds")}),
+                         encoding="utf-8")
+    except OSError:
+        pass
+
+
 def notify(message: str, subtitle: str = "") -> None:
     pu.notify("Job Pipeline", message, subtitle)
 
@@ -198,6 +215,11 @@ def release_lock() -> None:
         if (LOCK / "pid").read_text().strip() == str(os.getpid()):
             shutil.rmtree(LOCK, ignore_errors=True)
     except OSError:
+        pass
+    try:
+        if json.loads(STAGE.read_text(encoding="utf-8")).get("pid") == os.getpid():
+            STAGE.unlink()
+    except (OSError, ValueError):
         pass
 
 
@@ -409,6 +431,7 @@ def main() -> None:
         end_with("stopped", f"already tried {MAX_ATTEMPTS} times today, not trying again "
                  "automatically", "Press Build (or Retry) to try again now.", 0)
     STATE.write_text(str(attempt))
+    stage("starting")
     say(f"=== batch attempt {attempt}/{MAX_ATTEMPTS} for {DAY} ===")
 
     # ------------------------------------------------------------ profile
@@ -577,6 +600,7 @@ def main() -> None:
         end_with("failed", "Ollama is not running and could not be started, so nothing "
                  "was ranked", "Open the Ollama app (or run: ollama serve), then press Retry.", 1)
 
+    stage("ranking")
     if engine == "claude":
         say(f"ranking {last} jobs with Claude ({rank_engine.claude_model()})")
         notify(f"Ranking {last} jobs with Claude…")
@@ -644,6 +668,7 @@ def main() -> None:
         end_with("info", "every candidate posting has closed, so nothing was built",
                  "Collect fresh jobs, then build again.", 0)
     say(f"{ranked} roles passed and are going to Claude")
+    stage("writing")
 
     # The target is a CEILING, not a quota (19 September): build everything
     # that passed, up to the target. It counts everything built today, so the
@@ -823,6 +848,7 @@ def check_claude(claude: str, model: str) -> None:
 
 
 def build_rounds(claude: str, model: str, ref_cvs: str, build_target: int) -> None:
+    stage("writing")
     for rnd in range(1, MAX_ATTEMPTS + 1):
         have = n_built()
         # Stop on the TARGET, not on the marker existing.

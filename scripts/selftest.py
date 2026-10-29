@@ -1114,6 +1114,45 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           "Restart now brings the bridge back as a new process", json.dumps({"r": r, "before": before}))
 
 
+def build_stage_check(py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    Which step a running build is on: from run_batch's logs/.stage, else from
+    the whole current attempt of the log, never from its last 16 lines.
+    """
+    logs = work / "builder" / "logs"
+    out = ps(py, work, r"""
+        import json, os, subprocess, sys, serve
+        logs = serve.BUILDER / "logs"
+        log = logs / f"{serve._build_day()}.log"
+        (logs / ".stage").unlink(missing_ok=True)
+        noise = "\n".join(f"Claude wrote line {i} of its notes" for i in range(60))
+        log.write_text("[10:00] === batch attempt 1/3 ===\n[10:00] ranking 40 jobs with Claude\n"
+                       "  12/40 judged\n[10:01] 9 roles passed and are going to Claude\n" + noise + "\n",
+                       encoding="utf-8")
+        a = serve._build_stage()
+        log.write_text(log.read_text(encoding="utf-8") + "[11:00] === batch attempt 2/3 ===\n"
+                       "[11:00] ranking 40 jobs with Claude\n", encoding="utf-8")
+        b = serve._build_stage()
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        (logs / ".stage").write_text(json.dumps({"stage": "writing", "pid": child.pid}), encoding="utf-8")
+        c = serve._build_stage()
+        child.kill(); child.wait()
+        d = serve._build_stage()           # the writer is gone: the log decides
+        (logs / ".stage").unlink(missing_ok=True); log.unlink(missing_ok=True)
+        e = serve._judged_pairs("  12/40  · 80 24/7 Support Engineer\n  13/40  ✗ 10 Ops (24/7)")
+        print(json.dumps([a, b, c, d, e]))
+    """)
+    try:
+        a, b, c, d, e = json.loads(out.splitlines()[-1])
+    except (ValueError, IndexError):
+        a = b = c = d = e = out
+    check(a == "writing", "a build stays on writing however much Claude has logged since the hand-off", str(a))
+    check(b == "ranking", "a new attempt that ranks again shows ranking", str(b))
+    check(c == "writing" and d == "ranking", "run_batch's stage file decides while its build is alive",
+          f"{c} {d}")
+    check(e == [["12", "40"], ["13", "40"]], "a 24/7 in a job title is not read as progress", str(e))
+
+
 def topbar_check(e: "Env", when: str) -> None:
     """
     The three pages share one top bar: the nav in the middle with the same
@@ -1594,6 +1633,7 @@ def main() -> int:
         check(report.exists() and "Firma Ü" in report.read_text(encoding="utf-8"),
               "report written, umlauts intact")
         topbar_check(e, "with a batch")
+        build_stage_check(py, work)
 
         code, o = e.run_build("2", "hang", STARTUP_GRACE_MIN="0.05", WATCHDOG_EVERY_S="1")
         log = (e.builder / "logs" / f"{DAY}.log").read_text(encoding="utf-8", errors="replace")

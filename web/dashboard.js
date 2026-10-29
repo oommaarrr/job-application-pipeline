@@ -50,7 +50,9 @@ async function tick(){
   const ph=d.phase;
   const stt={
     scrape: ph==="scraping"?"active":(scrapeDone||["ranking","building","done","built-partial"].includes(ph))?"done":"pending",
-    rank:   ph==="ranking"?"active":(["building","done","built-partial"].includes(ph)||rankDone)?"done":"pending",
+    // A build that is still starting (checks, waiting for a scrape) has not
+    // ranked yet, so Rank is not ticked off just because a build is running.
+    rank:   ph==="ranking"?"active":((["building","done","built-partial"].includes(ph)&&d.build_stage!=="starting")||rankDone)?"done":"pending",
     build:  ph==="building"?"active":(buildDone||["done","built-partial"].includes(ph))?"done":"pending",
     done:   (ph==="done")?"done":((ph==="built-partial"||buildDone)?"done":"pending"),
   };

@@ -1384,6 +1384,43 @@ def _ranked_ready() -> int:
         return 0
 
 
+def _judged_pairs(text: str) -> list[tuple[str, str]]:
+    """
+    The ranker's "  62/172 ..." progress, from the start of its lines only. Any
+    "a/b" in the text used to count, so a title printed after the number
+    ("24/7 Support Engineer") read as 24 of 7 judged.
+    """
+    return re.findall(r"^\s*(\d+)/(\d+)\b", text, re.M)
+
+
+def _build_stage() -> str:
+    """
+    "starting", "ranking" or "writing", for the build that is running.
+
+    run_batch.py writes it to logs/.stage as it goes. A build from before that
+    file is read from its log instead: the part since the current attempt
+    began, all of it. The last 16 lines were read before, and once Claude's
+    output pushed the hand-off line out of them, a build that was writing
+    showed Rank as the running step (30 October 2026).
+    """
+    try:
+        st = json.loads((BUILDER / "logs" / ".stage").read_text(encoding="utf-8"))
+        if st.get("stage") in ("starting", "ranking", "writing") and pu.alive(int(st.get("pid") or 0)):
+            return st["stage"]
+    except (OSError, ValueError, TypeError):
+        pass
+    try:
+        txt = (BUILDER / "logs" / f"{_build_day()}.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "starting"
+    seg = txt.rsplit("=== batch attempt", 1)[-1].lower()
+    if "going to claude" in seg or "apply-batch" in seg:
+        return "writing"
+    if re.search(r"\branking \d+ jobs\b", seg):
+        return "ranking"
+    return "starting"
+
+
 def _rank_progress() -> dict:
     """
     How many jobs the local ranker has judged so far, out of the batch.
@@ -1397,7 +1434,7 @@ def _rank_progress() -> dict:
     except OSError:
         return {"done": 0, "total": 0}
     seg = txt.rsplit("=== rank started", 1)[-1]     # current run only
-    pairs = re.findall(r"\b(\d+)/(\d+)\b", seg)
+    pairs = _judged_pairs(seg)
     if not pairs:
         return {"done": 0, "total": 0}
     d, t = pairs[-1]
@@ -1688,15 +1725,9 @@ def progress() -> dict:
     bp = build_progress()
 
     # One word for the banner. The order matters: a scrape in flight wins, then
-    # a build (ranking before any documents exist, otherwise writing them),
-    # then the resting states.
-    joined = " ".join(bp["log"]).lower()
-    # A build ranks first, then hands its candidates to Claude to write. The log
-    # keeps the ranking lines in view for a while after Claude has started, so
-    # "the word rank is in the log" is not enough — look for the hand-off.
-    handed_to_claude = ("apply-batch" in joined or "going to claude" in joined
-                        or "round " in joined)
-    build_ranking = building and not handed_to_claude and not bp["companies"]
+    # a build (while it ranks, otherwise writing), then the resting states.
+    build_stage = _build_stage() if building else None
+    build_ranking = build_stage == "ranking"
     if scr.get("running"):
         phase = "scraping"
     elif ranking or build_ranking:
@@ -1798,7 +1829,7 @@ def progress() -> dict:
         if ranking:                       # standalone rank → its own log
             rp = _rank_progress()
         else:                             # ranking inside a build → build log
-            bm = re.findall(r"\b(\d+)/(\d+)\b", joined)
+            bm = _judged_pairs("\n".join(bp["log"]))
             rp = ({"done": int(bm[-1][0]), "total": int(bm[-1][1])} if bm
                   else {"done": 0, "total": 0})
         active = {"label": "jobs judged", "done": rp["done"], "total": rp["total"]}
@@ -1816,6 +1847,7 @@ def progress() -> dict:
         "arbeitnow_running": _arbeitnow.get("proc") is not None,
         "health": health,
         "active": active,
+        "build_stage": build_stage,
         "ok": True,
         "api": API_VERSION,
         "code_changed": _code_changed(),
