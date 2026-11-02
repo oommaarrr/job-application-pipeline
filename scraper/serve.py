@@ -892,6 +892,10 @@ def _write_scrape_audit() -> None:
             note += f" · {r['path']}"
         if r.get("expected") and int(r.get("loaded") or 0) < int(r["expected"]):
             note += f" · {r.get('loaded')}/{r['expected']} rendered"
+        if r.get("countWrong"):
+            note += " · LinkedIn's count was lower than its list"
+        if int(r.get("hiddenPasses") or 0):
+            note += f" · tab hidden ~{r['hiddenPasses']}s"
         lines.append(
             f"{(r.get('label') or '')[:40]:<40} {(r.get('site') or r.get('host') or '')[:10]:<10} "
             f"{int(r.get('found') or 0):>6} {int(r.get('added') or 0):>5} "

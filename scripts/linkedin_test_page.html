@@ -42,6 +42,8 @@
  *   ?list=4000              ms before the list exists
  *   ?fill=600               ms a row takes to fill in
  *   ?json=12                put "12 results" in the page data, as LinkedIn does
+ *   ?count=7                the refs header says "7 results" whatever ?n= is:
+ *                           a count that is not this list's (November 2026)
  *
  * When the collector is done the result is written to body[data-result].
  */
@@ -105,7 +107,7 @@ function build() {
     : LAYOUT === "refs" ? `<div componentkey="SearchResultsMainContent" data-testid="lazy-column">${slots}</div>`
     : `<div>${slots}</div>`;
   if (LAYOUT === "refs") {
-    col.insertAdjacentHTML("afterbegin", `<header componentkey="searchResultsHeaderComponent"><p>${N} results</p>` +
+    col.insertAdjacentHTML("afterbegin", `<header componentkey="searchResultsHeaderComponent"><p>${P.get("count") || N} results</p>` +
       `<div aria-label="Location Somewhere"><p>Somewhere</p></div></header>`);
   }
   col.appendChild(list);

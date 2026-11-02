@@ -11,8 +11,9 @@ add up to what was collected:
     applied          applied to, or built in an earlier batch
     no_description   nothing for the model to read
     repeat           collected on an earlier day AND already judged by the
-                     model then (history/seen.csv). Collected but never judged
-                     is not a repeat: it goes to the model now.
+                     model then (history/seen.csv). Only when
+                     config.DROP_REPEATS is on, which it is not by default:
+                     a job still posted is judged again, and can be built.
     to_judge         everything else: what the model reads
 """
 
@@ -129,12 +130,14 @@ def split(jobs: list[dict], record: bool = False) -> dict[str, list]:
         return ""
 
     hist: dict = {}
+    drop_repeats = getattr(config, "DROP_REPEATS", False)
     if getattr(config, "SEEN_DAYS", 30) > 0:
         try:
             _backfill_once()
             if record:
                 ledger.record_seen(jobs)
-            hist = ledger.history()
+            if drop_repeats:
+                hist = ledger.history()
         except OSError as e:
             print(f"  ! job history unreadable ({e}); not dropping repeats this run")
 
@@ -144,7 +147,7 @@ def split(jobs: list[dict], record: bool = False) -> dict[str, list]:
             out["applied"].append(j)
         elif not (j.get("description") or "").strip():
             out["no_description"].append(j)
-        elif (when := ledger.repeat_of(j, hist)):
+        elif drop_repeats and (when := ledger.repeat_of(j, hist)):
             out["repeat"].append({**j, "_judged": when})
         else:
             out["to_judge"].append(j)

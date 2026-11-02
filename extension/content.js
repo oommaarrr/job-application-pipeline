@@ -1037,7 +1037,12 @@
       const n = collectCards().length;
       if (n !== last) { last = n; since = Date.now(); }
       const total = resultTotal();
-      const enough = n >= 2 || (total != null && n >= Math.min(total, 1));
+      // One card is enough only on a page that says it holds one or none.
+      // It was `n >= min(total, 1)`, which a known count of 12 met with the
+      // detail pane's single card, before the list existed: the run started
+      // on a half-built page, picked the wrong scroller and stalled at 7 to
+      // 19 of 25 (November 2026, new searches on a slow Windows PC).
+      const enough = n >= 2 || (total != null && total <= 1 && n >= total);
       // "complete" also waits on every image and tracker, and one that hangs
       // would hold a finished list for the whole timeout; a parsed document
       // whose count has held for 8 s is loaded as far as the list goes.
@@ -1085,6 +1090,22 @@
         if (r && r.url && !lastHarvest.has(r.url)) lastHarvest.set(r.url, r);
       }
       return lastHarvest.size;
+    };
+
+    /*
+     * How many cards this page should hold: LinkedIn's count, until the list
+     * shows more cards than it. Then the count belongs to something else (it
+     * was read off another part of the page, or LinkedIn lists more than its
+     * header admits) and the page is held to the full 25 from then on.
+     */
+    const full = site?.expectCards || 0;
+    let countWrong = false;
+    let hiddenPasses = 0;
+    const expectNow = () => {
+      if (countWrong) return full;
+      const t = pageExpect();
+      if (t && t < full && lastHarvest.size > t) { countWrong = true; return full; }
+      return t;
     };
 
     /*
@@ -1384,7 +1405,7 @@
        * several passes.
        */
       // LinkedIn's own result count can lower this for a short last page.
-      let target = pageExpect();
+      let target = expectNow();
       const patience = target ? 6 : 2;
       let prev = -1;
       let stable = 0;
@@ -1393,9 +1414,25 @@
       for (let i = 0; i < 40 && stable < patience; i++) {
         if (cancelled || userScrolled) break;
         n = harvest();
-        if (target && n >= target) {
+        target = expectNow() || target;
+        // Only a FULL page ends the loading on its count. A short count
+        // (November 2026: searches in another country stopped at 7 and 12 of
+        // a 25-card list, on Windows) is only an upper guess: reaching it lets
+        // the plateau and dead-scroll rules below decide, and any card past
+        // it proves the count is not this list's.
+        if (target && n >= target && target >= full) {
           onProgress?.(`${n} cards, full page`);
           break;
+        }
+        // A hidden tab does not render (a minimised window, or one Windows
+        // reports as covered), so a pass there says nothing about the list:
+        // neither a plateau nor a dead scroller. Wait for it to be shown.
+        if (document.visibilityState === "hidden" && hiddenPasses < 120) {
+          hiddenPasses++;
+          i--;
+          onProgress?.(`the tab is hidden, waiting for it to be shown… ${n}/${target || "?"}`);
+          await sleep(1000);
+          continue;
         }
         if (n === prev) stable++; else stable = 0;
         prev = n;
@@ -1452,7 +1489,7 @@
       const budgetEnd = Date.now() + (site?.fillWait ? 180000 : 0);
       let slotsBefore = slotIds();
       for (let s = 0; s < fills.length; s++) {
-        target = pageExpect() || target;
+        target = expectNow() || target;
         if (!(target && harvest() < target) || cancelled || userScrolled) break;
         if (site?.fillWait) {
           if (Date.now() > budgetEnd) break;
@@ -1504,7 +1541,7 @@
       await waitFill(3000);
     }
     const final = harvest();
-    const expected = pageExpect();
+    const expected = expectNow();
     if (expected && final < expected && !cancelled && !userScrolled) {
       console.warn(
         `[job collector] only ${final} of ${expected} cards rendered ` +
@@ -1513,6 +1550,7 @@
     }
     return { count: final, dead: scrollDead, passes: scrollPasses, userScrolled,
              everMoved, scrollables: allScrollables(60).length, ready, expected,
+             countWrong, hiddenPasses,
              path: lastPath, paths: pathCounts, slots: slotIds().size,
              trace, container: container
                ? `${container.tagName}${container.id ? "#" + container.id : ""}`
@@ -1803,7 +1841,8 @@
                trace: load.trace, container: load.container,
                everMoved: load.everMoved, scrollables: load.scrollables,
                expected: load.expected, path: load.path, paths: load.paths,
-               slots: load.slots, readyMs: load.ready?.ms };
+               slots: load.slots, readyMs: load.ready?.ms,
+               countWrong: !!load.countWrong, hiddenPasses: load.hiddenPasses || 0 };
     }
 
     const recs = [];
@@ -1846,6 +1885,7 @@
              everMoved: load.everMoved, scrollables: load.scrollables,
              expected: load.expected, path: load.path, paths: load.paths,
              slots: load.slots, readyMs: load.ready?.ms,
+             countWrong: !!load.countWrong, hiddenPasses: load.hiddenPasses || 0,
              withDesc: recs.filter((r) => r.description).length,
              mismatch: alignmentWarning(recs) };
   }
@@ -2042,6 +2082,9 @@
       path: res.path || "",
       paths: res.paths || "",
       slots: res.slots ?? 0,
+      // The page's count was not this list's, and how long the tab sat hidden.
+      countWrong: !!res.countWrong,
+      hiddenPasses: res.hiddenPasses ?? 0,
       readyMs: res.readyMs ?? 0,
       page: pageNo,
     });

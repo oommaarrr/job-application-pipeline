@@ -254,24 +254,24 @@ intermediate, and "2 to 5 years" as 5 when the lower number is what matters.
 
 **Before anything is read, these checks skip work entirely.** Every collected
 job lands in exactly one of them or goes to the model, so the numbers always add
-up; the dashboard says it in one line, e.g. *81 to judge, of 137 collected: 41
-already judged on an earlier day, 14 already applied or built, 1 no description
-to read*. The ranker and the dashboard use the same code for this
+up; the dashboard says it in one line, e.g. *95 to judge, of 110 collected: 14
+already applied or built, 1 no description to read*. The ranker and the dashboard use the same code for this
 (`scraper/pool.py`), so they cannot disagree.
 
 - **Already applied or built**: matched on company and title, not the link, so
   the same job reposted on another board is still caught. The list is
   `scraper/history/applied.csv`, kept forever.
 - **No description**: nothing for the model to read.
-- **Already judged on an earlier day**: `scraper/history/seen.csv` remembers the
-  title and company of every job collected in the last `SEEN_DAYS` days (30),
-  and the day the local model judged it. A job the model already judged on an
-  earlier day had its chance, so it is dropped and listed on the Fit ranking
-  page as "judged earlier". A job that was collected before but **never
-  judged** (the pool was erased first, say) is not dropped: it goes to the model
-  now. Ranking the same pool twice in one day drops nothing. Rows older than 30
-  days are removed automatically. Set `SEEN_DAYS = 0` in
-  `scraper/config_local.py` to turn this off.
+- **Collected on an earlier day is not a reason to skip.** A job still posted
+  days later goes to the model again and can be built, because it is still open
+  to you. That costs nothing when neither the posting nor your profile has
+  changed: the answer comes from the cache. Change your profile and every job
+  in the pool is judged again against the new one. To skip jobs the model
+  already judged on an earlier day instead (the rule before November 2026), set
+  `DROP_REPEATS = True` in `scraper/config_local.py`; they are then listed on
+  the Fit ranking page as "judged earlier". `scraper/history/seen.csv` keeps
+  the title, company and judged day of every job collected in the last
+  `SEEN_DAYS` days (30) for this.
 - **Collected too long ago**: collections older than `MAX_POOL_AGE_DAYS` (7)
   are left out; those postings are usually filled.
 

@@ -386,14 +386,14 @@ Installed before the updater existed? Download the ZIP once more and copy your
 | Your CVs and cover letters | `builder/applications/<date>/<Company>/` |
 | After **Erase everything** | moved to `builder/applications/archive/`, never deleted |
 | Jobs you applied to | `scraper/history/applied.csv` (date, company, title, link), kept forever |
-| Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the local AI judged it). A job it already judged on an earlier day is skipped |
+| Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the local AI judged it). A job still posted days later is judged again, and can be built |
 
 **Erase everything and start fresh** (on the dashboard, under **Start over**)
 clears the collected jobs, in the pipeline and in the extension's copy, so the
 next collection starts from zero, and moves every built CV and letter into the
 archive. It never touches your applied list or the
-30-day job history, so jobs you applied to, and jobs the local AI already judged
-on an earlier day, still never come back. The dashboard then starts a new round:
+30-day job history, so jobs you applied to, or already built an application
+for, still never come back. The dashboard then starts a new round:
 each step shows only what has happened since the erase, and until a step runs
 again its card says so and shows its last result, dated, as "before the erase".
 

@@ -285,7 +285,7 @@ def enrich_and_rank(jobs: list[Job], sources) -> list[Job]:
         if key in applied:
             j.extras["verdict"] = "applied"
             j.extras["why"] = "already applied"
-        elif first_seen and first_seen != today:
+        elif first_seen and first_seen != today and getattr(config, "DROP_REPEATS", False):
             # Dropped rather than re-reviewed. It still appears in the audit
             # with this reason, so a wrongly suppressed job is findable.
             j.extras["verdict"] = "seen-before"

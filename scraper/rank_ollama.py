@@ -755,6 +755,11 @@ def main() -> int:
         print(note)
 
     cache = _read(CACHE_PATH, {})
+    profile_fp = hashlib.sha1(profile.encode()).hexdigest()[:12]
+    # Answers cached before the key carried the profile (November 2026) can
+    # never be looked up again; dropped here so an update needs no clean-up.
+    for k in [k for k in cache if k.count("|") < 4]:
+        del cache[k]
     per = (f"{config.CLAUDE_RANK_BATCH} per call, {config.CLAUDE_RANK_CONCURRENCY} calls at a time"
            if engine == "claude" else f"{config.OLLAMA_CONCURRENCY} at a time")
     print(f"model {args.model} ({rank_engine.LABELS[engine]}) · {per}\n")
@@ -768,9 +773,13 @@ def main() -> int:
         cache handed back verdicts computed from the page furniture the repair
         had just replaced. A description fingerprint makes a repaired posting a
         different question, which is exactly what it is.
+
+        And on the PROFILE: a job still posted days later is judged again
+        (config.DROP_REPEATS), and after you change profile.md the answer must
+        be the new profile's, not the one cached against the old.
         """
         fp = hashlib.sha1((job.get("description") or "").encode()).hexdigest()[:12]
-        return f"{job_key(job['url'])}|{args.model}|{PROMPT_VERSION}|{fp}"
+        return f"{job_key(job['url'])}|{args.model}|{PROMPT_VERSION}|{fp}|{profile_fp}"
 
     fresh: set[str] = set()       # answered by Claude in this run, not from an older one
 

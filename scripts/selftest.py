@@ -353,7 +353,8 @@ def ps(py: pathlib.Path, work: pathlib.Path, code: str) -> str:
 def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) -> None:
     """
     One job of each kind, through the real rank_ollama.py and pool.py:
-      Alpha    judged on an earlier day        -> dropped as a repeat
+      Alpha    judged on an earlier day        -> goes to the model again
+                                               (dropped only with DROP_REPEATS)
       Beta     collected earlier, never judged -> goes to the model
       Gamma    applied to                      -> dropped
       Delta    no description                  -> dropped
@@ -395,27 +396,49 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
 
     s1 = status()
     b = s1.get("breakdown", {})
-    check(b.get("to_judge") == 3 and b.get("repeat") == 1 and b.get("applied") == 1
+    check(b.get("to_judge") == 4 and b.get("repeat") == 0 and b.get("applied") == 1
           and b.get("no_description") == 1 and b.get("collected") == 6,
-          "every collected job in exactly one bucket (3 to judge, 1 repeat, 1 applied, 1 no description)",
+          "every collected job in exactly one bucket (4 to judge, 1 applied, 1 no description); "
+          "a job judged on an earlier day is judged again",
           json.dumps(s1)[:400])
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\nDROP_REPEATS = True\n')
+    b = status().get("breakdown", {})
+    check(b.get("to_judge") == 3 and b.get("repeat") == 1,
+          "DROP_REPEATS = True still drops a role judged on an earlier day", json.dumps(b))
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
     r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=300,
                        env=dict(os.environ, PYTHONUTF8="1"))
     rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8")) \
         if (sc / "out" / "ollama_rank.json").exists() else {}
     judged = rank.get("counts", {}).get("judged")
-    check(r.returncode == 0 and judged == s1.get("usable") == 3,
+    check(r.returncode == 0 and judged == s1.get("usable") == 4,
           "the ranker reads exactly the number the dashboard shows", f"exit {r.returncode}, "
           f"ranker {judged}, dashboard {s1.get('usable')}: {(r.stdout + r.stderr)[-300:]}")
-    check(rank.get("not_read") == {"repeat": 1, "applied": 1, "no_description": 1, "too_old": 0},
+    check(rank.get("not_read") == {"repeat": 0, "applied": 1, "no_description": 1, "too_old": 0},
           "the ranker records why the rest were not read", str(rank.get("not_read")))
     seen = (hist / "seen.csv").read_text(encoding="utf-8")
     beta = next((l for l in seen.splitlines() if l.split(",")[1:2] == ["Beta"]), "")
     check(beta.endswith(DAY), "a role never judged before goes to the model, and is recorded as judged", beta)
     s2 = status()
-    check(s2.get("usable") == 3, "ranking the same pool again the same day drops nothing",
+    check(s2.get("usable") == 4, "ranking the same pool again the same day drops nothing",
           json.dumps(s2.get("breakdown")))
+
+    # The cache answers an unchanged posting against an unchanged profile, and
+    # asks again once the profile changes.
+    def rerank() -> str:
+        return subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc,
+                              capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=300, env=dict(os.environ, PYTHONUTF8="1")).stdout
+    out1 = rerank()
+    prof = work / "profiles" / "me" / "profile.md"
+    before_prof = prof.read_text(encoding="utf-8")
+    prof.write_text(before_prof + "\nNew project: a selftest.\n", encoding="utf-8")
+    out2 = rerank()
+    prof.write_text(before_prof, encoding="utf-8")
+    check("4 judged (0 new, 4 cached)" in out1 and "4 judged (4 new, 0 cached)" in out2,
+          "the same profile is answered from the cache; a changed profile is judged again",
+          (out1[-200:] + " | " + out2[-200:]))
 
     # The Claude engine (October 2026): the same real ranker, Claude answering
     # several postings per call. The stand-in leaves one posting out of each
@@ -429,8 +452,8 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
         if (sc / "out" / "ollama_rank.json").exists() else {}
     c = rank.get("counts", {})
     read = [x for x in rank.get("passed", []) + rank.get("dropped", []) if "reason" in x and x.get("verdict") != "far-from-target"]
-    check(r.returncode == 0 and rank.get("engine") == "claude" and c.get("judged") == 3
-          and not c.get("failed") and len(read) == 3 and all(x["reason"] == "selftest" for x in read),
+    check(r.returncode == 0 and rank.get("engine") == "claude" and c.get("judged") == 4
+          and not c.get("failed") and len(read) == 4 and all(x["reason"] == "selftest" for x in read),
           "Claude ranks in batches and asks again about a posting a batch left out",
           f"exit {r.returncode}, counts {c}: {(r.stdout + r.stderr)[-400:]}")
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
@@ -1507,6 +1530,12 @@ def collector_section(work: pathlib.Path) -> None:
              "the job-card-component-ref layout, no job links in the cards"),
             ("search", "n=12&json=12", 12, "a 12-result search, counted from the page data"),
             ("search", "n=7&fill=1000", 7, "a short last page with no count on it"),
+            # November 2026, Windows: searches in another country stopped at 12
+            # and 7 of a 25-card list, on a count that was not the list's.
+            ("search", "n=25&json=12&fill=1000", 25,
+             "a 25-card list whose page data says 12 results"),
+            ("search-results", "layout=refs&n=25&count=7&fill=1500", 25,
+             "a 25-card list whose header says 7 results"),
         ]
         for path, query, want, label in cases:
             r = run(path, query)

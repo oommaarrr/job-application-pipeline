@@ -479,6 +479,8 @@ async function runOneSearch(search, pages) {
       // ("card selectors", "job links" or "text reader", with what each found):
       // a LinkedIn layout change shows up here first.
       expected: sum("expected"),
+      countWrong: pagesSeen.some((r) => r.countWrong),
+      hiddenPasses: sum("hiddenPasses"),
       path: pagesSeen[0]?.path || "",
       paths: pagesSeen[0]?.paths || "",
       readyMs: pagesSeen[0]?.readyMs ?? 0,

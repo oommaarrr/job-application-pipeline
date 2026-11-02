@@ -123,10 +123,19 @@ MAX_DETAIL_FETCHES = 60      # cap detail fetches per run
 APPLIED_FILE = "applied.json"   # legacy; the list now lives in history/applied.csv (ledger.py)
 
 # How long a collected job is remembered (history/seen.csv, title and company
-# only). A job collected again within this many days of first being collected,
-# on a LATER day, is dropped before ranking: it has already had its chance.
-# Survives "Erase everything". 0 turns the check off.
+# only, with the day the model first judged it). Survives "Erase everything".
+# 0 turns the log off.
 SEEN_DAYS = 30
+
+# Whether a job collected again on a later day, and already judged then, is
+# dropped before ranking. Off since 2 November 2026: with it on, every day's
+# scrape lost the roles that were still posted, a third to a half of the pool
+# within a week, and the batch ran short. A repeat now goes back to the ranker
+# (an unchanged posting against an unchanged profile is answered from the
+# cache, so this costs nothing) and can be built. Only jobs you applied to, or
+# that already have an application built, are left out. True restores the old
+# rule, for the ranker and for run.py's "seen in an earlier scrape".
+DROP_REPEATS = False
 
 # ---------------------------------------------------------------- history
 # Every job URL ever collected, with the date it was first seen. A job that was
