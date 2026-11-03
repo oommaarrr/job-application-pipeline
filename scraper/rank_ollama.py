@@ -210,6 +210,63 @@ _lean = {"ok": True}      # an older Claude Code without these options: run with
 _timings: list[tuple[float, float]] = []
 
 
+def _run_claude(args: list[str], stdin: str, cwd: pathlib.Path) -> subprocess.CompletedProcess:
+    """
+    One `claude -p` call, ended for good if it runs past CLAUDE_RANK_TIMEOUT.
+
+    subprocess.run's timeout kills only the process it started, and on Windows
+    that is cmd.exe running npm's claude.cmd: Claude Code's own Node process
+    under it carried on. Every stalled call left one behind (3 November 2026,
+    128 jobs, every call timing out on a laptop), each slowing the next. The
+    whole tree goes now.
+    """
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                            errors="replace", cwd=cwd, **pu.quiet_kwargs())
+    _live.add(proc.pid)
+    try:
+        out, err = proc.communicate(stdin, timeout=config.CLAUDE_RANK_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        pu.kill_tree(proc.pid, grace=1.0)
+        proc.communicate()
+        raise
+    finally:
+        _live.discard(proc.pid)
+    return subprocess.CompletedProcess(args, proc.returncode, out, err)
+
+
+# Claude calls in flight, so stopping the ranking (Stop, or giving up) ends
+# them too rather than leaving them running with nobody waiting.
+_live: set[int] = set()
+
+
+def end_calls_in_flight() -> None:
+    for pid in list(_live):
+        pu.kill_tree(pid, grace=0.5)
+
+
+def claude_signed_out(claude: str) -> bool:
+    """
+    True only when `claude auth status` says plainly that nobody is signed in.
+
+    A signed-out Claude Code does not always fail fast in -p mode: on
+    3 November 2026 every call on a Windows laptop ran into the timeout
+    instead, 128 jobs at 45 s twice each, while the dashboard said "0 judged".
+    Asked once, before anything else. Anything unclear (no answer, not JSON,
+    a token in the environment, which this cannot see) counts as signed in,
+    and the calls then speak for themselves.
+    """
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY"):
+        return False
+    try:
+        out = subprocess.run([claude, "auth", "status"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=60,
+                             stdin=subprocess.DEVNULL, **pu.quiet_kwargs()).stdout
+        return json.loads(out).get("loggedIn") is False
+    except (OSError, ValueError, AttributeError, subprocess.TimeoutExpired):
+        return False
+
+
 def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[str, dict]:
     """
     Several postings in one `claude -p` call; {id: answer} for those answered.
@@ -223,11 +280,9 @@ def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[s
     cwd = OUT / ".rank-claude"
     cwd.mkdir(parents=True, exist_ok=True)
     def call(lean: bool):
-        return subprocess.run([claude, "-p", "--model", model, "--output-format", "json",
-                               "--max-turns", "1", *(CLAUDE_LEAN if lean else [])],
-                              input=build_batch_prompt(jobs, profile), capture_output=True,
-                              text=True, encoding="utf-8", errors="replace", cwd=cwd,
-                              timeout=config.CLAUDE_RANK_TIMEOUT, **pu.quiet_kwargs())
+        return _run_claude([claude, "-p", "--model", model, "--output-format", "json",
+                            "--max-turns", "1", *(CLAUDE_LEAN if lean else [])],
+                           build_batch_prompt(jobs, profile), cwd)
     t0 = time.time()
     try:
         p = call(_lean["ok"])
@@ -238,8 +293,9 @@ def ask_claude(model: str, jobs: list[tuple[str, dict]], profile: str) -> dict[s
         p = call(_lean["ok"])
     if _lean["ok"] and p.returncode != 0 and re.search(r"unknown option|unrecognized", p.stderr or "", re.I):
         _lean["ok"] = False
-        print("  (this Claude Code is too old for the lean options; running without them. "
-              "claude update makes ranking faster)", flush=True)
+        said = next((ln.strip() for ln in (p.stderr or "").splitlines() if ln.strip()), "")
+        print("  (Claude Code refused the lean options, so ranking runs without them: "
+              f"{said[:160]})", flush=True)
         p = call(False)
     out = (p.stdout or "") + (p.stderr or "")
     try:
@@ -830,16 +886,28 @@ def main() -> int:
     def _stop(signum, _frame):
         _save_cache(cache)
         _flush_judged()
+        end_calls_in_flight()
         print(f"\nstopped after {len(rows) + len(failures)}/{len(pool)} "
               "judged; press Rank pool to continue from here", flush=True)
         os._exit(143)
     for _sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(_sig, _stop)
 
+    def _give_up(why: str) -> None:
+        """Stop the ranking with a reason the dashboard shows. Exits at once,
+        like Stop: calls still running would otherwise hold the exit for up to
+        a timeout each."""
+        _flush_judged()
+        end_calls_in_flight()
+        print(f"\nRANKING STOPPED: {why}", flush=True)
+        os._exit(3)
+
     if engine == "claude":
         todo = [j for j in pool if args.recheck or cache_key(j) not in cache]
         batches = [todo[i:i + config.CLAUDE_RANK_BATCH]
                    for i in range(0, len(todo), config.CLAUDE_RANK_BATCH)]
+
+        answered, in_a_row, last_error = 0, 0, ""
 
         def batch(jobs: list[dict]) -> tuple[list[dict], dict]:
             # Only the call runs in a worker. The answers are stored by the
@@ -847,6 +915,11 @@ def main() -> int:
             # thread saves it can fail with "dictionary changed size".
             return jobs, ask_claude(args.model, [(str(n), j) for n, j in enumerate(jobs, 1)], profile)
         done = len(pool) - len(todo)
+        claude = pu.find_claude()
+        if todo and claude and claude_signed_out(claude):
+            _give_up("Claude Code is signed out, so Claude cannot rank. In PowerShell or a "
+                     "terminal run: claude auth login (claude auth status should then say "
+                     "loggedIn true), then rank again. Or switch the ranker to Local")
         if todo:
             print(f"asking Claude about {len(todo)} job(s) in {len(batches)} call(s)")
             # Counted from the start, so the dashboard shows "0 of N" rather
@@ -862,15 +935,33 @@ def main() -> int:
                                 cache[cache_key(j)] = normalise(got[str(n)])
                                 fresh.add(cache_key(j))
                         done += len(jobs)
+                        answered += 1
+                        in_a_row = 0
                     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as e:
                         # Left uncached; the per-job pass below asks once more.
-                        print(f"  !! a call failed ({type(e).__name__}: {str(e)[:100]})")
+                        in_a_row += 1
+                        last_error = f"{type(e).__name__}: {str(e)[:100]}"
+                        print(f"  !! a call failed ({last_error})")
                     _save_cache(cache)
                     print(f"  {min(done, len(pool))}/{len(pool)} judged", flush=True)
+                    # Calls that all fail are not worth another hour: say so and
+                    # stop. Two rounds of calls with no answer at all, or three
+                    # in a row once some have answered.
+                    limit = 2 * config.CLAUDE_RANK_CONCURRENCY if not answered \
+                        else 3 * config.CLAUDE_RANK_CONCURRENCY
+                    if in_a_row >= limit:
+                        _save_cache(cache)
+                        _give_up(f"the last {in_a_row} calls to Claude got no answer ({last_error}). "
+                                 + ("None has answered yet. Check that Claude Code is signed in: "
+                                    "claude auth status should say loggedIn true; if not, run "
+                                    "claude auth login. Or switch the ranker to Local"
+                                    if not answered else
+                                    f"{answered} answered before that, so it is probably the "
+                                    "network or Claude's service. Rank again in a while: "
+                                    "answers so far are kept"))
         except StopRanking as e:
             _save_cache(cache)
-            print(f"\nRANKING STOPPED: {e}", flush=True)
-            return 3
+            _give_up(str(e))
 
     if engine != "claude" and pool:
         # Said before the first answer, which can take minutes on a slow PC

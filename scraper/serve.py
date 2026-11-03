@@ -1462,10 +1462,19 @@ def _rank_progress() -> dict:
         return {"done": 0, "total": 0}
     seg = txt.rsplit("=== rank started", 1)[-1]     # current run only
     pairs = _judged_pairs(seg)
+    # Calls that got no answer: without them a ranking whose every call failed
+    # read as one that was merely slow, "0 judged" for the better part of an
+    # hour (3 November 2026).
+    failed = _failed_calls(seg)
     if not pairs:
-        return {"done": 0, "total": 0}
+        return {"done": 0, "total": 0, "failed": failed}
     d, t = pairs[-1]
-    return {"done": int(d), "total": int(t)}
+    return {"done": int(d), "total": int(t), "failed": failed}
+
+
+def _failed_calls(text: str) -> int:
+    """The ranker's "!! a call failed" and "  12/80  !! ..." lines."""
+    return len(re.findall(r"^\s*(?:\d+/\d+\s+)?!!", text, re.M))
 
 
 def _latest_batch_dir() -> pathlib.Path | None:
@@ -1859,7 +1868,8 @@ def progress() -> dict:
             bm = _judged_pairs("\n".join(bp["log"]))
             rp = ({"done": int(bm[-1][0]), "total": int(bm[-1][1])} if bm
                   else {"done": 0, "total": 0})
-        active = {"label": "jobs judged", "done": rp["done"], "total": rp["total"]}
+        active = {"label": "jobs judged", "done": rp["done"], "total": rp["total"],
+                  "failed": rp.get("failed", 0)}
     elif phase == "building":
         in_progress = sum(1 for c in bp["companies"] if c["phase"] != "done")
         active = {"label": "documents built", "done": bp["built"],

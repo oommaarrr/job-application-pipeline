@@ -116,7 +116,7 @@ MODE_FILE = pathlib.Path(__file__).with_name("mode.txt")
 mode = MODE_FILE.read_text().strip() if MODE_FILE.exists() else "ok"
 args = sys.argv[1:]
 if args[:2] == ["auth", "status"]:
-    print(json.dumps({"loggedIn": True})); sys.exit(0)
+    print(json.dumps({"loggedIn": mode != "signedout"})); sys.exit(0)
 if "--append-system-prompt" in args and "job-application profile" in args[args.index("--append-system-prompt") + 1]:
     # Edit profile (profile_chat.py): the message on stdin, run in the profile
     # folder. Records how it was called, then edits like Claude would.
@@ -144,6 +144,7 @@ if "--output-format" in args:
     # Haiku now and then, a batch leaves its last posting unanswered.
     import re
     ids = re.findall(r"=== POSTING (\S+) ===", sys.stdin.read())
+    if mode == "rankhang": time.sleep(3600)       # a call that never answers
     keep = ids[:-1] if len(ids) > 1 else ids
     ans = [{"id": i, "german_level": "none", "years_required": 2, "role_family": "ai_engineer",
             "is_management": False, "berlin": True, "remote_germany": False, "fit": 80,
@@ -381,6 +382,44 @@ class Env:
         return code, self.outcome()
 
 
+def claude_stops_section(py: pathlib.Path, sc: pathlib.Path, fakebin: pathlib.Path, port: int) -> None:
+    """
+    3 November 2026, a Windows laptop: Claude Code signed out, every ranking
+    call timing out, and the ranker carrying on through all 128 jobs at
+    "0 judged". Signed out, it must stop at once and say so; calls that never
+    answer, it must give up on after two rounds, and leave no Claude running.
+    """
+    env = dict(os.environ, PYTHONUTF8="1", PATH=str(fakebin) + os.pathsep + os.environ.get("PATH", ""))
+
+    def rank(mode: str) -> tuple[int, str, float]:
+        (fakebin / "mode.txt").write_text(mode)
+        t0 = time.time()
+        r = subprocess.run([str(py), RANK_OLLAMA_REAL_PY, "--top", "5", "--engine", "claude", "--recheck"],
+                           cwd=sc, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=300, env=env)
+        (fakebin / "mode.txt").write_text("ok")
+        return r.returncode, r.stdout + r.stderr, time.time() - t0
+
+    code, out, secs = rank("signedout")
+    check(code == 3 and "RANKING STOPPED: Claude Code is signed out" in out and "claude auth login" in out
+          and "a call failed" not in out,
+          "signed out, the Claude ranker stops before any call and says to run claude auth login",
+          f"exit {code}, {secs:.0f}s: {out[-300:]}")
+    _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\nCLAUDE_RANK_BATCH = 1\n'
+                     "CLAUDE_RANK_CONCURRENCY = 2\nCLAUDE_RANK_TIMEOUT = 2\n")
+    code, out, secs = rank("rankhang")
+    time.sleep(1.5)
+    left = ps(py, sc.parent, f"""
+        import os, psutil
+        print(sum(1 for p in psutil.process_iter(["pid", "cmdline"]) if p.info["pid"] != os.getpid()
+                  and any({str(fakebin / "claude.py")!r} in (a or "") for a in (p.info["cmdline"] or []))))
+    """)
+    check(code == 3 and "got no answer" in out and "None has answered yet" in out
+          and out.count("a call failed") == 4 and secs < 120 and left == "0",
+          "calls that never answer: the ranker gives up after two rounds and leaves no Claude running",
+          f"exit {code}, {secs:.0f}s, {left} left running: {out[-400:]}")
+
+
 def ps(py: pathlib.Path, work: pathlib.Path, code: str) -> str:
     """Run a snippet with the copy's venv and platform_util importable."""
     return subprocess.run([str(py), "-c", "import sys; sys.path.insert(0, r'%s')\n%s"
@@ -506,6 +545,7 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
           and not c.get("failed") and len(read) == 4 and all(x["reason"] == "selftest" for x in read),
           "Claude ranks in batches and asks again about a posting a batch left out",
           f"exit {r.returncode}, counts {c}: {(r.stdout + r.stderr)[-400:]}")
+    claude_stops_section(py, sc, fakebin, port)
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
 
     # The pre-filter: with target roles set, a job far from them is set aside

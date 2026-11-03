@@ -4,6 +4,8 @@ Search and ranking defaults. Who you are lives in profiles/<you>/profile.md.
 Everything you'd want to tune lives in this file. No logic here.
 """
 
+import os   # only to tell Windows apart, for CLAUDE_RANK_TIMEOUT
+
 # ---------------------------------------------------------------- location
 LOCATION = "Berlin"
 RADIUS_KM = 30
@@ -200,7 +202,10 @@ CLAUDE_RANK_CONCURRENCY = 4     # calls at a time
 # job answered in 5 s by the next call), and the whole ranking waits for it:
 # 58 jobs took 10 minutes on 22 October 2026. A stalled call is abandoned and
 # retried at once, and the final pass tries once more.
-CLAUDE_RANK_TIMEOUT = 45
+# On Windows, 120: there Claude Code starts through npm's claude.cmd, and on a
+# 2021 laptop (i7-1165G7, no graphics card) a call took 37 s, all but 3 s of it
+# Claude Code starting, so 45 s timed out half the calls (3 November 2026).
+CLAUDE_RANK_TIMEOUT = 120 if os.name == "nt" else 45
 # Claude scores the same jobs lower than the local model, so it has its own
 # fit floor (MIN_FIT below is the local model's). Measured on 80 past jobs,
 # 22 October 2026: of roles Sonnet later built, Haiku kept 68% at 30 (43% at

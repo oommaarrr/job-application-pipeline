@@ -222,7 +222,9 @@ async function tick(){
   if(rankingNow){
     const ac=d.active||{};
     passed=ac.total||poolN; unit="being judged";
-    rkSub="judged "+(ac.done||0)+" of "+(ac.total||poolN)+" so far · from "+coll+" collected"+(why?(" · "+why):"");
+    rkSub="judged "+(ac.done||0)+" of "+(ac.total||poolN)+" so far"
+      +(ac.failed?(" · "+ac.failed+" call"+(ac.failed===1?"":"s")+" got no answer"):"")
+      +" · from "+coll+" collected"+(why?(" · "+why):"");
   } else if(rrr){
     passed=rrr.buildable; unit=rrr.engine==="claude"?"passed Claude's ranking":"passed the local model";
     // The pre-filter's share is said, so "81 to judge" and "72 judged" add up.
