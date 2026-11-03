@@ -259,7 +259,9 @@ class StepStone:
         for sel in ('[data-at="job-ad-content"]', '[class*="job-ad-display"]',
                     "article", "main"):
             node = soup.select_one(sel)
-            if node and len(node.get_text(strip=True)) > 300:
+            if node is None:
+                continue
+            if len(node.get_text(strip=True)) > 300:
                 return node.get_text("\n", strip=True)
         return soup.get_text("\n", strip=True)
 

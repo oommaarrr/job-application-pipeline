@@ -28,6 +28,12 @@ import sys
 import time
 import urllib.request
 
+# Repeated names, kept in one place.
+VENV = ".venv"
+START_PY = "start.py"
+CONFIG_DIR = ".config"
+REMOVED_SH = "Removed. Start it by hand with ./start.sh from now on."
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRAPER = ROOT / "scraper"
 sys.path.insert(0, str(SCRAPER))
@@ -57,16 +63,15 @@ def answering() -> bool:
         return False
 
 
-def wait_and_report() -> int:
+def wait_and_report() -> None:
     for _ in range(15):
         if answering():
             print(f"Running, and it will start at every login: "
                   f"http://127.0.0.1:{_port()}/dashboard")
-            return 0
+            return
         time.sleep(1)
     print(f"Installed, but it is not answering yet. Its log: {LOG}")
     print(f"If another copy already uses port {_port()}, stop that one first.")
-    return 0
 
 
 # ------------------------------------------------------------------ macOS
@@ -109,7 +114,7 @@ def mac(remove: bool) -> int:
     subprocess.run(["launchctl", "bootout", f"{domain}/{LABEL}"], capture_output=True)
     if remove:
         plist.unlink(missing_ok=True)
-        print("Removed. Start it by hand with ./start.sh from now on.")
+        print(REMOVED_SH)
         return 0
     folder = mac_protected_folder()
     if folder:
@@ -118,7 +123,7 @@ def mac(remove: bool) -> int:
         plist.unlink(missing_ok=True)
         print(mac_protected_warning(folder))
         return 1
-    py = pu.venv_python(SCRAPER / ".venv")
+    py = pu.venv_python(SCRAPER / VENV)
     plist.parent.mkdir(parents=True, exist_ok=True)
     home = pathlib.Path.home()
     with open(plist, "wb") as fh:
@@ -141,7 +146,8 @@ def mac(remove: bool) -> int:
             },
         }, fh)
     subprocess.run(["launchctl", "bootstrap", domain, str(plist)], check=True)
-    return wait_and_report()
+    wait_and_report()
+    return 0
 
 
 # ------------------------------------------------------------------ Windows
@@ -151,17 +157,17 @@ RUN_NAME = "JobPipeline"
 
 def _supervisors() -> list[int]:
     """The background start.py this installs (and the bridge under it)."""
-    target = str(ROOT / "start.py")
+    target = str(ROOT / START_PY)
     out = []
-    for pid in pu.find_procs("start.py"):
+    for pid in pu.find_procs(START_PY):
         args = pu.cmdline(pid)
         if "--background" in args and any(pathlib.Path(a).resolve() == pathlib.Path(target)
-                                           for a in args if a.endswith("start.py")):
+                                           for a in args if a.endswith(START_PY)):
             out.append(pid)
     return out
 
 
-def windows(remove: bool) -> int:
+def windows(remove: bool) -> None:
     # A per-user Run entry rather than Task Scheduler: an at-logon task needs
     # admin rights to create, and the Run key does not. The restart-after-a-
     # crash that launchd gives on a Mac comes from start.py's own loop.
@@ -176,11 +182,11 @@ def windows(remove: bool) -> int:
             for pid in _supervisors():
                 pu.kill_tree(pid)
             print("Removed. Start it by hand with start.bat from now on.")
-            return 0
-        pyw = pu.venv_python(SCRAPER / ".venv", windowless=True)
+            return
+        pyw = pu.venv_python(SCRAPER / VENV, windowless=True)
         if not pyw.exists():
-            pyw = pu.venv_python(SCRAPER / ".venv")
-        command = f'"{pyw}" "{ROOT / "start.py"}" --background'
+            pyw = pu.venv_python(SCRAPER / VENV)
+        command = f'"{pyw}" "{ROOT / START_PY}" --background'
         winreg.SetValueEx(key, RUN_NAME, 0, winreg.REG_SZ, command)
     # Running this again restarts it, as launchd does on a Mac, so an update
     # (git pull) takes effect: a running copy keeps its old code until then.
@@ -192,28 +198,29 @@ def windows(remove: bool) -> int:
         time.sleep(1)
     if not answering():
         # Start it now too, so there is no need to log out and back in.
-        subprocess.Popen([str(pyw), str(ROOT / "start.py"), "--background"],
+        subprocess.Popen([str(pyw), str(ROOT / START_PY), "--background"],
                          cwd=str(ROOT), stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          **pu.detach_kwargs())
-    return wait_and_report()
+    wait_and_report()
 
 
 # ------------------------------------------------------------------ Linux
 UNIT = "job-pipeline.service"
 
 
-def linux(remove: bool) -> int:
-    unit = pathlib.Path.home() / ".config" / "systemd" / "user" / UNIT
+def linux(remove: bool) -> None:
+    unit = pathlib.Path.home() / CONFIG_DIR / "systemd" / "user" / UNIT
     if not shutil.which("systemctl"):
-        return linux_autostart(remove)
+        linux_autostart(remove)
+        return
     subprocess.run(["systemctl", "--user", "disable", "--now", UNIT], capture_output=True)
     if remove:
         unit.unlink(missing_ok=True)
         subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
-        print("Removed. Start it by hand with ./start.sh from now on.")
-        return 0
-    py = pu.venv_python(SCRAPER / ".venv")
+        print(REMOVED_SH)
+        return
+    py = pu.venv_python(SCRAPER / VENV)
     home = pathlib.Path.home()
     unit.parent.mkdir(parents=True, exist_ok=True)
     unit.write_text(
@@ -228,26 +235,26 @@ def linux(remove: bool) -> int:
         "[Install]\nWantedBy=default.target\n", encoding="utf-8")
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
     subprocess.run(["systemctl", "--user", "enable", "--now", UNIT], check=True)
-    return wait_and_report()
+    wait_and_report()
 
 
-def linux_autostart(remove: bool) -> int:
+def linux_autostart(remove: bool) -> None:
     """No systemd: the desktop's autostart folder, the XDG standard."""
-    entry = pathlib.Path.home() / ".config" / "autostart" / "job-pipeline.desktop"
+    entry = pathlib.Path.home() / CONFIG_DIR / "autostart" / "job-pipeline.desktop"
     if remove:
         entry.unlink(missing_ok=True)
-        print("Removed. Start it by hand with ./start.sh from now on.")
-        return 0
-    py = pu.venv_python(SCRAPER / ".venv")
+        print(REMOVED_SH)
+        return
+    py = pu.venv_python(SCRAPER / VENV)
     entry.parent.mkdir(parents=True, exist_ok=True)
     entry.write_text("[Desktop Entry]\nType=Application\nName=Job Pipeline\n"
-                     f'Exec="{py}" "{ROOT / "start.py"}" --background\n'
+                     f'Exec="{py}" "{ROOT / START_PY}" --background\n'
                      "X-GNOME-Autostart-enabled=true\nNoDisplay=true\n", encoding="utf-8")
     if not answering():
-        subprocess.Popen([str(py), str(ROOT / "start.py"), "--background"],
+        subprocess.Popen([str(py), str(ROOT / START_PY), "--background"],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, **pu.detach_kwargs())
-    return wait_and_report()
+    wait_and_report()
 
 
 def installed() -> bool:
@@ -259,7 +266,7 @@ def installed() -> bool:
         # not count: that one would start, not this one.
         try:
             return str(SCRAPER) in f.read_text(encoding="utf-8", errors="replace") \
-                or str(ROOT / "start.py") in f.read_text(encoding="utf-8", errors="replace")
+                or str(ROOT / START_PY) in f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return False
     if pu.IS_MAC:
@@ -272,11 +279,11 @@ def installed() -> bool:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
                 value = winreg.QueryValueEx(key, RUN_NAME)[0]
             # An entry pointing at another copy of the project does not count.
-            return str(ROOT / "start.py").lower() in str(value).lower()
+            return str(ROOT / START_PY).lower() in str(value).lower()
         except OSError:
             return False
-    return (points_here(home / ".config" / "systemd" / "user" / UNIT)
-            or points_here(home / ".config" / "autostart" / "job-pipeline.desktop"))
+    return (points_here(home / CONFIG_DIR / "systemd" / "user" / UNIT)
+            or points_here(home / CONFIG_DIR / "autostart" / "job-pipeline.desktop"))
 
 
 def main() -> int:
@@ -291,15 +298,17 @@ def main() -> int:
         print("starts at login" if on else "does not start at login")
         return 0 if on else 1
     remove = "--remove" in sys.argv
-    if not remove and not pu.venv_python(SCRAPER / ".venv").exists():
+    if not remove and not pu.venv_python(SCRAPER / VENV).exists():
         print(f"Not set up yet. Run {pu.install_hint('setup')} first.")
         return 1
     LOG.parent.mkdir(parents=True, exist_ok=True)
     if pu.IS_MAC:
         return mac(remove)
     if pu.IS_WIN:
-        return windows(remove)
-    return linux(remove)
+        windows(remove)
+        return 0
+    linux(remove)
+    return 0
 
 
 if __name__ == "__main__":

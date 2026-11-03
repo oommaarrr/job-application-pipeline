@@ -796,7 +796,7 @@ ensureAlarm("job-collector-trigger", { periodInMinutes: 1 });
 function alert_(title, message) {
   chrome.notifications.create({
     type: "basic", iconUrl: "icon128.png", title, message, priority: 1,
-  }, () => void chrome.runtime.lastError);   // no icon file is not fatal
+  }, () => chrome.runtime.lastError);   // read it, so a missing icon is not reported as an error
 }
 
 /*

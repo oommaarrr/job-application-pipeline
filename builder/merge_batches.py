@@ -32,6 +32,9 @@ import json
 import pathlib
 import sys
 
+# Repeated names, kept in one place.
+RANKED_JSON = "ranked.json"
+
 HERE = pathlib.Path(__file__).parent
 CONFIG = json.loads((HERE / "pipeline.json").read_text(encoding="utf-8"))
 # Relative to this folder, so it works from any working directory.
@@ -79,7 +82,7 @@ def _candidates() -> list[dict]:
     for f in sorted(HERE.glob("shortlist*.json")):
         rows = _read(f, [])
         out += [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
-    rows = _read(SCRAPER / "out" / "ranked.json", [])
+    rows = _read(SCRAPER / "out" / RANKED_JSON, [])
     out += [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
     return out
 
@@ -151,7 +154,7 @@ def recover_orphans(day_dir: pathlib.Path, built: list[dict]) -> list[dict]:
 
 def _global_rank_map() -> dict[str, int]:
     """url key -> position in the ranker's full ordered output (0 = best fit)."""
-    ranked = _read(SCRAPER / "out" / "ranked.json", [])
+    ranked = _read(SCRAPER / "out" / RANKED_JSON, [])
     return {job_key(j.get("url", "")): i for i, j in enumerate(ranked)}
 
 
@@ -207,7 +210,7 @@ def main() -> int:
     merged["built"] = built
     merged["dropped"] = dropped
     merged.setdefault("date", day_dir.name)
-    merged["pool_size"] = len(_read(SCRAPER / "out" / "ranked.json", [])) or merged.get("pool_size", len(built))
+    merged["pool_size"] = len(_read(SCRAPER / "out" / RANKED_JSON, [])) or merged.get("pool_size", len(built))
     target.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
 
     for frag in fragments:

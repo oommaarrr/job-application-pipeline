@@ -356,7 +356,11 @@ MAX_POOL_AGE_DAYS = 7
 #     TOP_N = 20
 #
 # so pulling a new version never overwrites your settings.
+# Every public name in it replaces the one above, as `from config_local import *`
+# would; spelled out so the override is explicit.
 try:
-    from config_local import *          # noqa: F401,F403
+    import config_local as _local
 except ImportError:
-    pass
+    _local = None
+if _local is not None:
+    globals().update({k: v for k, v in vars(_local).items() if not k.startswith("_")})

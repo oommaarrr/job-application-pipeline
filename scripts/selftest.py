@@ -37,6 +37,46 @@ import textwrap
 import time
 import urllib.request
 
+# Repeated names, kept in one place.
+VENV = ".venv"
+LOCAL_ENV = "local.env"
+RANK_OLLAMA_REAL_PY = "rank_ollama_real.py"
+PROFILE_MD = "profile.md"
+JSON_TYPE = "application/json"
+SCRIPTS_PYTHON_EXE = "Scripts/python.exe"
+BIN_PYTHON = "bin/python"
+STATUS_ROUTE = "/status"
+START_PY = "start.py"
+RUN_LOCK = ".run.lock"
+JSON_GLOB = "*.json"
+ML_ENGINEER = "ML Engineer"
+SEEN_CSV = "seen.csv"
+OLLAMA_RANK_JSON = "ollama_rank.json"
+ARBEITNOW_SETTINGS_JSON = "arbeitnow_settings.json"
+AI_ENGINEER = "AI Engineer"
+GAMMA_GMBH = "Gamma GmbH"
+RANKING_ROUTE = "/ranking"
+DASHBOARD_ROUTE = "/dashboard"
+MACHINE_LEARNING_ENGINEER = "Machine Learning Engineer"
+SOFTWARE_ENGINEER = "Software Engineer"
+ARBEITNOW_PLACES_JSON = "arbeitnow_places.json"
+ARBEITNOW_SETTINGS_ROUTE = "/arbeitnow/settings"
+PROGRESS_ROUTE = "/progress"
+APPLIED_ROUTE = "/applied"
+HTTPS_EVIL_EXAMPLE = "https://evil.example"
+TRIGGER_ROUTE = "/trigger"
+SEARCHES_LIST_ROUTE = "/searches/list"
+SEARCHES_ADD_ROUTE = "/searches/add"
+SEARCHES_ROUTE = "/searches"
+SCRAPE_ROUTE = "/scrape"
+PROFILE_CHAT_ROUTE = "/profile/chat"
+SELFTEST_TRACKER = "Selftest Tracker"
+PROFILE_CHAT_UNDO_ROUTE = "/profile/chat/undo"
+README_MD = "README.md"
+PROFILES_EXAMPLE_PROFILE_MD = "profiles/example/profile.md"
+NEW_README = "new readme\n"
+BUILD_ROUTE = "/build"
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 IS_WIN = os.name == "nt"
 DAY = dt.date.today().isoformat()
@@ -58,8 +98,8 @@ def section(title: str) -> None:
 
 # ------------------------------------------------------------------ the copy
 def _ignore(dirpath: str, names: list[str]) -> set[str]:
-    skip = {".git", ".venv", "venv", "applications", "logs", "inbox", "out", "history",
-            "__pycache__", "local.env", "config_local.py", ".DS_Store", "_backups",
+    skip = {".git", VENV, "venv", "applications", "logs", "inbox", "out", "history",
+            "__pycache__", LOCAL_ENV, "config_local.py", ".DS_Store", "_backups",
             "docs", "node_modules"}
     out = {n for n in names if n in skip or n.startswith(("applied.json", "purged-", ".!"))}
     here = pathlib.Path(dirpath)
@@ -156,13 +196,13 @@ def make_copy(tmp: pathlib.Path) -> pathlib.Path:
     work = tmp / "jp"
     shutil.copytree(ROOT, work, ignore=_ignore, symlinks=False)
     # The builds use a fake ranker; the real one is kept for the pool section.
-    shutil.copy(work / "scraper" / "rank_ollama.py", work / "scraper" / "rank_ollama_real.py")
+    shutil.copy(work / "scraper" / "rank_ollama.py", work / "scraper" / RANK_OLLAMA_REAL_PY)
     (work / "scraper" / "rank_ollama.py").write_text(FAKE_RANK, encoding="utf-8")
     (work / "scraper" / "check_live.py").write_text('print("fake: all open")\n', encoding="utf-8")
     # A filled-in profile, so the "still the example" guard lets the build run.
     me = work / "profiles" / "me"
     shutil.copytree(work / "profiles" / "example", me)
-    for name in ("identity.md", "profile.md"):
+    for name in ("identity.md", PROFILE_MD):
         f = me / name
         f.write_text(f.read_text(encoding="utf-8").replace("example.com", "selftest.invalid")
                      + "\n<!-- selftest -->\n", encoding="utf-8")
@@ -203,13 +243,13 @@ def stub_ollama() -> None:
             body = (b'{"models":[{"name":"llama3.1:latest"}]}' if "tags" in self.path
                     else b'{"version":"selftest-stub"}')
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", JSON_TYPE)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
         def log_message(self, *a):
-            pass
+            pass                # quiet: the checks are the output, not every request
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 11434), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print("  (no Ollama running: a stub answers its version check)")
@@ -225,7 +265,7 @@ def answering_ollama(port: int, models: list[dict] | None = None) -> None:
         def _send(self, obj):
             body = json.dumps(obj).encode()
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", JSON_TYPE)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -249,7 +289,7 @@ def answering_ollama(port: int, models: list[dict] | None = None) -> None:
                 "fit": 80, "reason": "selftest answer"})})
 
         def log_message(self, *a):
-            pass
+            pass                # quiet: the checks are the output, not every request
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 
@@ -264,7 +304,7 @@ def free_port() -> int:
 class Env:
     def __init__(self, work: pathlib.Path, fakebin: pathlib.Path, port: int):
         self.work, self.fakebin, self.port = work, fakebin, port
-        py = work / "scraper" / ".venv" / ("Scripts/python.exe" if IS_WIN else "bin/python")
+        py = work / "scraper" / VENV / (SCRIPTS_PYTHON_EXE if IS_WIN else BIN_PYTHON)
         self.py = py
         self.env = dict(os.environ, BRIDGE_PORT=str(port), NO_NOTIFY="1",
                         PATH=str(fakebin) + os.pathsep + os.environ.get("PATH", ""),
@@ -288,13 +328,13 @@ class Env:
     def post(self, path: str, data: dict | None = None):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}",
                                      data=json.dumps(data or {}).encode(),
-                                     headers={"Content-Type": "application/json"})
+                                     headers={"Content-Type": JSON_TYPE})
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read())
 
     def up(self) -> bool:
         try:
-            return self.get("/status", 2)[0] == 200
+            return self.get(STATUS_ROUTE, 2)[0] == 200
         except OSError:
             return False
 
@@ -311,14 +351,14 @@ class Env:
         # The PLAIN Python running this test, not the project's: start.py must
         # hand itself over to the project's environment (bootstrap.py), which
         # is what a user typing `python start.py` or `python serve.py` gets.
-        self.bridge = subprocess.Popen([sys.executable, str(self.work / "start.py"), "--background"],
+        self.bridge = subprocess.Popen([sys.executable, str(self.work / START_PY), "--background"],
                                        cwd=self.work, env=self.env, stdin=subprocess.DEVNULL,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        creationflags=flags)
 
     def clean_day(self) -> None:
         shutil.rmtree(self.builder / "applications" / DAY, ignore_errors=True)
-        shutil.rmtree(self.builder / "logs" / ".run.lock", ignore_errors=True)
+        shutil.rmtree(self.builder / "logs" / RUN_LOCK, ignore_errors=True)
         (self.builder / "logs" / "last-outcome.json").unlink(missing_ok=True)
 
     def outcome(self) -> dict:
@@ -365,19 +405,19 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
     port = free_port()
     answering_ollama(port)
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
-    for f in (sc / "inbox").glob("*.json"):
+    for f in (sc / "inbox").glob(JSON_GLOB):
         f.unlink()
     (sc / "out" / "ollama_cache.json").unlink(missing_ok=True)
     hist = sc / "history"
     hist.mkdir(exist_ok=True)
     desc = "Python machine learning in Berlin, Straße. " * 30
     jobs = [{"url": f"https://www.linkedin.com/jobs/view/{900 + i}", "company": c,
-             "title": "ML Engineer", "location": "Berlin", "source": "linkedin",
+             "title": ML_ENGINEER, "location": "Berlin", "source": "linkedin",
              "description": "" if c == "Delta" else desc}
             for i, c in enumerate(["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"])]
     (sc / "inbox" / f"job-collector-{DAY}.json").write_text(json.dumps({"jobs": jobs}),
                                                             encoding="utf-8")
-    (hist / "seen.csv").write_text("first_seen,company,title,judged\n"
+    (hist / SEEN_CSV).write_text("first_seen,company,title,judged\n"
                                    "2026-01-02,Alpha,ML Engineer,2026-01-02\n"
                                    "2026-01-02,Beta,ML Engineer,\n".replace("2026-01-02", _days_ago(3)),
                                    encoding="utf-8")
@@ -406,18 +446,18 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
     check(b.get("to_judge") == 3 and b.get("repeat") == 1,
           "DROP_REPEATS = True still drops a role judged on an earlier day", json.dumps(b))
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\n')
-    r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc, capture_output=True,
+    r = subprocess.run([str(py), RANK_OLLAMA_REAL_PY, "--top", "5"], cwd=sc, capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=300,
                        env=dict(os.environ, PYTHONUTF8="1"))
-    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8")) \
-        if (sc / "out" / "ollama_rank.json").exists() else {}
+    rank = json.loads((sc / "out" / OLLAMA_RANK_JSON).read_text(encoding="utf-8")) \
+        if (sc / "out" / OLLAMA_RANK_JSON).exists() else {}
     judged = rank.get("counts", {}).get("judged")
     check(r.returncode == 0 and judged == s1.get("usable") == 4,
           "the ranker reads exactly the number the dashboard shows", f"exit {r.returncode}, "
           f"ranker {judged}, dashboard {s1.get('usable')}: {(r.stdout + r.stderr)[-300:]}")
     check(rank.get("not_read") == {"repeat": 0, "applied": 1, "no_description": 1, "too_old": 0},
           "the ranker records why the rest were not read", str(rank.get("not_read")))
-    seen = (hist / "seen.csv").read_text(encoding="utf-8")
+    seen = (hist / SEEN_CSV).read_text(encoding="utf-8")
     beta = next((l for l in seen.splitlines() if l.split(",")[1:2] == ["Beta"]), "")
     check(beta.endswith(DAY), "a role never judged before goes to the model, and is recorded as judged", beta)
     s2 = status()
@@ -427,11 +467,11 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
     # The cache answers an unchanged posting against an unchanged profile, and
     # asks again once the profile changes.
     def rerank() -> str:
-        return subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc,
+        return subprocess.run([str(py), RANK_OLLAMA_REAL_PY, "--top", "5"], cwd=sc,
                               capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=300, env=dict(os.environ, PYTHONUTF8="1")).stdout
     out1 = rerank()
-    prof = work / "profiles" / "me" / "profile.md"
+    prof = work / "profiles" / "me" / PROFILE_MD
     before_prof = prof.read_text(encoding="utf-8")
     prof.write_text(before_prof + "\nNew project: a selftest.\n", encoding="utf-8")
     out2 = rerank()
@@ -454,12 +494,12 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
     # several postings per call. The stand-in leaves one posting out of each
     # batch, which must be asked about again on its own rather than lost.
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port}"\nCLAUDE_RANK_BATCH = 3\n')
-    r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5", "--engine", "claude"],
+    r = subprocess.run([str(py), RANK_OLLAMA_REAL_PY, "--top", "5", "--engine", "claude"],
                        cwd=sc, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=300, env=dict(os.environ, PYTHONUTF8="1",
                                              PATH=str(fakebin) + os.pathsep + os.environ.get("PATH", "")))
-    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8")) \
-        if (sc / "out" / "ollama_rank.json").exists() else {}
+    rank = json.loads((sc / "out" / OLLAMA_RANK_JSON).read_text(encoding="utf-8")) \
+        if (sc / "out" / OLLAMA_RANK_JSON).exists() else {}
     c = rank.get("counts", {})
     read = [x for x in rank.get("passed", []) + rank.get("dropped", []) if "reason" in x and x.get("verdict") != "far-from-target"]
     check(r.returncode == 0 and rank.get("engine") == "claude" and c.get("judged") == 4
@@ -471,8 +511,8 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
     # The pre-filter: with target roles set, a job far from them is set aside
     # before any model reads it, and what is read plus what is set aside is
     # still exactly what the dashboard counts as "to judge".
-    settings = sc / "out" / "arbeitnow_settings.json"
-    settings.write_text(json.dumps({"searches": [{"name": "ML Engineer", "on": True,
+    settings = sc / "out" / ARBEITNOW_SETTINGS_JSON
+    settings.write_text(json.dumps({"searches": [{"name": ML_ENGINEER, "on": True,
                                     "looking_for": "machine learning engineer, Python"}]}),
                         encoding="utf-8")
     inbox_f = sc / "inbox" / f"job-collector-{DAY}.json"
@@ -481,10 +521,10 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
         "url": "https://www.linkedin.com/jobs/view/999", "company": "Gartenbau", "title": "Gardener",
         "location": "Berlin", "source": "linkedin", "description": "Gardener " * 60}]}), encoding="utf-8")
     s3 = status()
-    r = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5", "--engine", "local"],
+    r = subprocess.run([str(py), RANK_OLLAMA_REAL_PY, "--top", "5", "--engine", "local"],
                        cwd=sc, capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=300, env=dict(os.environ, PYTHONUTF8="1"))
-    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8"))
+    rank = json.loads((sc / "out" / OLLAMA_RANK_JSON).read_text(encoding="utf-8"))
     c = rank.get("counts", {})
     far = [x for x in rank.get("dropped", []) if x.get("verdict") == "far-from-target"]
     check(r.returncode == 0 and c.get("set_aside") == 1 and len(far) == 1
@@ -497,11 +537,11 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
 
     # A history written before the judged column: filled in once from the cache.
     (hist / ".judged-backfilled").unlink()
-    (hist / "seen.csv").write_text("first_seen,company,title\n"
+    (hist / SEEN_CSV).write_text("first_seen,company,title\n"
                                    f"{_days_ago(3)},Epsilon,ML Engineer\n"
                                    f"{_days_ago(3)},Omega,ML Engineer\n", encoding="utf-8")
     status()
-    seen = (hist / "seen.csv").read_text(encoding="utf-8")
+    seen = (hist / SEEN_CSV).read_text(encoding="utf-8")
     eps = next((l for l in seen.splitlines() if ",Epsilon," in l), "")
     om = next((l for l in seen.splitlines() if ",Omega," in l), "")
     check(eps.endswith(_days_ago(3)) and om.endswith(","),
@@ -516,10 +556,10 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
                              {"name": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com"},
                              {"name": "qwen3:8b"}])
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{port2}"\n')
-    r2 = subprocess.run([str(py), "rank_ollama_real.py", "--top", "5"], cwd=sc,
+    r2 = subprocess.run([str(py), RANK_OLLAMA_REAL_PY, "--top", "5"], cwd=sc,
                         capture_output=True, text=True, encoding="utf-8", errors="replace",
                         timeout=300, env=dict(os.environ, PYTHONUTF8="1"))
-    rank = json.loads((sc / "out" / "ollama_rank.json").read_text(encoding="utf-8"))
+    rank = json.loads((sc / "out" / OLLAMA_RANK_JSON).read_text(encoding="utf-8"))
     check(rank.get("model") == "qwen3:8b",
           "an installed model is used instead of downloading llama3.1 (not embedding, not cloud)",
           f"model {rank.get('model')}, exit {r2.returncode}: {(r2.stdout + r2.stderr)[-500:]}")
@@ -560,22 +600,22 @@ def recovery_section(py: pathlib.Path, work: pathlib.Path, port: int) -> None:
 
     app("Alpha")
     app("Confidential")
-    app("Beta", {"company": "Beta", "title": "ML Engineer", "url": "https://example.com/beta"})
+    app("Beta", {"company": "Beta", "title": ML_ENGINEER, "url": "https://example.com/beta"})
     app("Gamma")
     app("Delta", finished=False)
-    alpha = row("Alpha", "AI Engineer", "https://example.com/alpha", "Alpha")
+    alpha = row("Alpha", AI_ENGINEER, "https://example.com/alpha", "Alpha")
     # Recorded on Windows: backslashes. Must still count as Alpha's folder.
     alpha["files"] = {k: v.replace("/", "\\") for k, v in alpha["files"].items()}
     (day / "batch.json").write_text(json.dumps({"date": day.name, "built": [
         alpha,
-        row("Confidential", "AI Engineer", "https://example.com/conf-a", "Confidential")],
+        row("Confidential", AI_ENGINEER, "https://example.com/conf-a", "Confidential")],
         "dropped": []}), encoding="utf-8")
     # A second shard's fragment: another role from another "Confidential".
     (day / "batch.shard-2.json").write_text(json.dumps({"built": [
         row("Confidential", "Data Engineer", "https://example.com/conf-b", "Confidential2")],
         "dropped": []}), encoding="utf-8")
     (b / "shortlist.json").write_text(json.dumps([
-        {"company": "Gamma GmbH", "title": "Applied AI Engineer", "url": "https://example.com/gamma"}]),
+        {"company": GAMMA_GMBH, "title": "Applied AI Engineer", "url": "https://example.com/gamma"}]),
         encoding="utf-8")
 
     def merge() -> dict:
@@ -585,9 +625,9 @@ def recovery_section(py: pathlib.Path, work: pathlib.Path, port: int) -> None:
 
     got = merge()
     names = sorted(e["company"] for e in got["built"])
-    check(names == ["Alpha", "Beta", "Confidential", "Confidential", "Gamma GmbH"],
+    check(names == ["Alpha", "Beta", "Confidential", "Confidential", GAMMA_GMBH],
           "every finished application is recorded, an unfinished one is not", str(names))
-    gamma = next((e for e in got["built"] if e["company"] == "Gamma GmbH"), {})
+    gamma = next((e for e in got["built"] if e["company"] == GAMMA_GMBH), {})
     check(gamma.get("url") == "https://example.com/gamma",
           "a recovered application gets its posting link back", str(gamma))
     check(len(merge()["built"]) == 5, "recovering twice adds nothing")
@@ -600,11 +640,11 @@ def recovery_section(py: pathlib.Path, work: pathlib.Path, port: int) -> None:
             html = r.read().decode("utf-8", "replace")
     except OSError as e:
         html = str(e)
-    check(f'<base href="/report/{day.name}/">' in html and "Gamma GmbH" in html,
+    check(f'<base href="/report/{day.name}/">' in html and GAMMA_GMBH in html,
           "an earlier day's batch opens from the Applications page", html[:200])
 
     # One top bar on every page: the brand and the same three tabs.
-    pages = {"dashboard": "/dashboard", "ranking": "/ranking"}
+    pages = {"dashboard": DASHBOARD_ROUTE, "ranking": RANKING_ROUTE}
     htmls = {"applications": html}
     for name, path in pages.items():
         try:
@@ -672,14 +712,13 @@ def arbeitnow_ollama(port: int) -> None:
     settings are written from, location answers (one batch deliberately
     broken), and ranker answers for everything else."""
     import http.server
-    import re
     import threading
 
     class H(http.server.BaseHTTPRequestHandler):
         def _send(self, obj, raw: str | None = None):
             body = (raw if raw is not None else json.dumps(obj)).encode()
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", JSON_TYPE)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -702,10 +741,10 @@ def arbeitnow_ollama(port: int) -> None:
                 ans = {"places": [{"text": l, "countries": AN_PLACES.get(l, [])} for l in locs]}
             elif "You set up job searches" in p:
                 ans = {"searches": [
-                    {"name": "AI Engineer", "looking_for": "Engineer building LLM apps, AI agents "
+                    {"name": AI_ENGINEER, "looking_for": "Engineer building LLM apps, AI agents "
                                                            "and RAG systems in production with Python"},
                     {"name": "Research Scientist", "looking_for": "Research on new learning methods"},
-                    {"name": "Machine Learning Engineer",
+                    {"name": MACHINE_LEARNING_ENGINEER,
                      "looking_for": "Machine learning engineer training and deploying models "
                                     "with PyTorch, MLOps"}],
                     "student_roles": False}
@@ -727,7 +766,7 @@ def arbeitnow_ollama(port: int) -> None:
             self._send({"response": json.dumps(ans)})
 
         def log_message(self, *a):
-            pass
+            pass                # quiet: the checks are the output, not every request
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 
@@ -754,14 +793,14 @@ def arbeitnow_feed(port: int) -> dict:
                 "job_types": list(types), "location": loc,
                 "created_at": now - age_days * 86400 - 60}
     core = [
-        job("Software Engineer", "We build llm agents and rag pipelines in production with python. "
+        job(SOFTWARE_ENGINEER, "We build llm agents and rag pipelines in production with python. "
             "Our agents use prompt engineering and language models."),
-        job("Machine Learning Engineer", "Train and deploy machine learning models with pytorch, "
+        job(MACHINE_LEARNING_ENGINEER, "Train and deploy machine learning models with pytorch, "
             "mlops, model training in production.", "Mainz"),
         job("Werkstudent Machine Learning", "machine learning models pytorch training for students",
             types=["Working student"]),
-        job("ML Engineer", "machine learning models pytorch mlops deploying", "Paris"),
-        job("AI Engineer", "llm agents rag genai python production", "Paris", remote=True),
+        job(ML_ENGINEER, "machine learning models pytorch mlops deploying", "Paris"),
+        job(AI_ENGINEER, "llm agents rag genai python production", "Paris", remote=True),
     ]
     fill = [("Sales Manager", "sales account customers quota crm deals"),
             ("Account Executive", "sales deals crm customers quota"),
@@ -795,13 +834,13 @@ def arbeitnow_feed(port: int) -> dict:
             body = json.dumps({"data": rows, "links": {
                 "next": f"/api?page={page + 1}" if page < 3 else None}}).encode()
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", JSON_TYPE)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
         def log_message(self, *a):
-            pass
+            pass                # quiet: the checks are the output, not every request
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return hits
@@ -822,10 +861,10 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     _write_local(sc, f'OLLAMA_URL = "http://127.0.0.1:{oport}"\n'
                      f'ARBEITNOW_API = "http://127.0.0.1:{fport}/api"\n'
                      "ARBEITNOW_RATE_WAIT = 1\nARBEITNOW_PAGE_DELAY = 0\n")
-    for name in ("arbeitnow_settings.json", "arbeitnow_feed.json", "arbeitnow_places.json",
+    for name in (ARBEITNOW_SETTINGS_JSON, "arbeitnow_feed.json", ARBEITNOW_PLACES_JSON,
                  "arbeitnow_vectors.json", "arbeitnow_vectors.bin"):
         (sc / "out" / name).unlink(missing_ok=True)
-    for f in (sc / "inbox").glob("*.json"):
+    for f in (sc / "inbox").glob(JSON_GLOB):
         f.unlink()
     # Restart the bridge so it reads config_local.py: the supervisor brings it
     # back by itself.
@@ -845,10 +884,10 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
 
     code, log = run()
     check(code == 0, "arbeitnow.py runs", log[-800:])
-    s = json.loads((sc / "out" / "arbeitnow_settings.json").read_text(encoding="utf-8")) \
-        if (sc / "out" / "arbeitnow_settings.json").exists() else {}
+    s = json.loads((sc / "out" / ARBEITNOW_SETTINGS_JSON).read_text(encoding="utf-8")) \
+        if (sc / "out" / ARBEITNOW_SETTINGS_JSON).exists() else {}
     check(s.get("made_by") == "model"
-          and [x["name"] for x in s.get("searches", [])] == ["AI Engineer", "Machine Learning Engineer"],
+          and [x["name"] for x in s.get("searches", [])] == [AI_ENGINEER, MACHINE_LEARNING_ENGINEER],
           "searches written from the profile; the one the profile rules out is left out",
           json.dumps(s)[:400])
     check(s.get("countries") == ["DE"] and s.get("remote_elsewhere") is True
@@ -857,21 +896,21 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           json.dumps({k: s.get(k) for k in ("countries", "remote_elsewhere", "student_roles")}))
     check(3 in hits["pages"] and hits["429"] == 1,
           "reads past a stale first job and waits out a 429", str(hits))
-    places = json.loads((sc / "out" / "arbeitnow_places.json").read_text(encoding="utf-8")) \
-        if (sc / "out" / "arbeitnow_places.json").exists() else {}
+    places = json.loads((sc / "out" / ARBEITNOW_PLACES_JSON).read_text(encoding="utf-8")) \
+        if (sc / "out" / ARBEITNOW_PLACES_JSON).exists() else {}
     check(places.get("Mainz") == ["DE"] and places.get("Zug") == ["CH"]
           and places.get("BREAK Office") == [] and "could not place" in log,
           "locations placed; a broken answer costs only its own half", json.dumps(places)[:300])
-    inbox = next(iter(sorted((sc / "inbox").glob("*.json"))), None)
+    inbox = next(iter(sorted((sc / "inbox").glob(JSON_GLOB))), None)
     jobs = json.loads(inbox.read_text(encoding="utf-8")).get("jobs", []) if inbox else []
     got = {(j["title"], j["location"]) for j in jobs}
-    want = {("Software Engineer", "Berlin, Germany"), ("Machine Learning Engineer", "Mainz, Germany"),
-            ("AI Engineer", "Paris, France (Remote)")}
+    want = {(SOFTWARE_ENGINEER, "Berlin, Germany"), (MACHINE_LEARNING_ENGINEER, "Mainz, Germany"),
+            (AI_ENGINEER, "Paris, France (Remote)")}
     check(got == want, "kept by meaning: a plain 'Software Engineer' with LLM work, not the "
           "working-student or on-site-abroad jobs", str(sorted(got)))
     q = {j["title"]: j.get("query") for j in jobs}
-    check(q.get("Software Engineer") == "Arbeitnow: AI Engineer"
-          and q.get("Machine Learning Engineer") == "Arbeitnow: Machine Learning Engineer",
+    check(q.get(SOFTWARE_ENGINEER) == "Arbeitnow: AI Engineer"
+          and q.get(MACHINE_LEARNING_ENGINEER) == "Arbeitnow: Machine Learning Engineer",
           "each job is credited to the search it matched", str(q))
 
     before = list(hits["pages"])
@@ -883,8 +922,8 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           f"pages {again}; {log2[-400:]}")
 
     # The dashboard's side.
-    st = e.get("/arbeitnow/settings")[1]
-    check(st.get("ok") and st["settings"]["searches"][0]["name"] == "AI Engineer"
+    st = e.get(ARBEITNOW_SETTINGS_ROUTE)[1]
+    check(st.get("ok") and st["settings"]["searches"][0]["name"] == AI_ENGINEER
           and not st.get("suggesting"), "GET /arbeitnow/settings", json.dumps(st)[:300])
     pv = e.post("/arbeitnow/preview", {"settings": s})
     p = pv.get("preview") or {}
@@ -893,7 +932,7 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     anywhere = e.post("/arbeitnow/preview", {"settings": {**s, "countries": [], "student_roles": True}})
     check((anywhere.get("preview") or {}).get("kept") == 5,
           "preview follows the rules: anywhere, with working-student jobs", json.dumps(anywhere)[:300])
-    saved = e.post("/arbeitnow/settings", {"settings": {
+    saved = e.post(ARBEITNOW_SETTINGS_ROUTE, {"settings": {
         "searches": [{"name": "  Nurse ", "looking_for": "ICU nurse in a hospital"}, {"name": ""}],
         "countries": ["Deutschland", "Narnia", "ch"], "strictness": "extreme", "days": 5}})
     ss = saved.get("settings") or {}
@@ -902,12 +941,12 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           and ss.get("days") == 7, "settings from the page are cleaned before saving", json.dumps(ss))
     active = ps(py, work, "from profile_dir import profile_file; print(profile_file())")
     pathlib.Path(active).write_text("# Changed\nA different profile.\n", encoding="utf-8")
-    st = e.get("/arbeitnow/settings")[1]
+    st = e.get(ARBEITNOW_SETTINGS_ROUTE)[1]
     check(not st.get("suggesting") and st.get("profile_changed")
           and st["settings"]["searches"][0]["name"] == "Nurse",
           "settings someone saved are never rewritten; a changed profile is only pointed out",
           json.dumps(st)[:300])
-    dash = e.get("/dashboard")[1]
+    dash = e.get(DASHBOARD_ROUTE)[1]
     dash = dash.decode("utf-8", "replace") if isinstance(dash, bytes) else str(dash)
     check('id="anDlg"' in dash and e.get("/web/arbeitnow.js")[0] == 200,
           "the dashboard has the Arbeitnow dialog")
@@ -915,12 +954,12 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     # is kept separately as "before the erase", so the page never shows a
     # three-day-old result as the current one over empty cards.
     e.post("/reset", {})
-    pg = e.get("/progress")[1]
+    pg = e.get(PROGRESS_ROUTE)[1]
     check(pg.get("erased_at") and "build" not in pg.get("steps", {})
           and (pg.get("before_erase") or {}).get("build", {}).get("status") == "ok",
           "after an erase, results from before it are shown as such, not as current",
           json.dumps({k: pg.get(k) for k in ("erased_at", "steps", "before_erase")})[:400])
-    e.post("/arbeitnow/settings", {"settings": {"searches": []}})
+    e.post(ARBEITNOW_SETTINGS_ROUTE, {"settings": {"searches": []}})
     code, log3 = run()
     check(code == 1 and "no Arbeitnow search" in log3, "no search set: a clear failure",
           log3[-300:])
@@ -936,33 +975,33 @@ def origin_section(e: "Env") -> None:
     def ask(method: str, path: str, headers: dict, data: bytes | None = b"{}"):
         req = urllib.request.Request(f"http://127.0.0.1:{e.port}{path}", method=method,
                                      data=data if method == "POST" else None,
-                                     headers={"Content-Type": "application/json", **headers})
+                                     headers={"Content-Type": JSON_TYPE, **headers})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, r.headers.get("Access-Control-Allow-Origin")
         except urllib.error.HTTPError as ex:
             return ex.code, ex.headers.get("Access-Control-Allow-Origin")
 
-    code, acao = ask("POST", "/applied", {"Origin": "https://evil.example"})
+    code, acao = ask("POST", APPLIED_ROUTE, {"Origin": HTTPS_EVIL_EXAMPLE})
     check(code == 403 and acao is None, "a POST from another website is refused", f"{code} {acao}")
     own = f"http://127.0.0.1:{e.port}"
     for origin in (own, f"http://localhost:{e.port}", "chrome-extension://abc"):
-        code, acao = ask("POST", "/applied", {"Origin": origin})
+        code, acao = ask("POST", APPLIED_ROUTE, {"Origin": origin})
         check(code == 400 and acao == origin, f"a POST from {origin} is accepted", f"{code} {acao}")
-    code, _ = ask("POST", "/applied", {})
+    code, _ = ask("POST", APPLIED_ROUTE, {})
     check(code == 400, "a POST with no Origin (curl, scripts) is accepted", str(code))
-    code, _ = ask("POST", "/applied", {"Origin": "null"})
+    code, _ = ask("POST", APPLIED_ROUTE, {"Origin": "null"})
     check(code == 403, "a POST from Origin null (sandboxed frame, file://) is refused", str(code))
-    code, _ = ask("POST", "/applied", {"Origin": own, "Content-Type": "text/plain"})
+    code, _ = ask("POST", APPLIED_ROUTE, {"Origin": own, "Content-Type": "text/plain"})
     check(code == 403, "a POST that is not JSON is refused (it would skip the CORS preflight)", str(code))
-    code, _ = ask("GET", "/trigger", {"Origin": "https://evil.example"})
+    code, _ = ask("GET", TRIGGER_ROUTE, {"Origin": HTTPS_EVIL_EXAMPLE})
     check(code == 403, "GET /trigger (hands out a queued run) from another website is refused", str(code))
-    code, _ = ask("GET", "/trigger", {"Sec-Fetch-Site": "cross-site"})
+    code, _ = ask("GET", TRIGGER_ROUTE, {"Sec-Fetch-Site": "cross-site"})
     check(code == 403, "GET /trigger from another site's <img> (no Origin) is refused", str(code))
-    code, acao = ask("GET", "/status", {"Origin": "https://evil.example"})
+    code, acao = ask("GET", STATUS_ROUTE, {"Origin": HTTPS_EVIL_EXAMPLE})
     check(code == 200 and acao is None, "another website gets no CORS header to read answers with",
           f"{code} {acao}")
-    code, acao = ask("OPTIONS", "/applied", {"Origin": "https://evil.example"}, None)
+    code, acao = ask("OPTIONS", APPLIED_ROUTE, {"Origin": HTTPS_EVIL_EXAMPLE}, None)
     check(acao is None, "a preflight from another website is not approved", f"{code} {acao}")
 
 
@@ -973,7 +1012,7 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     extension's side of it through scripts/extension_test.mjs when Node is here.
     """
     sc = work / "scraper"
-    st = e.get("/searches/list")[1]
+    st = e.get(SEARCHES_LIST_ROUTE)[1]
     check(st.get("ok") and len(st.get("searches", [])) == 3
           and {("linkedin" in q["url"], "indeed" in q["url"], "stepstone" in q["url"]).index(True)
                for q in st["searches"]} == {0, 1, 2},
@@ -981,29 +1020,29 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     check(not st["extension"]["connected"], "no extension has checked in yet",
           json.dumps(st.get("extension")))
 
-    r = e.post("/searches/add", {"url": "https://www.linkedin.com/jobs/search/?keywords=Data%20Engineer"
+    r = e.post(SEARCHES_ADD_ROUTE, {"url": "https://www.linkedin.com/jobs/search/?keywords=Data%20Engineer"
                                         "&location=Berlin&currentJobId=42&trk=x"})
-    saved = e.get("/searches/list")[1]["searches"]
+    saved = e.get(SEARCHES_LIST_ROUTE)[1]["searches"]
     check(r.get("outcome") == "added" and "currentJobId" not in saved[-1]["url"]
           and saved[-1]["label"] == "LinkedIn: Data Engineer",
           "a search is added, cleaned and named", json.dumps(r) + json.dumps(saved[-1]))
-    r = e.post("/searches/add", {"url": "https://www.linkedin.com/jobs/search/?keywords=Data+Engineer&location=Berlin"})
+    r = e.post(SEARCHES_ADD_ROUTE, {"url": "https://www.linkedin.com/jobs/search/?keywords=Data+Engineer&location=Berlin"})
     check(r.get("outcome") == "duplicate", "the same search twice is refused", json.dumps(r))
-    r = e.post("/searches/add", {"url": "https://www.xing.com/jobs/search?keywords=x"})
+    r = e.post(SEARCHES_ADD_ROUTE, {"url": "https://www.xing.com/jobs/search?keywords=x"})
     check(r.get("ok") is False and "not LinkedIn" in r.get("why", ""),
           "a site the extension cannot read is refused", json.dumps(r))
 
     r = e.post("/searches/save", {"searches": [{"label": "bad", "url": "http://www.linkedin.com/jobs"}]})
-    check(r.get("ok") is False and len(e.get("/searches/list")[1]["searches"]) == 4,
+    check(r.get("ok") is False and len(e.get(SEARCHES_LIST_ROUTE)[1]["searches"]) == 4,
           "an unusable list is refused whole, nothing is lost", json.dumps(r))
     keep = [{**q, "enabled": i != 0} for i, q in enumerate(saved)]
     r = e.post("/searches/save", {"searches": keep, "pages": 2})
-    active = e.get("/searches")[1]["searches"]
+    active = e.get(SEARCHES_ROUTE)[1]["searches"]
     check(r.get("ok") and r.get("pages") == 2 and len(active) == 3
           and all(q["url"] != saved[0]["url"] for q in active),
           "edits save; a switched-off search is kept but not run", json.dumps(r)[:300])
-    r = e.post("/searches", {"searches": [], "all": [{"label": "old", "url": "https://www.stepstone.de/jobs?what=old"}]})
-    check(r.get("ignored") and len(e.get("/searches/list")[1]["searches"]) == 4,
+    r = e.post(SEARCHES_ROUTE, {"searches": [], "all": [{"label": "old", "url": "https://www.stepstone.de/jobs?what=old"}]})
+    check(r.get("ignored") and len(e.get(SEARCHES_LIST_ROUTE)[1]["searches"]) == 4,
           "an old extension's mirror cannot overwrite the list", json.dumps(r))
     r = e.post("/searches/merge", {"searches": [{"label": "Mine", "url": "https://www.stepstone.de/jobs?what=Mine"},
                                                 {"label": "dup", "url": saved[1]["url"]}]})
@@ -1024,39 +1063,39 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     ext = e.get("/searches/sync")[1]["extension"]
     check(ext.get("connected"), "the extension's check-in shows as connected", json.dumps(ext))
 
-    r = e.post("/trigger", {})
+    r = e.post(TRIGGER_ROUTE, {})
     check(r.get("ok") and r.get("searches") == 4, "Run scrape queues the searches that are on", json.dumps(r))
-    e.get("/trigger")
+    e.get(TRIGGER_ROUTE)
 
     # A run cut off after two searches continues with the other two, even for
     # an extension that forgot its place (29 September 2026).
-    on = [q["url"] for q in e.get("/searches")[1]["searches"]]
-    e.post("/scrape", {"running": True, "done": 0, "total": 4})
+    on = [q["url"] for q in e.get(SEARCHES_ROUTE)[1]["searches"]]
+    e.post(SCRAPE_ROUTE, {"running": True, "done": 0, "total": 4})
     for u in on[:2]:
         e.post("/search-result", {"label": "x", "url": u, "host": "linkedin.com", "ok": True, "loaded": 25})
-    e.post("/scrape", {"running": True, "done": 2, "total": 4})
+    e.post(SCRAPE_ROUTE, {"running": True, "done": 2, "total": 4})
     e.post("/scrape/stop", {})
-    e.post("/scrape", {"running": False, "done": 2, "total": 4})
-    r = e.post("/trigger", {})
-    skip = e.get("/trigger")[1].get("skip")
-    e.post("/scrape", {"running": True, "done": 0, "total": 2})
-    p = e.get("/progress")[1]
+    e.post(SCRAPE_ROUTE, {"running": False, "done": 2, "total": 4})
+    r = e.post(TRIGGER_ROUTE, {})
+    skip = e.get(TRIGGER_ROUTE)[1].get("skip")
+    e.post(SCRAPE_ROUTE, {"running": True, "done": 0, "total": 2})
+    p = e.get(PROGRESS_ROUTE)[1]
     check(r.get("continuing") == 2 and sorted(skip or []) == sorted(on[:2])
           and p["scrape"]["done"] == 2 and p["scrape"]["total"] == 4 and p["searches_done"] == 2,
           "Run scrape continues a cut-off run from the pipeline's record, keeping its finished rows",
           json.dumps({"r": r, "skip": skip, "scrape": p["scrape"], "rows": p["searches_done"]}))
-    e.post("/scrape", {"running": False, "done": 2, "total": 2})
-    r = e.post("/trigger", {})
-    e.get("/trigger")
+    e.post(SCRAPE_ROUTE, {"running": False, "done": 2, "total": 2})
+    r = e.post(TRIGGER_ROUTE, {})
+    e.get(TRIGGER_ROUTE)
     check(r.get("continuing") == 0, "once every search is done, the next Run scrape starts fresh", json.dumps(r))
 
-    seen = e.get("/searches/list")[1]["reset_at"]
+    seen = e.get(SEARCHES_LIST_ROUTE)[1]["reset_at"]
     e.post("/reset", {"hard": False})
     r = e.post("/ingest", {"jobs": [{"url": "https://www.linkedin.com/jobs/view/9", "title": "Old", "company": "C"}],
                            "reset_seen": seen if seen is not None else 0})
     check(r.get("stale") and r.get("added") == 0, "an erased pool resent by the extension is refused", json.dumps(r))
 
-    html = e.get("/dashboard")[1]
+    html = e.get(DASHBOARD_ROUTE)[1]
     html = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
     check('id="srDlg"' in html and 'id="btnSearches"' in html and 'id="btnEraseAll"' in html
           and e.get("/web/searches.js")[0] == 200,
@@ -1128,7 +1167,7 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     who = lambda: ps(py, work, f"""
         import platform_util as pu, pathlib
         print(pu.find_script_procs(pathlib.Path(r'{sc / 'serve.py'}')))""")
-    before, p = who(), e.get("/progress")[1]
+    before, p = who(), e.get(PROGRESS_ROUTE)[1]
     r = e.post("/restart", {})
     back = False
     for _ in range(60):
@@ -1138,7 +1177,7 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
         now = who()
         try:
             back = (now not in ("", "[]") and not set(json.loads(now)) & set(json.loads(before))
-                    and e.get("/status", timeout=2)[0] == 200)
+                    and e.get(STATUS_ROUTE, timeout=2)[0] == 200)
         except (OSError, ValueError):
             back = False
         if back:
@@ -1152,7 +1191,6 @@ def build_stage_check(py: pathlib.Path, work: pathlib.Path) -> None:
     Which step a running build is on: from run_batch's logs/.stage, else from
     the whole current attempt of the log, never from its last 16 lines.
     """
-    logs = work / "builder" / "logs"
     out = ps(py, work, r"""
         import json, os, subprocess, sys, serve
         logs = serve.BUILDER / "logs"
@@ -1185,6 +1223,7 @@ def build_stage_check(py: pathlib.Path, work: pathlib.Path) -> None:
           f"{c} {d}")
     check(e == [["12", "40"], ["13", "40"]], "a 24/7 in a job title is not read as progress", str(e))
     step_row_check(work)
+    global_names_check(work)
 
 
 def step_row_check(work: pathlib.Path) -> None:
@@ -1227,13 +1266,7 @@ def step_row_check(work: pathlib.Path) -> None:
         got = json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         got = []
-    order = ["scrape", "rank", "build", "done"]
-    wrong = []
-    for (label, _, want), st in zip(run, got):
-        active = [k for k in order if st.get(k) == "active"]
-        later = order[order.index(want) + 1:] if want else []
-        if active != ([want] if want else []) or any(st.get(k) != "pending" for k in later):
-            wrong.append(f"{label}: {st}")
+    wrong = [f"{label}: {st}" for (label, _, want), st in zip(run, got) if not _steps_right(st, want)]
     done = dict(zip([x[0] for x in run], got))
     if done.get("built", {}).get("done") != "done":
         wrong.append(f"built: Done is not ticked {done.get('built')}")
@@ -1243,9 +1276,21 @@ def step_row_check(work: pathlib.Path) -> None:
           "the step row follows the run: one running step, never back to Rank during a build, "
           "nothing ticked after it", "; ".join(wrong)[:600] or (r.stdout + r.stderr)[-300:])
 
-    # The dashboard's scripts share one global scope, so two of them declaring
-    # the same top-level name is a SyntaxError that kills the second one, and
-    # ESLint, which reads one file at a time, cannot see it.
+
+def _steps_right(st: dict, want: str | None) -> bool:
+    """Exactly `want` is running (or nothing is), and every step after it is pending."""
+    order = ["scrape", "rank", "build", "done"]
+    active = [k for k in order if st.get(k) == "active"]
+    later = order[order.index(want) + 1:] if want else []
+    return active == ([want] if want else []) and all(st.get(k) == "pending" for k in later)
+
+
+def global_names_check(work: pathlib.Path) -> None:
+    """
+    The dashboard's scripts share one global scope, so two of them declaring
+    the same top-level name is a SyntaxError that kills the second one, and
+    ESLint, which reads one file at a time, cannot see it.
+    """
     page = (work / "web" / "dashboard.html").read_text(encoding="utf-8")
     seen: dict[str, str] = {}
     clash = []
@@ -1268,7 +1313,7 @@ def topbar_check(e: "Env", when: str) -> None:
     and the shared theme script. Read from the pages as the bridge serves them.
     """
     bars = {}
-    for path in ("/dashboard", "/report/", "/ranking"):
+    for path in (DASHBOARD_ROUTE, "/report/", RANKING_ROUTE):
         html = e.get(path, 30)[1]
         html = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
         # From <body on: the report inlines topbar.css, whose comment shows the markup.
@@ -1279,7 +1324,7 @@ def topbar_check(e: "Env", when: str) -> None:
         bars[path] = (all(i >= 0 for i in order) and order == sorted(order),
                       links, re.search(r'id="themeBtn"[^>]*></button>\s*</div>\s*$', bar) is not None,
                       'src="/web/theme.js"' in html or "const THEMES" in html)
-    first = bars["/dashboard"][1]
+    first = bars[DASHBOARD_ROUTE][1]
     check(all(b[0] for b in bars.values()) and len(first) == 3 and all(b[1] == first for b in bars.values()),
           f"all three pages have the same top bar, nav in the middle ({when})", json.dumps(bars)[:400])
     check(all(b[2] and b[3] for b in bars.values()),
@@ -1297,23 +1342,22 @@ def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None
     calls.unlink(missing_ok=True)
     e.mode("ok")
     # The Arbeitnow section replaces profile.md; start from a full one.
-    (me / "profile.md").write_text((work / "profiles" / "example" / "profile.md").read_text(encoding="utf-8")
+    (me / PROFILE_MD).write_text((work / "profiles" / "example" / PROFILE_MD).read_text(encoding="utf-8")
                                    + "\n<!-- selftest -->\n", encoding="utf-8")
 
     def settle(seconds: float = 30) -> dict:
         end = time.time() + seconds
-        while time.time() < end:
-            d = e.get("/profile/chat")[1]
-            if not d.get("running"):
-                return d
+        d = e.get(PROFILE_CHAT_ROUTE)[1]
+        while d.get("running") and time.time() < end:
             time.sleep(0.3)
+            d = e.get(PROFILE_CHAT_ROUTE)[1]
         return d
 
-    code, d = e.get("/profile/chat")
+    code, d = e.get(PROFILE_CHAT_ROUTE)
     check(code == 200 and d.get("folder") == "profiles/me" and not d.get("blocked")
-          and "profile.md" in d.get("files", []),
+          and PROFILE_MD in d.get("files", []),
           "Edit profile opens on profiles/me", json.dumps(d)[:300])
-    status, page = e.get("/dashboard")
+    status, page = e.get(DASHBOARD_ROUTE)
     js_code = e.get("/web/profile-chat.js")[0]
     check(b'id="btnProfile"' in page and js_code == 200,
           "the dashboard has the Edit profile button and its script", f"{status} {js_code}")
@@ -1322,20 +1366,20 @@ def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None
 
     projects = me / "reference" / "PROJECTS.md"
     original = projects.read_text(encoding="utf-8")
-    r = e.post("/profile/chat", {"message": "Add a project: Selftest Tracker"})
+    r = e.post(PROFILE_CHAT_ROUTE, {"message": "Add a project: Selftest Tracker"})
     d = settle()
     last = (d.get("messages") or [{}])[-1]
     ch = last.get("changes") or []
-    check(r.get("ok") and last.get("role") == "claude" and "Selftest Tracker" in last.get("text", "")
-          and "Selftest Tracker" in projects.read_text(encoding="utf-8"),
+    check(r.get("ok") and last.get("role") == "claude" and SELFTEST_TRACKER in last.get("text", "")
+          and SELFTEST_TRACKER in projects.read_text(encoding="utf-8"),
           "a message is sent to Claude and its edit lands in the profile", json.dumps(d)[:400])
     check([c["file"] for c in ch] == ["reference/PROJECTS.md"] and ch[0]["plus"] == 1
           and "+| **Selftest Tracker**" in ch[0]["diff"],
           "the reply lists the file it changed, with the diff", json.dumps(ch)[:400])
 
-    e.post("/profile/chat", {"message": "Add a skill: Rust"})
+    e.post(PROFILE_CHAT_ROUTE, {"message": "Add a skill: Rust"})
     d = settle()
-    profile_md = (me / "profile.md").read_text(encoding="utf-8")
+    profile_md = (me / PROFILE_MD).read_text(encoding="utf-8")
     seen = [json.loads(ln) for ln in calls.read_text(encoding="utf-8").splitlines()] if calls.exists() else []
     first = seen[0]["args"] if seen else []
     second = seen[1]["args"] if len(seen) > 1 else []
@@ -1353,50 +1397,50 @@ def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None
           "Claude runs on Sonnet in the profile folder, with file tools only, no shell, a one-line prompt",
           json.dumps([c["args"] for c in seen])[:500])
 
-    r = e.post("/profile/chat/undo", {})
-    check(r.get("ok") and "Strong: Rust" not in (me / "profile.md").read_text(encoding="utf-8")
-          and "Selftest Tracker" in projects.read_text(encoding="utf-8"),
+    r = e.post(PROFILE_CHAT_UNDO_ROUTE, {})
+    check(r.get("ok") and "Strong: Rust" not in (me / PROFILE_MD).read_text(encoding="utf-8")
+          and SELFTEST_TRACKER in projects.read_text(encoding="utf-8"),
           "Undo puts back only the last change", json.dumps(r)[:300])
     # A file changed by hand after Claude's edit is not overwritten by Undo.
     projects.write_text(projects.read_text(encoding="utf-8") + "edited by hand\n", encoding="utf-8")
-    r = e.post("/profile/chat/undo", {})
+    r = e.post(PROFILE_CHAT_UNDO_ROUTE, {})
     check(not r.get("ok") and "reference/PROJECTS.md" in r.get("why", "")
           and "edited by hand" in projects.read_text(encoding="utf-8"),
           "Undo refuses to overwrite a file edited by hand since", json.dumps(r)[:300])
     projects.write_text(original + "| **Selftest Tracker** | selftest Ü | any |\n", encoding="utf-8")
-    r = e.post("/profile/chat/undo", {})
+    r = e.post(PROFILE_CHAT_UNDO_ROUTE, {})
     check(r.get("ok") and projects.read_text(encoding="utf-8") == original,
           "Undo again restores the file exactly", json.dumps(r)[:300])
-    r = e.post("/profile/chat/undo", {})
+    r = e.post(PROFILE_CHAT_UNDO_ROUTE, {})
     check(not r.get("ok"), "Undo with nothing left says so", json.dumps(r)[:200])
 
-    e.post("/profile/chat", {"message": "Add my new job"})
+    e.post(PROFILE_CHAT_ROUTE, {"message": "Add my new job"})
     d = settle()
     last = (d.get("messages") or [{}])[-1]
     check(last.get("role") == "claude" and not last.get("changes") and not d.get("can_undo"),
           "a question back from Claude changes nothing", json.dumps(last)[:300])
 
     e.mode("auth")
-    e.post("/profile/chat", {"message": "Add a skill: Go"})
+    e.post(PROFILE_CHAT_ROUTE, {"message": "Add a skill: Go"})
     d = settle()
     e.mode("ok")
     last = (d.get("messages") or [{}])[-1]
     check(last.get("role") == "error" and "signed out" in last.get("text", "")
-          and "Go," not in (me / "profile.md").read_text(encoding="utf-8"),
+          and "Go," not in (me / PROFILE_MD).read_text(encoding="utf-8"),
           "a signed-out Claude is reported, with the fix", json.dumps(last)[:300])
 
     r = e.post("/profile/chat/new", {})
-    d = e.get("/profile/chat")[1]
+    d = e.get(PROFILE_CHAT_ROUTE)[1]
     check(r.get("ok") and d.get("messages") == [], "New chat starts an empty conversation", json.dumps(d)[:200])
 
     req = urllib.request.Request(f"http://127.0.0.1:{e.port}/profile/chat", method="POST",
                                  data=b'{"message":"Add a skill: Evil"}',
-                                 headers={"Content-Type": "application/json", "Origin": "https://evil.example"})
+                                 headers={"Content-Type": JSON_TYPE, "Origin": HTTPS_EVIL_EXAMPLE})
     try:
         code = urllib.request.urlopen(req, timeout=10).status
     except urllib.error.HTTPError as ex:
         code = ex.code
-    check(code == 403 and "Evil" not in (me / "profile.md").read_text(encoding="utf-8"),
+    check(code == 403 and "Evil" not in (me / PROFILE_MD).read_text(encoding="utf-8"),
           "another website cannot send Claude a message", str(code))
     blocked = ps(py, work, "import profile_chat as pc; print(bool(pc._editable(pc.REPO / 'profiles' / 'example')))")
     check(blocked == "True", "the fictional example profile is never edited", blocked)
@@ -1416,11 +1460,11 @@ def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
     root = pathlib.Path(tempfile.mkdtemp()) / "jp"
     (root / "scraper").mkdir(parents=True)
     real = (work / "scraper" / "updater.py").read_text(encoding="utf-8")
-    old = {"start.py": "print('old')\n", "scraper/serve.py": "# old\n", "README.md": "old readme\n",
+    old = {START_PY: "print('old')\n", "scraper/serve.py": "# old\n", README_MD: "old readme\n",
            "scripts/old_tool.py": "# goes away\n", "scraper/requirements.txt": "psutil\n",
-           "scraper/updater.py": real, "profiles/example/profile.md": "example, old\n"}
+           "scraper/updater.py": real, PROFILES_EXAMPLE_PROFILE_MD: "example, old\n"}
     mine = {"profiles/me/profile.md": "MY PROFILE\n", "scraper/out/jobs.json": "[1]\n",
-            "local.env": "X=1\n"}
+            LOCAL_ENV: "X=1\n"}
     for rel, text in {**old, **mine}.items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8")
@@ -1433,10 +1477,10 @@ def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
             for rel, text in files.items():
                 z.writestr(f"job-application-pipeline-{'b' * 7}/{rel}", text)
         return buf.getvalue()
-    new = {"start.py": "print('new')\n", "scraper/serve.py": "# new\n", "README.md": "new readme\n",
+    new = {START_PY: "print('new')\n", "scraper/serve.py": "# new\n", README_MD: NEW_README,
            "scripts/new_tool.py": "# new\n", "scraper/requirements.txt": "psutil\n",
-           "scraper/updater.py": real, "profiles/example/profile.md": "example, new\n",
-           "local.env": "SHOULD NOT LAND\n"}
+           "scraper/updater.py": real, PROFILES_EXAMPLE_PROFILE_MD: "example, new\n",
+           LOCAL_ENV: "SHOULD NOT LAND\n"}
     served = {"zip": zipped(new)}
 
     class GitHub(http.server.BaseHTTPRequestHandler):
@@ -1454,7 +1498,7 @@ def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
             self.wfile.write(body)
 
         def log_message(self, *a):
-            pass
+            pass                # quiet: the checks are the output, not every request
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), GitHub)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]
@@ -1476,18 +1520,18 @@ def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
         a = run("print(json.dumps(updater.apply(log=lambda m: None)))")
         rd = lambda rel: (root / rel).read_text(encoding="utf-8") if (root / rel).exists() else None
         backups = list((root / "_backups").glob("update-*/README.md"))
-        check(a.get("ok") and rd("README.md") == "new readme\n" and rd("scripts/new_tool.py")
-              and rd("scripts/old_tool.py") is None and rd("profiles/example/profile.md") == "example, new\n"
+        check(a.get("ok") and rd(README_MD) == NEW_README and rd("scripts/new_tool.py")
+              and rd("scripts/old_tool.py") is None and rd(PROFILES_EXAMPLE_PROFILE_MD) == "example, new\n"
               and backups and backups[0].read_text(encoding="utf-8") == "old readme\n"
               and json.loads(rd(".installed.json"))["sha"] == "b" * 40,
               "Update now replaces, adds and removes program files, keeping the old ones",
               json.dumps(a)[:300])
         check(rd("profiles/me/profile.md") == "MY PROFILE\n" and rd("scraper/out/jobs.json") == "[1]\n"
-              and rd("local.env") == "X=1\n",
+              and rd(LOCAL_ENV) == "X=1\n",
               "an update never touches the profile, the collected jobs or local.env")
-        served["zip"] = zipped({"README.md": "not this project\n"})
+        served["zip"] = zipped({README_MD: "not this project\n"})
         a = run("print(json.dumps({'r': repr(updater.apply(log=lambda m: None))}))")
-        check("does not look like Job Pipeline" in json.dumps(a) and rd("README.md") == "new readme\n",
+        check("does not look like Job Pipeline" in json.dumps(a) and rd(README_MD) == NEW_README,
               "a download that is not this project changes nothing", json.dumps(a)[:300])
     finally:
         srv.shutdown()
@@ -1497,16 +1541,16 @@ def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
         g = pathlib.Path(tempfile.mkdtemp()) / "clone"
         (g / "scraper").mkdir(parents=True)
         (g / "scraper" / "updater.py").write_text(real, encoding="utf-8")
-        (g / "README.md").write_text("x\n", encoding="utf-8")
+        (g / README_MD).write_text("x\n", encoding="utf-8")
         for args in (["init", "-q"], ["add", "-A"],
                      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"]):
             subprocess.run([git, *args], cwd=g, capture_output=True)
-        (g / "README.md").write_text("edited\n", encoding="utf-8")
+        (g / README_MD).write_text("edited\n", encoding="utf-8")
         out = subprocess.run([str(py), "-c", "import sys, json; sys.path.insert(0, r'%s')\n"
                               "import updater; print(json.dumps(updater.apply(log=lambda m: None)))"
                               % (g / "scraper")], capture_output=True, text=True, encoding="utf-8",
                              env=dict(env), timeout=120).stdout
-        check('"ok": false' in out and "README.md" in out and (g / "README.md").read_text() == "edited\n",
+        check('"ok": false' in out and README_MD in out and (g / README_MD).read_text() == "edited\n",
               "a git clone with local edits is not updated, and the edited files are named", out[-300:])
 
 
@@ -1573,7 +1617,7 @@ def collector_section(work: pathlib.Path) -> None:
             super().__init__(*a, directory=str(site), **k)
 
         def log_message(self, *a):
-            pass
+            pass                # quiet: the checks are the output, not every request
 
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
     port = srv.server_address[1]
@@ -1646,13 +1690,13 @@ def main() -> int:
                            cwd=work, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", env=dict(os.environ, PYTHONUTF8="1"), timeout=900)
         check(r.returncode == 0, "setup finishes", (r.stdout + r.stderr)[-600:])
-        py = work / "scraper" / ".venv" / ("Scripts/python.exe" if IS_WIN else "bin/python")
+        py = work / "scraper" / VENV / (SCRIPTS_PYTHON_EXE if IS_WIN else BIN_PYTHON)
         check(py.exists(), "venv created")
-        link = work / "builder" / ".venv"
-        check((link / ("Scripts/python.exe" if IS_WIN else "bin/python")).exists(),
+        link = work / "builder" / VENV
+        check((link / (SCRIPTS_PYTHON_EXE if IS_WIN else BIN_PYTHON)).exists(),
               "builder/.venv links to the scraper venv")
         if IS_WIN:
-            check((work / "scraper" / ".venv" / "bin" / "python").exists(),
+            check((work / "scraper" / VENV / "bin" / "python").exists(),
                   ".venv/bin/python shim for Git Bash")
 
         fakebin = make_fakebin(tmp, py)
@@ -1712,7 +1756,7 @@ def main() -> int:
                             capture_output=True, text=True, encoding="utf-8", timeout=60)
         check(st.returncode in (0, 1) and "at login" in st.stdout,
               "start-at-login status can be read", (st.stdout + st.stderr)[-400:])
-        for path in ("/dashboard", "/ranking", "/funnel", "/doctor", "/events", "/status"):
+        for path in (DASHBOARD_ROUTE, RANKING_ROUTE, "/funnel", "/doctor", "/events", STATUS_ROUTE):
             try:
                 code = e.get(path, 30)[0]
             except OSError as ex:
@@ -1741,7 +1785,7 @@ def main() -> int:
             check(o.get("status") == want_status and e.built() == want_built
                   and words[mode] in o.get("message", ""), label,
                   f"exit {code}, outcome {o}, built {e.built()}")
-        check(not (e.builder / "logs" / ".run.lock").exists(), "lock released after every run")
+        check(not (e.builder / "logs" / RUN_LOCK).exists(), "lock released after every run")
         report = e.builder / "applications" / DAY / "batch.html"
         e.run_build("2", "ok")
         check(report.exists() and "Firma Ü" in report.read_text(encoding="utf-8"),
@@ -1759,10 +1803,10 @@ def main() -> int:
         section("builds run by the bridge")
         e.clean_day()
         e.mode("ok")
-        r = e.post("/build", {"top": 2})
+        r = e.post(BUILD_ROUTE, {"top": 2})
         check(r.get("ok"), "POST /build starts a build", str(r))
         end = time.time() + 60
-        while time.time() < end and e.get("/status")[1]["build"]["running"]:
+        while time.time() < end and e.get(STATUS_ROUTE)[1]["build"]["running"]:
             time.sleep(1)
         check(e.outcome().get("status") == "ok" and e.built() == 2, "bridge build finishes",
               str(e.outcome()))
@@ -1774,7 +1818,7 @@ def main() -> int:
         # A second build while one runs is refused, then Stop ends everything.
         e.clean_day()
         e.mode("hang")
-        e.post("/build", {"top": 2})
+        e.post(BUILD_ROUTE, {"top": 2})
         end = time.time() + 30
         found = "0"
         while time.time() < end:
@@ -1783,7 +1827,7 @@ def main() -> int:
                 break
             time.sleep(1)
         check(found != "0", "build reached Claude")
-        r = e.post("/build", {"top": 2})
+        r = e.post(BUILD_ROUTE, {"top": 2})
         check(not r.get("ok"), "a second build is refused while one runs", str(r))
         by_hand = subprocess.run([str(py), "run_batch.py", "2"], cwd=e.builder,
                                  env=dict(e.env, BUILD_MANUAL="1"), capture_output=True,
@@ -1799,7 +1843,7 @@ def main() -> int:
         ps(py, work, f"import psutil; psutil.Process({serve}).kill()")
         time.sleep(1)
         check(e.wait_up(40), "supervisor restarts a crashed bridge")
-        b = e.get("/status")[1]["build"]
+        b = e.get(STATUS_ROUTE)[1]["build"]
         check(b.get("running"), "restarted bridge adopts the running build", str(b))
         r = e.post("/build/stop")
         check(r.get("ok") and not r.get("still_running"), "Stop ends the build", str(r))
@@ -1809,13 +1853,13 @@ def main() -> int:
             print(len(pu.find_apply_batch_claudes(b)) + len(pu.find_script_procs(b / 'run_batch.py')))
         """)
         check(left == "0", "nothing of the build is left running", left)
-        check(not (e.builder / "logs" / ".run.lock").exists(), "Stop clears the run lock")
+        check(not (e.builder / "logs" / RUN_LOCK).exists(), "Stop clears the run lock")
         e.clean_day()
         e.mode("ok")
-        r = e.post("/build", {"top": 1})
+        r = e.post(BUILD_ROUTE, {"top": 1})
         check(r.get("ok"), "a new build starts straight after a Stop", str(r))
         end = time.time() + 60
-        while time.time() < end and e.get("/status")[1]["build"]["running"]:
+        while time.time() < end and e.get(STATUS_ROUTE)[1]["build"]["running"]:
             time.sleep(1)
 
         section("a batch cut off by a usage limit keeps every finished application")

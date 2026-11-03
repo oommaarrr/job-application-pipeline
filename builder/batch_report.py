@@ -36,6 +36,9 @@ import pathlib
 import sys
 import unicodedata
 
+# Repeated names, kept in one place.
+BATCH_JSON = "batch.json"
+
 HERE = pathlib.Path(__file__).parent
 APPS = HERE / "applications"
 BRIDGE = f"http://127.0.0.1:{os.environ.get('BRIDGE_PORT', '8765')}"
@@ -391,10 +394,10 @@ def other_batches(date: str) -> str:
     """
     days = []
     for d in sorted(APPS.glob("20??-??-??"), reverse=True):
-        if not (d / "batch.json").exists() and d.name != date:
+        if not (d / BATCH_JSON).exists() and d.name != date:
             continue
         try:
-            payload = json.loads((d / "batch.json").read_text(encoding="utf-8"))
+            payload = json.loads((d / BATCH_JSON).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             payload = {}
         n = len(payload.get("built", [])) if isinstance(payload, dict) else 0
@@ -520,7 +523,7 @@ def render(batch: dict) -> str:
 
 def main() -> int:
     date = sys.argv[1] if len(sys.argv) > 1 else dt.date.today().isoformat()
-    src = APPS / date / "batch.json"
+    src = APPS / date / BATCH_JSON
     if not src.exists():
         print(f"no batch.json at {src}")
         return 1

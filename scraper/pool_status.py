@@ -25,7 +25,6 @@ import datetime as dt
 import json
 import pathlib
 import re
-import sys
 
 import config
 
@@ -70,7 +69,7 @@ def status() -> dict:
     }
 
 
-def main() -> int:
+def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--human", action="store_true")
@@ -78,15 +77,14 @@ def main() -> int:
     s = status()
     if not args.human:
         print(json.dumps(s))
-        return 0
+        return
     if not s["newest_scrape"]:
         print("nothing has ever been scraped")
     else:
         print(f"{s['explain']} · "
               f"newest scrape {s['newest_scrape']} ({s['age_days']} day(s) old)"
               + (" · STALE" if s["stale"] else ""))
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

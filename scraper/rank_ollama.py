@@ -54,6 +54,9 @@ import platform_util as pu
 import rank_engine
 from jobkey import job_key
 
+# Repeated names, kept in one place.
+BUILD_THEN_SCRAPE = "BUILD THEN SCRAPE"
+
 HERE = pathlib.Path(__file__).parent
 INBOX = HERE / "inbox"
 OUT = HERE / "out"
@@ -1059,15 +1062,15 @@ def pool_health(rows: list[dict], passed: list[dict], target: int) -> dict:
         # of 15. The target is a ceiling on one batch, not a quota the pool has
         # to meet: build all ten, THEN scrape. The alternative was throwing ten
         # good roles away for the crime of not being fifteen.
-        verdict, why = "BUILD THEN SCRAPE", (
+        verdict, why = BUILD_THEN_SCRAPE, (
             f"{buildable} buildable, short of a full batch of {target} — "
             f"build all {buildable}, then scrape")
     elif len(strong) < target:
-        verdict, why = "BUILD THEN SCRAPE", (
+        verdict, why = BUILD_THEN_SCRAPE, (
             f"{buildable} buildable but only {len(strong)} strong, "
             f"enough for this batch and thin for the next")
     elif share < config.STRONG_SHARE_WARN:
-        verdict, why = "BUILD THEN SCRAPE", (
+        verdict, why = BUILD_THEN_SCRAPE, (
             f"only {share:.0%} of the pool is a strong match")
     else:
         verdict, why = "BUILD", (

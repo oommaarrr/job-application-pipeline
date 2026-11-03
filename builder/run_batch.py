@@ -48,6 +48,14 @@ import time
 import urllib.error
 import urllib.request
 
+# Repeated names, kept in one place.
+BATCH_JSON = "batch.json"
+MERGE_BATCHES_PY = "merge_batches.py"
+BATCH_REPORT_PY = "batch_report.py"
+BATCH_HTML = "batch.html"
+IDENTITY_MD = "identity.md"
+NOTHING_BUILT = "nothing was built"
+
 # ---------------------------------------------------------------- roots
 # Everything is derived from where this file is, so the checkout runs from any
 # directory. Override with SCRAPER_DIR=... or PY=... if your layout differs.
@@ -295,12 +303,12 @@ def run_logged(args: list[str], tee: bool = False) -> tuple[int, str]:
 def finish_report() -> None:
     if not TODAY_DIR.is_dir():
         return
-    if (TODAY_DIR / "batch.json").exists() or any(TODAY_DIR.glob("batch.shard-*.json")) \
+    if (TODAY_DIR / BATCH_JSON).exists() or any(TODAY_DIR.glob("batch.shard-*.json")) \
             or built_companies():
-        if run_logged([PY, "merge_batches.py", str(TODAY_DIR)])[0] != 0:
+        if run_logged([PY, MERGE_BATCHES_PY, str(TODAY_DIR)])[0] != 0:
             say("merge failed — see above")
-    if (TODAY_DIR / "batch.json").exists():
-        if run_logged([PY, "batch_report.py", DAY])[0] != 0:
+    if (TODAY_DIR / BATCH_JSON).exists():
+        if run_logged([PY, BATCH_REPORT_PY, DAY])[0] != 0:
             say("report render failed — see above")
 
 
@@ -378,7 +386,7 @@ def reconcile_recent(days: int = 14) -> None:
     for d in sorted(root.glob("20??-??-??")):
         if not d.is_dir() or d.name < cutoff:
             continue
-        batch = _read_json(d / "batch.json", {})
+        batch = _read_json(d / BATCH_JSON, {})
         rows = batch.get("built", []) if isinstance(batch, dict) else batch
         listed = {str(f).replace("\\", "/").split("/", 1)[0] for r in (rows if isinstance(rows, list) else [])
                   if isinstance(r, dict) for f in (r.get("files") or {}).values()}
@@ -387,8 +395,8 @@ def reconcile_recent(days: int = 14) -> None:
         if orphans or any(d.glob("batch.shard-*.json")):
             say(f"{d.name}: recording {len(orphans)} finished application(s) the batch "
                 f"record was missing ({', '.join(sorted(orphans))})")
-            if run_logged([PY, "merge_batches.py", str(d)])[0] == 0:
-                run_logged([PY, "batch_report.py", d.name])
+            if run_logged([PY, MERGE_BATCHES_PY, str(d)])[0] == 0:
+                run_logged([PY, BATCH_REPORT_PY, d.name])
 
 
 # ---------------------------------------------------------------- the build
@@ -406,7 +414,7 @@ def main() -> None:
     # means the target was reached, not merely that a batch ran: on 18 September
     # a run of 6 wrote batch.html and every later attempt exited doing nothing
     # while the target was 15.
-    if (TODAY_DIR / "batch.html").exists():
+    if (TODAY_DIR / BATCH_HTML).exists():
         have = n_built()
         if os.environ.get("FORCE") == "1":
             say(f"already complete for {DAY} ({have} built) — FORCE set, continuing")
@@ -452,14 +460,14 @@ def main() -> None:
     # setup copies the example to profiles/me, so compare the contents.
     example = REPO_ROOT / "profiles" / "example"
     unfilled = []
-    for name in ("profile.md", "identity.md"):
+    for name in ("profile.md", IDENTITY_MD):
         mine, ex = profile / name, example / name
         if mine.is_file() and ex.is_file() and mine.read_bytes() == ex.read_bytes():
             unfilled.append(name)
-    ident = profile / "identity.md"
+    ident = profile / IDENTITY_MD
     if ident.is_file() and "example.com" in ident.read_text(encoding="utf-8", errors="replace") \
-            and "identity.md" not in unfilled:
-        unfilled.append("identity.md")
+            and IDENTITY_MD not in unfilled:
+        unfilled.append(IDENTITY_MD)
     if profile.name == "example" or unfilled:
         notify("Fill in your profile first", "Build not started")
         end_with("failed", "your profile is still the fictional example "
@@ -493,7 +501,7 @@ def main() -> None:
     # not wait. Waiting is only useful when there is nothing to work with yet.
     js = status_json()
     if js is None:
-        notify("nothing was built", "Bridge is down")
+        notify(NOTHING_BUILT, "Bridge is down")
         end_with("failed", "the bridge is not answering, so the pool could not be read",
                  f"Run {pu.install_hint('start')}, then press Retry.", 1)
     have_jobs = int(js.get("collected_today") or 0)
@@ -549,7 +557,7 @@ def main() -> None:
             time.sleep(20)
 
     if last <= 0:
-        notify("nothing was built", "No jobs collected today")
+        notify(NOTHING_BUILT, "No jobs collected today")
         end_with("info", "the job pool is empty, so there was nothing to build",
                  "Collect first: press + Arbeitnow, or run your saved searches.", 0)
 
@@ -596,7 +604,7 @@ def main() -> None:
                  "was ranked", "It downloads by itself while the pipeline runs; press Build "
                  "again when the Activity panel says it is ready.", 0)
     if engine == "local" and not pu.ollama_up():
-        notify("nothing was built", "Ollama is down")
+        notify(NOTHING_BUILT, "Ollama is down")
         end_with("failed", "Ollama is not running and could not be started, so nothing "
                  "was ranked", "Open the Ollama app (or run: ollama serve), then press Retry.", 1)
 
@@ -615,17 +623,17 @@ def main() -> None:
                            tee=True)
     if code != 0:
         if "Nothing to rank" in out:
-            notify("nothing was built", "Nothing new to rank")
+            notify(NOTHING_BUILT, "Nothing new to rank")
             end_with("info", "every job in the pool was already applied to or handled, "
                      "so there was nothing new to rank",
                      "Collect fresh jobs, then build again.", 0)
         stopped = re.search(r"RANKING STOPPED: (.+)", out)
         if stopped:
             # Claude signed out or out of usage: the ranker said what to do.
-            notify("nothing was built", "Ranking stopped")
+            notify(NOTHING_BUILT, "Ranking stopped")
             end_with("failed", "the ranking stopped, so nothing was built",
                      stopped.group(1).strip()[:300], 1)
-        notify("nothing was built", "Ranking failed")
+        notify(NOTHING_BUILT, "Ranking failed")
         end_with("failed", "the ranking failed, so nothing was built from an "
                  "unranked pool", "Press Retry: jobs already judged are cached, so it "
                  "resumes. Details are in the build log.", 1)
@@ -652,7 +660,7 @@ def main() -> None:
     ranked_file = SCRAPER_DIR / "out" / "ranked.json"
     ranked = json_count(ranked_file)
     if ranked <= 0:
-        notify("nothing was built", "No roles passed the filters")
+        notify(NOTHING_BUILT, "No roles passed the filters")
         end_with("info", "no job passed the ranking filters, so nothing was built",
                  "See why on the Fit ranking page (tick Show dropped). Collect more, "
                  "or loosen a filter in scraper/config_local.py.", 0)
@@ -669,7 +677,7 @@ def main() -> None:
     run_logged([PY, str(SCRAPER_DIR / "check_live.py")], tee=True)
     ranked = json_count(ranked_file)
     if ranked <= 0:
-        notify("nothing was built", "All candidate postings have closed")
+        notify(NOTHING_BUILT, "All candidate postings have closed")
         end_with("info", "every candidate posting has closed, so nothing was built",
                  "Collect fresh jobs, then build again.", 0)
     say(f"{ranked} roles passed and are going to Claude")
@@ -700,7 +708,7 @@ def main() -> None:
         end_with("failed", "Claude Code is not installed, so nothing could be written",
                  f"Install it: {pu.install_hint('claude')}, then press Retry.", 1)
     if pu.IS_WIN and not pu.find_git_bash():
-        notify("Git for Windows is missing", "nothing was built")
+        notify("Git for Windows is missing", NOTHING_BUILT)
         end_with("failed", "Git for Windows is not installed, and Claude Code needs its "
                  "Git Bash to run commands, so nothing could be written",
                  f"Install it: {pu.install_hint('git-bash')}, then press Retry.", 1)
@@ -921,8 +929,8 @@ def build_rounds(claude: str, model: str, ref_cvs: str, build_target: int) -> No
             text = "".join(f"----- {p.name} -----\n{_read(p)}"
                            for p in sorted(LOG_DIR.glob(f".round-{DAY}-{rnd}.shard-*.out")))
             say("all shards finished — merging fragments and rendering the report")
-            run_logged([PY, "merge_batches.py", str(TODAY_DIR)], tee=True)
-            run_logged([PY, "batch_report.py", DAY], tee=True)
+            run_logged([PY, MERGE_BATCHES_PY, str(TODAY_DIR)], tee=True)
+            run_logged([PY, BATCH_REPORT_PY, DAY], tee=True)
         round_out.write_text(text, encoding="utf-8")
         _append(text if text.endswith("\n") or not text else text + "\n")
         say(f"claude exited {status}")
@@ -962,7 +970,7 @@ def build_rounds(claude: str, model: str, ref_cvs: str, build_target: int) -> No
 
         # "There was nothing eligible" is a verdict, not a failure.
         if NOTHING_RE.search(text):
-            notify("nothing was built", "No eligible roles today")
+            notify(NOTHING_BUILT, "No eligible roles today")
             finish_report()
             end_with("info", "Claude read the candidates and found nothing eligible to build",
                      "Its reasons are on the Applications page. Collect more jobs and "
@@ -973,7 +981,7 @@ def build_rounds(claude: str, model: str, ref_cvs: str, build_target: int) -> No
 
     finish_report()
     final = n_built()
-    if (TODAY_DIR / "batch.html").exists() and final > 0:
+    if (TODAY_DIR / BATCH_HTML).exists() and final > 0:
         say(f"done: {final} application folder(s) in {TODAY_DIR.as_posix()}")
         publish_index()
         notify(f"{final} applications ready — open them from the dashboard", DAY)
@@ -999,7 +1007,7 @@ def publish_index() -> None:
     A redirect page with an absolute file:// URL rather than a link, because the
     report links to its PDFs relatively and how those resolve through a link
     depends on the browser. as_uri() writes the right form on every system."""
-    target = (BUILDER_ROOT / TODAY_DIR / "batch.html").resolve().as_uri()
+    target = (BUILDER_ROOT / TODAY_DIR / BATCH_HTML).resolve().as_uri()
     jobs = SCRAPER_DIR / "out" / "jobs.html"
     lines = ["<!doctype html><meta charset=utf-8>", "<title>Job Applications</title>",
              f'<meta http-equiv=refresh content="0; url={target}">',

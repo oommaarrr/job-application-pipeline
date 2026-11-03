@@ -37,6 +37,29 @@ import time
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Repeated names, kept in one place.
+JSON_GLOB = "*.json"
+DATE_RX = r"(\d{4}-\d{2}-\d{2})"
+ARBEITNOW_ROUTE = "/arbeitnow"
+BUILD_ROUTE = "/build"
+TRIGGER_ROUTE = "/trigger"
+BATCH_HTML = "batch.html"
+RUN_BATCH_PY = "run_batch.py"
+OLLAMA_RANK_JSON = "ollama_rank.json"
+SCRAPE_AUDIT_JSON = "scrape_audit.json"
+RANK_OLLAMA_PY = "rank_ollama.py"
+RANK_LOG = "rank.log"
+OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434"
+OLLAMA_SERVE = "ollama serve"
+RUN_BATCH_SH = "run-batch.sh"
+ARBEITNOW_LOG = "arbeitnow.log"
+HTML_TYPE = "text/html; charset=utf-8"
+HTML_EXT = ".html"
+JSON_TYPE = "application/json"
+BATCH_JSON = "batch.json"
+IDENTITY_MD = "identity.md"
+NOT_FOUND = "not found"
+
 # Started with any Python (`python serve.py` on a fresh download)? Set the
 # project up and continue inside its own environment, instead of crashing on
 # the first package that system Python does not have.
@@ -202,10 +225,10 @@ def _consolidate() -> list[dict]:
     """
     active = _active_inbox()
     absorbed: list[dict] = []
-    for path in sorted(INBOX.glob("*.json")):
+    for path in sorted(INBOX.glob(JSON_GLOB)):
         if path.resolve() == active.resolve():
             continue
-        stamp = re.search(r"(\d{4}-\d{2}-\d{2})", path.name)
+        stamp = re.search(DATE_RX, path.name)
         if stamp and stamp.group(1) == _today():
             payload = _read_json(path, {})
             records = payload.get("jobs", []) if isinstance(payload, dict) else payload
@@ -270,8 +293,8 @@ EVENTS_KEEP = 2000
 _events_lock = threading.Lock()
 
 # The action behind each step's Retry button: which endpoint to POST.
-RETRY = {"arbeitnow": "/arbeitnow", "rank": "/rank", "build": "/build",
-         "scrape": "/trigger"}
+RETRY = {"arbeitnow": ARBEITNOW_ROUTE, "rank": "/rank", "build": BUILD_ROUTE,
+         "scrape": TRIGGER_ROUTE}
 
 
 def _event(step: str, status: str, message: str, fix: str = "", **extra) -> dict:
@@ -440,12 +463,12 @@ def _lookup_job(url: str) -> dict | None:
     """Company and title for a link, from today's pool, the archived pools, or
     a built batch. The extension only knows the title of the page you are on."""
     k = _key(url)
-    files = [_active_inbox(), *sorted(ARCHIVE.glob("*.json"), reverse=True)] if ARCHIVE.exists() else [_active_inbox()]
+    files = [_active_inbox(), *sorted(ARCHIVE.glob(JSON_GLOB), reverse=True)] if ARCHIVE.exists() else [_active_inbox()]
     for f in files:
         payload = _read_json(f, {})
         for j in (payload.get("jobs", []) if isinstance(payload, dict) else payload or []):
             if isinstance(j, dict) and j.get("url") and _key(j["url"]) == k:
-                stamp = re.search(r"(\d{4}-\d{2}-\d{2})", f.name)
+                stamp = re.search(DATE_RX, f.name)
                 return {**j, "_collected": stamp.group(1) if stamp else ""}
     for bj in sorted(BATCHES.glob("**/batch.json")) if BATCHES.exists() else []:
         for j in _read_json(bj, {}).get("built", []):
@@ -493,7 +516,7 @@ def built_jobs() -> dict[str, dict]:
             if k:
                 out[k] = {"company": job.get("company"), "rank": job.get("rank"),
                           "date": payload.get("date") or path.parent.name,
-                          "report": str(path.parent / "batch.html")}
+                          "report": str(path.parent / BATCH_HTML)}
     return out
 
 
@@ -756,7 +779,7 @@ def _resume_skip() -> list[str]:
 # something in the pool, start the build itself. No polling, no window, and it
 # does not matter how the scrape was started.
 BUILDER = pathlib.Path(os.environ.get("BUILDER_DIR") or (REPO / "builder"))
-BUILD_SCRIPT = BUILDER / "run_batch.py"
+BUILD_SCRIPT = BUILDER / RUN_BATCH_PY
 
 # Off by default. Autobuild spends Claude usage on its own the moment a scrape
 # finishes, which a first-time user should never discover by surprise. Turn it
@@ -826,7 +849,7 @@ def _rank_is_current() -> bool:
     to the pool that was erased, so the funnel and the Fit ranking page must not
     keep showing it as if it were this pool's. The file itself is kept (its
     cache makes the next rank faster); only its numbers stop being shown."""
-    f = OUT / "ollama_rank.json"
+    f = OUT / OLLAMA_RANK_JSON
     try:
         return not (_reset_at is not None and f.stat().st_mtime <= _reset_at)
     except OSError:
@@ -838,7 +861,7 @@ def _load_search_log() -> list:
     still shows the last scrape instead of an empty scrape step. Skipped when
     the audit on disk predates the last fresh start, so an erase stays erased.
     """
-    f = OUT / "scrape_audit.json"
+    f = OUT / SCRAPE_AUDIT_JSON
     try:
         if _reset_at is not None and f.stat().st_mtime <= _reset_at:
             return []
@@ -852,7 +875,7 @@ _search_log = _load_search_log()
 
 def _adopt_running_rank() -> None:
     """If a rank_ollama.py is still going (bridge restarted mid-rank), track it."""
-    pid = next(iter(pu.find_script_procs(ROOT / "rank_ollama.py")), None)
+    pid = next(iter(pu.find_script_procs(ROOT / RANK_OLLAMA_PY)), None)
     if pid:
         _rank.update(running=True, pid=pid, finished=None,
                      started=_rank.get("started"))
@@ -927,7 +950,7 @@ def _write_scrape_audit() -> None:
             lines.append(f"    {r.get('url')}")
     try:
         (OUT / "scrape_audit.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        (OUT / "scrape_audit.json").write_text(
+        (OUT / SCRAPE_AUDIT_JSON).write_text(
             json.dumps(_search_log, indent=2, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
@@ -960,7 +983,7 @@ def _rank_running() -> bool:
         # treating a zombie as finished (same reasoning as _build_running).
         pid = _rank.get("pid")
         if pid is not None:
-            if pu.alive(pid) and any("rank_ollama.py" in t for t in pu.cmdline(pid)):
+            if pu.alive(pid) and any(RANK_OLLAMA_PY in t for t in pu.cmdline(pid)):
                 return True
     code = _rank_proc.returncode if _rank_proc is not None else None
     _rank_proc = None
@@ -969,13 +992,13 @@ def _rank_running() -> bool:
     if code not in (None, 0):
         # A failed rank leaves the PREVIOUS ranking on disk. Showing that as
         # this run's result is how a dead Ollama used to look like success.
-        tail = " ".join(_tail(OUT / "rank.log", 3))[-220:]
+        tail = " ".join(_tail(OUT / RANK_LOG, 3))[-220:]
         _rank["failed_at"] = time.time()
         _event("rank", "failed", f"ranking stopped with an error (exit {code}): {tail}",
                fix=_error_fix(tail) or "Press Retry. Jobs already judged are cached, so it resumes where it stopped.")
         return False
     try:
-        h = json.loads((OUT / "ollama_rank.json").read_text(encoding="utf-8")).get("health", {})
+        h = json.loads((OUT / OLLAMA_RANK_JSON).read_text(encoding="utf-8")).get("health", {})
         _event("rank", "ok", f"ranked: {h.get('buildable', 0)} passed the filters, "
                f"{h.get('strong', 0)} strong")
     except (OSError, ValueError, AttributeError):
@@ -989,13 +1012,13 @@ def start_rank() -> dict:
         return {"ok": False, "why": "already ranking"}
     if _build_running():
         return {"ok": False, "why": "a build is running (it ranks as it goes)"}
-    ranker = ROOT / "rank_ollama.py"
+    ranker = ROOT / RANK_OLLAMA_PY
     if not (PYTHON.exists() and ranker.exists()):
         return {"ok": False, "why": "ranker or venv is missing"}
     engine = rank_engine.get()
     up, _, entries = _ollama_tags()
     if not up and pu.find_ollama() and pu.start_ollama(
-            OUT / "ollama.log", url=getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")):
+            OUT / "ollama.log", url=getattr(config, "OLLAMA_URL", OLLAMA_DEFAULT_URL)):
         up, _, entries = _ollama_tags()
     if engine == "claude":
         pass        # Claude ranks; Ollama only runs the optional pre-filter
@@ -1003,12 +1026,12 @@ def start_rank() -> dict:
         _event("rank", "failed", "Ollama is not running, so nothing can be ranked",
                fix="Open the Ollama app (or run: ollama serve), then press Retry.")
         return {"ok": False, "why": "Ollama is not running. Open the Ollama app, then try again.",
-                "fix": "ollama serve"}
+                "fix": OLLAMA_SERVE}
     elif _model_wanted(entries) is None:
         return {"ok": False, "why": f"the local model '{om.wanted(config)}' is still downloading "
                 "(it starts by itself when Ollama runs); try again when Activity says it is ready"}
     top = getattr(config, "TOP_N", 20)
-    log = open(OUT / "rank.log", "a", encoding="utf-8")
+    log = open(OUT / RANK_LOG, "a", encoding="utf-8")
     log.write(f"\n=== rank started by the dashboard {dt.datetime.now():%H:%M:%S} ===\n")
     log.flush()
     global _rank_proc
@@ -1035,7 +1058,7 @@ def stop_rank() -> dict:
     global _rank_proc
     if _build_running():
         return {"ok": False, "why": "this ranking is part of a build; use Stop build"}
-    pids = pu.find_script_procs(ROOT / "rank_ollama.py")
+    pids = pu.find_script_procs(ROOT / RANK_OLLAMA_PY)
     for pid in pids:
         pu.kill_tree(pid, grace=5)
     # Cleared before the next status poll reaps it, so an exit code from the
@@ -1050,7 +1073,7 @@ def stop_rank() -> dict:
                "their answers are saved",
                fix="Press Rank pool to continue from where it stopped.")
     return {"ok": True, "stopped": bool(pids),
-            "still_running": bool(pu.find_script_procs(ROOT / "rank_ollama.py"))}
+            "still_running": bool(pu.find_script_procs(ROOT / RANK_OLLAMA_PY))}
 
 
 _adopt_running_rank()
@@ -1059,7 +1082,7 @@ _adopt_running_rank()
 def _build_pids() -> list[int]:
     """Running builds: the Python runner, or a run-batch.sh started before the
     runner moved to Python and still going."""
-    return pu.find_script_procs(BUILD_SCRIPT, BUILDER / "run-batch.sh")
+    return pu.find_script_procs(BUILD_SCRIPT, BUILDER / RUN_BATCH_SH)
 
 
 def _adopt_running_build() -> None:
@@ -1085,7 +1108,7 @@ def _build_target_of(pid: int | None) -> int | None:
         return None
     toks = pu.cmdline(pid)
     for i, t in enumerate(toks):
-        if t.endswith(("run_batch.py", "run-batch.sh")):
+        if t.endswith((RUN_BATCH_PY, RUN_BATCH_SH)):
             for nxt in toks[i + 1:]:
                 if nxt.isdigit():
                     return int(nxt)
@@ -1119,7 +1142,7 @@ def _build_running() -> bool:
         _build.update(running=False)
         return False
     # ...and check it is still a BUILD: a recycled pid must not read as one.
-    if pu.alive(pid) and any(t.endswith(("run_batch.py", "run-batch.sh"))
+    if pu.alive(pid) and any(t.endswith((RUN_BATCH_PY, RUN_BATCH_SH))
                              for t in pu.cmdline(pid)):
         return True
     _build.update(running=False,
@@ -1142,8 +1165,8 @@ def arbeitnow_running() -> bool:
     if proc.poll() is None:
         return True
     _arbeitnow["proc"] = None
-    seg = (OUT / "arbeitnow.log").read_text(encoding="utf-8", errors="replace") \
-        if (OUT / "arbeitnow.log").exists() else ""
+    seg = (OUT / ARBEITNOW_LOG).read_text(encoding="utf-8", errors="replace") \
+        if (OUT / ARBEITNOW_LOG).exists() else ""
     seg = seg.rsplit("=== arbeitnow started", 1)[-1]
     kept = re.findall(r"(\d+) kept", seg)
     new = re.findall(r"bridge: (\d+) new", seg)
@@ -1348,7 +1371,7 @@ def _rank_result() -> dict | None:
     A ranking that failed leaves the previous file behind, and showing that as
     this run's result made a dead Ollama look like success, so a file older
     than the last failure is not a result either."""
-    f = OUT / "ollama_rank.json"
+    f = OUT / OLLAMA_RANK_JSON
     try:
         mtime = f.stat().st_mtime
         if _reset_at is not None and mtime <= _reset_at:
@@ -1368,7 +1391,7 @@ def _rank_result() -> dict | None:
 
 
 def _ranked_pass_count() -> int:
-    f = OUT / "ollama_rank.json"
+    f = OUT / OLLAMA_RANK_JSON
     try:
         if _reset_at is not None and f.stat().st_mtime <= _reset_at:
             return 0
@@ -1434,7 +1457,7 @@ def _rank_progress() -> dict:
     19 September 2026: every stage should show how many are left.
     """
     try:
-        txt = (OUT / "rank.log").read_text(encoding="utf-8", errors="replace")
+        txt = (OUT / RANK_LOG).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return {"done": 0, "total": 0}
     seg = txt.rsplit("=== rank started", 1)[-1]     # current run only
@@ -1448,15 +1471,15 @@ def _rank_progress() -> dict:
 def _latest_batch_dir() -> pathlib.Path | None:
     """Today's batch folder if it has a report, else the most recent that does."""
     today = BATCHES / _today()
-    if (today / "batch.html").exists():
+    if (today / BATCH_HTML).exists():
         return today
     dirs = sorted(d for d in BATCHES.glob("*")
-                  if d.is_dir() and d.name != "archive" and (d / "batch.html").exists())
+                  if d.is_dir() and d.name != "archive" and (d / BATCH_HTML).exists())
     return dirs[-1] if dirs else None
 
 
-_REPORT_CT = {".html": "text/html; charset=utf-8", ".pdf": "application/pdf",
-              ".json": "application/json", ".md": "text/plain; charset=utf-8",
+_REPORT_CT = {HTML_EXT: HTML_TYPE, ".pdf": "application/pdf",
+              ".json": JSON_TYPE, ".md": "text/plain; charset=utf-8",
               ".png": "image/png", ".jpg": "image/jpeg", ".css": "text/css",
               ".js": "text/javascript"}
 
@@ -1540,7 +1563,7 @@ def build_progress() -> dict:
                 phase = "done"; built_live += 1
             elif any(d.glob("*.pdf")):
                 phase = "rendering"           # a PDF exists but not both, or still a stub
-            elif any(d.glob("*.json")):
+            elif any(d.glob(JSON_GLOB)):
                 phase = "writing"             # shortlist/plan JSON written, documents not yet
             elif (d / "PLAN.md").exists():
                 phase = "planning"
@@ -1551,7 +1574,7 @@ def build_progress() -> dict:
     # batch.json is the authoritative built/rejected record once a round has
     # finished writing it. Prefer it when the build is not running; fall back to
     # the live folder count while it is.
-    bj = _read_json(folder / "batch.json", {}) if folder.exists() else {}
+    bj = _read_json(folder / BATCH_JSON, {}) if folder.exists() else {}
     have_batch = bool(bj.get("built")) or bool(bj.get("dropped"))
     if have_batch and not running:
         built = len(bj.get("built", []))
@@ -1606,7 +1629,7 @@ def build_detail() -> dict:
     # dropped. It is merged across shards at the end but each shard's fragment
     # also lands here mid-run, so this fills in as the build proceeds.
     built_roles, dropped_roles = [], []
-    data = _read_json(folder / "batch.json", {})
+    data = _read_json(folder / BATCH_JSON, {})
     for e in data.get("built", []):
         built_roles.append({"rank": e.get("rank"), "company": e.get("company", ""),
                             "title": e.get("title", ""), "why": e.get("why", ""),
@@ -1656,8 +1679,8 @@ def build_detail() -> dict:
 # worse than none.
 _ERROR_FIXES = (
     ("usage limit",      "Claude's usage window is spent — wait for the reset, or run with a smaller target."),
-    ("ollama",           "ollama serve"),
-    ("is down",          "ollama serve"),
+    ("ollama",           OLLAMA_SERVE),
+    ("is down",          OLLAMA_SERVE),
     ("no network",       "Check the connection, then press Rank pool again."),
     ("cards loaded",     "LinkedIn lazy-loads 25 cards. Leave the tab in the foreground and do not scroll while it runs."),
     ("only",             "LinkedIn lazy-loads 25 cards. Leave the tab in the foreground and do not scroll while it runs."),
@@ -2012,7 +2035,7 @@ def ranking_data() -> dict:
     nobody could safely edit, because every CSS brace was a format placeholder.
     The page is now static and this only carries the numbers.
     """
-    data = _read_json(OUT / "ollama_rank.json", {}) if _rank_is_current() else {}
+    data = _read_json(OUT / OLLAMA_RANK_JSON, {}) if _rank_is_current() else {}
     if not data or not (data.get("passed") or data.get("dropped")):
         return {"ok": False, "rows": [], "counts": {}, "model": ""}
 
@@ -2055,7 +2078,7 @@ def ranking_data() -> dict:
 # Nothing here mutates anything, so the dashboard can poll it freely.
 
 def _ollama_tags() -> tuple[bool, str, list[dict]]:
-    base = getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")
+    base = getattr(config, "OLLAMA_URL", OLLAMA_DEFAULT_URL)
     try:
         with urllib.request.urlopen(f"{base}/api/tags", timeout=3) as r:
             return True, "", list(json.loads(r.read()).get("models") or [])
@@ -2080,7 +2103,7 @@ def _model_wanted(entries: list[dict]) -> str | None:
 
 def _model_watch() -> None:
     import time as _t
-    base = getattr(config, "OLLAMA_URL", "http://127.0.0.1:11434")
+    base = getattr(config, "OLLAMA_URL", OLLAMA_DEFAULT_URL)
     while True:
         try:
             # Installed but not running (after a reboot, or just installed)?
@@ -2215,7 +2238,7 @@ def doctor() -> dict:
     add("ollama", "Ollama is running", up,
         (f"{len(models)} model(s) available" if up else f"not reachable — {why}")
         + (" · Claude ranks, so this is optional" if by_claude else ""),
-        "ollama serve", **local_w)
+        OLLAMA_SERVE, **local_w)
     have = chosen is not None
     add("model", f"Model '{want}' is pulled", up and have,
         ("downloading now, by itself (a few GB, once)" if _model_pull["running"]
@@ -2240,7 +2263,7 @@ def doctor() -> dict:
     inbox = _read_json(_active_inbox(), {"jobs": []}).get("jobs", [])
     today = _from_browser(inbox)
     earlier = any(_from_browser(_read_json(f, {"jobs": []}).get("jobs", []))
-                  for f in (INBOX / "archive").glob("*.json")) if (INBOX / "archive").exists() else False
+                  for f in (INBOX / "archive").glob(JSON_GLOB)) if (INBOX / "archive").exists() else False
     add("extension", "Chrome extension has collected jobs", bool(today) or earlier,
         f"{today} job(s) from LinkedIn, Indeed or StepStone today" if today
         else ("none today, but an earlier scrape exists" if earlier
@@ -2305,11 +2328,11 @@ def doctor() -> dict:
             return a.exists() and b.exists() and a.read_text(encoding="utf-8") == b.read_text(encoding="utf-8")
         except OSError:
             return False
-    idn = PROFILE_DIR / "identity.md"
+    idn = PROFILE_DIR / IDENTITY_MD
     idn_text = idn.read_text(encoding="utf-8") if idn.exists() else ""
-    still = [n for n in ("profile.md", "identity.md") if _same(n)]
-    if "example.com" in idn_text and "identity.md" not in still:
-        still.append("identity.md")
+    still = [n for n in ("profile.md", IDENTITY_MD) if _same(n)]
+    if "example.com" in idn_text and IDENTITY_MD not in still:
+        still.append(IDENTITY_MD)
     own = PROFILE_DIR.name != "example" and not still
     add("own-profile", "Your profile is filled in", own,
         f"profiles/{PROFILE_DIR.name}" if own
@@ -2342,11 +2365,11 @@ def funnel() -> dict:
     invisible until now: a user whose batch came back tiny could not see whether
     the scrape was thin, the gates were harsh, or the target was simply low.
     """
-    if not _rank_is_current() and (OUT / "ollama_rank.json").exists():
+    if not _rank_is_current() and (OUT / OLLAMA_RANK_JSON).exists():
         return {"ok": False, "erased": True, "stages": [], "dropped": [],
                 "erased_at": dt.datetime.fromtimestamp(_reset_at).isoformat(timespec="minutes"),
                 "why": "Erased. The funnel fills again after the next scrape and rank."}
-    rank = _read_json(OUT / "ollama_rank.json", {})
+    rank = _read_json(OUT / OLLAMA_RANK_JSON, {})
     counts = rank.get("counts", {}) or {}
     health = rank.get("health", {}) or {}
     dropped = rank.get("dropped", []) or []
@@ -2415,7 +2438,7 @@ def _render_report(batch_dir: pathlib.Path) -> str | None:
     batch.html opened straight from Finder is current too. Any failure falls
     back to the file on disk.
     """
-    src = batch_dir / "batch.json"
+    src = batch_dir / BATCH_JSON
     if not src.exists():
         return None
     try:
@@ -2423,7 +2446,7 @@ def _render_report(batch_dir: pathlib.Path) -> str | None:
         batch.setdefault("date", batch_dir.name)
         html = _report().render(batch)
         try:
-            (batch_dir / "batch.html").write_text(html, encoding="utf-8")
+            (batch_dir / BATCH_HTML).write_text(html, encoding="utf-8")
         except OSError:
             pass
         return html
@@ -2477,14 +2500,14 @@ class Handler(BaseHTTPRequestHandler):
             return "requests from another site are not accepted"
         if self.command == "POST":
             ct = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-            if ct and ct != "application/json":
+            if ct and ct != JSON_TYPE:
                 return "send JSON (Content-Type: application/json)"
         return None
 
     def _send(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", JSON_TYPE)
         self.send_header("Content-Length", str(len(body)))
         self._cors()
         self.end_headers()
@@ -2508,7 +2531,7 @@ class Handler(BaseHTTPRequestHandler):
         # other day); /report/... alone is the newest.
         rel = self.path.split("?")[0][len("/report"):].lstrip("/")
         m = re.match(r"(\d{4}-\d{2}-\d{2})(?:/|$)", rel)
-        if m and (BATCHES / m.group(1) / "batch.json").exists():
+        if m and (BATCHES / m.group(1) / BATCH_JSON).exists():
             base, prefix, rel = BATCHES / m.group(1), f"/report/{m.group(1)}/", rel[len(m.group(0)):]
         else:
             base, prefix = _latest_batch_dir(), "/report/"
@@ -2521,7 +2544,7 @@ class Handler(BaseHTTPRequestHandler):
                 print(f"  report: empty page failed ({e})")
                 return self._send_html('<!doctype html><meta charset="utf-8"><title>Applications</title>'
                                        '<p>No applications yet. <a href="/dashboard">Dashboard</a></p>')
-        rel = rel or "batch.html"
+        rel = rel or BATCH_HTML
         target = (base / rel).resolve()
         try:
             base_r = base.resolve()
@@ -2530,10 +2553,10 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             return self._send({"error": "bad path"}, 400)
         if not target.is_file():
-            return self._send({"error": "not found"}, 404)
+            return self._send({"error": NOT_FOUND}, 404)
         ct = _REPORT_CT.get(target.suffix.lower(), "application/octet-stream")
         data = target.read_bytes()
-        if rel == "batch.html":
+        if rel == BATCH_HTML:
             fresh = _render_report(base)
             if fresh is not None:
                 data = fresh.encode("utf-8")
@@ -2544,7 +2567,7 @@ class Handler(BaseHTTPRequestHandler):
         # inject a <base> instead so relative links resolve to "/report/..."
         # regardless of how the index URL was spelled. Only the HTML index needs
         # it; the PDFs are served straight through.
-        if target.suffix.lower() in (".html", ".htm"):
+        if target.suffix.lower() in (HTML_EXT, ".htm"):
             html = data.decode("utf-8", "replace")
             tag = f'<base href="{prefix}">'
             if tag not in html:
@@ -2561,7 +2584,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send_html(self, html: str, status: int = 200) -> None:
         body = html.encode("utf-8")
         self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", HTML_TYPE)
         self.send_header("Content-Length", str(len(body)))
         self._cors()
         self.end_headers()
@@ -2648,7 +2671,7 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/arbeitnow/settings":
             return self._send(arbeitnow_settings_state())
 
-        if route == "/build":
+        if route == BUILD_ROUTE:
             return self._send({"ok": True, "build": {**_build,
                                                      "running": _build_running()}})
 
@@ -2683,8 +2706,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/report" or route.startswith("/report/"):
             return self._serve_report()
 
-        if route not in ("/status", "", "/built", "/trigger", "/scrape/state"):
-            return self._send({"error": "not found"}, 404)
+        if route not in ("/status", "", "/built", TRIGGER_ROUTE, "/scrape/state"):
+            return self._send({"error": NOT_FOUND}, 404)
 
         # The extension asks here every minute. A pending trigger is handed over
         # once and then cleared, so a run starts exactly once no matter how many
@@ -2692,7 +2715,7 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/scrape/state":
             return self._send({"ok": True, "stop": bool(_scrape_stop)})
 
-        if route == "/trigger":
+        if route == TRIGGER_ROUTE:
             global _trigger, _trigger_only
             # Hands the queued run over and clears it: a change, so guarded
             # like a POST.
@@ -2733,8 +2756,8 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     # ------------------------------------------------------------ static files
-    _TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-              ".js": "text/javascript; charset=utf-8", ".json": "application/json",
+    _TYPES = {HTML_EXT: HTML_TYPE, ".css": "text/css; charset=utf-8",
+              ".js": "text/javascript; charset=utf-8", ".json": JSON_TYPE,
               ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
 
     def _serve_static(self, name: str):
@@ -2755,7 +2778,7 @@ class Handler(BaseHTTPRequestHandler):
             path.relative_to(WEB.resolve())
             data = path.read_bytes()
         except (ValueError, OSError):
-            return self._send({"error": "not found"}, 404)
+            return self._send({"error": NOT_FOUND}, 404)
         self.send_response(200)
         self.send_header("Content-Type", self._TYPES.get(path.suffix, "application/octet-stream"))
         self.send_header("Content-Length", str(len(data)))
@@ -2826,20 +2849,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:                           # noqa: BLE001
                 return self._send({"ok": False, "why": f"{e}"[:300]})
 
-        if route == "/arbeitnow" and _an["prep"]["running"]:
+        if route == ARBEITNOW_ROUTE and _an["prep"]["running"]:
             return self._send({"ok": False, "why": "the Arbeitnow preview is still downloading; "
                                                    "try again in a minute"})
 
-        if route == "/arbeitnow" and arbeitnow_running():
+        if route == ARBEITNOW_ROUTE and arbeitnow_running():
             return self._send({"ok": False, "why": "Arbeitnow is already running"})
 
-        if route == "/arbeitnow":
+        if route == ARBEITNOW_ROUTE:
             # Arbeitnow is the one source that needs no browser: a free public
             # JSON feed, descriptions included. It is run detached and pushes
             # its own results back through /ingest, which is also why it must
             # NOT be run inline — this handler would still be holding the
             # request when the child tried to reach the bridge.
-            log = OUT / "arbeitnow.log"
+            log = OUT / ARBEITNOW_LOG
             try:
                 OUT.mkdir(exist_ok=True)
                 handle = open(log, "a", encoding="utf-8")
@@ -3030,7 +3053,7 @@ class Handler(BaseHTTPRequestHandler):
                     print("  autobuild: scrape finished but the pool is empty")
             return self._send({"ok": True, "build": started})
 
-        if route == "/build":
+        if route == BUILD_ROUTE:
             # The structured manual trigger: start the ranking and the build
             # right now, against whatever is already in today's pool. Takes an
             # optional {"top": N} to override TOP_N for this run.
@@ -3053,7 +3076,7 @@ class Handler(BaseHTTPRequestHandler):
                 _autobuild = bool(body["on"])
             return self._send({"ok": True, "autobuild": _autobuild})
 
-        if route == "/trigger":
+        if route == TRIGGER_ROUTE:
             # "Run the whole thing now." The shell cannot talk to a Chrome
             # extension, and the extension's own alarm only fires every twenty
             # minutes, which is far too slow to feel like a button. So the
@@ -3098,7 +3121,7 @@ class Handler(BaseHTTPRequestHandler):
             # showing me these", not "destroy the only copy", and a mistaken
             # click should never cost a scrape that took real time to collect.
             moved = 0
-            for path in list(INBOX.glob("*.json")):
+            for path in list(INBOX.glob(JSON_GLOB)):
                 _archive(path)
                 moved += 1
             for name in ("jobs.html", "jobs.json", "jobs.md", "all_jobs.json"):
@@ -3118,7 +3141,7 @@ class Handler(BaseHTTPRequestHandler):
                           reason=None, pid=None, log=None)
             # Roll the on-disk audit aside too, so a tail or a bridge restart
             # does not resurrect the old run's per-search table.
-            for _name in ("scrape_audit.txt", "scrape_audit.json"):
+            for _name in ("scrape_audit.txt", SCRAPE_AUDIT_JSON):
                 _f = OUT / _name
                 if _f.exists():
                     _archive(_f)
@@ -3147,7 +3170,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ok": True, "added": added, "total": total,
                                "matches": result.get("matches")})
 
-        self._send({"error": "not found"}, 404)
+        self._send({"error": NOT_FOUND}, 404)
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s  %s\n" % (dt.datetime.now().strftime("%H:%M:%S"), fmt % args))
@@ -3163,8 +3186,8 @@ def _migrate_history() -> None:
         days = getattr(config, "SEEN_DAYS", 30)
         cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
         jobs = []
-        for f in [*sorted(ARCHIVE.glob("*.json")), *sorted(INBOX.glob("*.json"))] if INBOX.exists() else []:
-            stamp = re.search(r"(\d{4}-\d{2}-\d{2})", f.name)
+        for f in [*sorted(ARCHIVE.glob(JSON_GLOB)), *sorted(INBOX.glob(JSON_GLOB))] if INBOX.exists() else []:
+            stamp = re.search(DATE_RX, f.name)
             if not stamp or stamp.group(1) < cutoff:
                 continue
             payload = _read_json(f, {})
