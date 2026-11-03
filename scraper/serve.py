@@ -1418,7 +1418,7 @@ def _build_stage() -> str:
     except OSError:
         return "starting"
     seg = txt.rsplit("=== batch attempt", 1)[-1].lower()
-    if "going to claude" in seg or "apply-batch" in seg:
+    if "going to claude" in seg or "apply-batch" in seg or "are still open" in seg:
         return "writing"
     if re.search(r"\branking \d+ jobs\b", seg):
         return "ranking"

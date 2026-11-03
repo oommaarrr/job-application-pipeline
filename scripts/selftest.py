@@ -440,6 +440,16 @@ def pool_section(py: pathlib.Path, work: pathlib.Path, fakebin: pathlib.Path) ->
           "the same profile is answered from the cache; a changed profile is judged again",
           (out1[-200:] + " | " + out2[-200:]))
 
+    # A cache from before the key carried the profile: carried over to the
+    # current profile, not asked again (3 November 2026, "stuck on 0 judged").
+    cache_f = sc / "out" / "ollama_cache.json"
+    cache = json.loads(cache_f.read_text(encoding="utf-8"))
+    cache_f.write_text(json.dumps({k.rsplit("|", 1)[0]: v for k, v in cache.items()}), encoding="utf-8")
+    out3 = rerank()
+    check("4 judged (0 new, 4 cached)" in out3 and "  0/4 judged" in out3,
+          "an older cache is carried over on update, and the ranker says 0 of N from the start",
+          out3[-300:])
+
     # The Claude engine (October 2026): the same real ranker, Claude answering
     # several postings per call. The stand-in leaves one posting out of each
     # batch, which must be asked about again on its own rather than lost.
@@ -1174,6 +1184,81 @@ def build_stage_check(py: pathlib.Path, work: pathlib.Path) -> None:
     check(c == "writing" and d == "ranking", "run_batch's stage file decides while its build is alive",
           f"{c} {d}")
     check(e == [["12", "40"], ["13", "40"]], "a 24/7 in a job title is not read as progress", str(e))
+    step_row_check(work)
+
+
+def step_row_check(work: pathlib.Path) -> None:
+    """
+    The dashboard's four steps through a whole run, as /progress reports it,
+    through the real web/steps.js in Node. 3 November 2026: pressing Build put
+    the running line back on Rank while the build ranked and checked postings,
+    and Done stayed ticked from the last build during a new one.
+    """
+    node = shutil.which("node")
+    if not node:
+        print("  (Node is not installed, so the step row check is skipped)")
+        return
+    last = {"rank_run": {"result": {"buildable": 9}}, "build": {"finished": "2026-11-02T10:00:00"},
+            "build_progress": {"built": 4, "target": 4}, "searches_total": 3, "searches_done": 3}
+    run = [  # (what is happening, the reading, which step must be running)
+        ("idle, nothing yet", {"phase": "idle"}, None),
+        ("scraping", {"phase": "scraping", "searches_total": 3, "searches_done": 1}, "scrape"),
+        ("ranking on its own", {"phase": "ranking", "searches_total": 3, "searches_done": 3}, "rank"),
+        ("ranked, idle", {"phase": "idle", "searches_total": 3, "searches_done": 3,
+                          "rank_run": {"result": {"buildable": 9}}}, None),
+        ("Build pressed, starting", {"phase": "building", "build_stage": "starting",
+                                     "rank_run": {"result": {"buildable": 9}}}, "build"),
+        ("the build ranks first", {"phase": "ranking", "build_stage": "ranking",
+                                   "rank_run": {"result": {"buildable": 9}}}, "build"),
+        ("the build writes", {"phase": "building", "build_stage": "writing",
+                              "rank_run": {"result": {"buildable": 9}}}, "build"),
+        ("built", {"phase": "done", **last}, None),
+        ("a new build, after a finished one", {"phase": "building", "build_stage": "ranking", **last}, "build"),
+        ("a build waiting on a scrape", {"phase": "scraping", "build_stage": "starting"}, "scrape"),
+        ("a new scrape after a finished build", {"phase": "scraping", **last,
+                                                 "searches_done": 1}, "scrape"),
+    ]
+    js = ("const {stepStates}=require(process.argv[1]);"
+          "const run=JSON.parse(process.argv[2]);"
+          "console.log(JSON.stringify(run.map(([,d])=>stepStates(d))));")
+    r = subprocess.run([node, "-e", js, str(work / "web" / "steps.js"), json.dumps(run)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    try:
+        got = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        got = []
+    order = ["scrape", "rank", "build", "done"]
+    wrong = []
+    for (label, _, want), st in zip(run, got):
+        active = [k for k in order if st.get(k) == "active"]
+        later = order[order.index(want) + 1:] if want else []
+        if active != ([want] if want else []) or any(st.get(k) != "pending" for k in later):
+            wrong.append(f"{label}: {st}")
+    done = dict(zip([x[0] for x in run], got))
+    if done.get("built", {}).get("done") != "done":
+        wrong.append(f"built: Done is not ticked {done.get('built')}")
+    if done.get("the build writes", {}).get("rank") != "done":
+        wrong.append(f"writing: Rank is not ticked {done.get('the build writes')}")
+    check(len(got) == len(run) and not wrong,
+          "the step row follows the run: one running step, never back to Rank during a build, "
+          "nothing ticked after it", "; ".join(wrong)[:600] or (r.stdout + r.stderr)[-300:])
+
+    # The dashboard's scripts share one global scope, so two of them declaring
+    # the same top-level name is a SyntaxError that kills the second one, and
+    # ESLint, which reads one file at a time, cannot see it.
+    page = (work / "web" / "dashboard.html").read_text(encoding="utf-8")
+    seen: dict[str, str] = {}
+    clash = []
+    for src in re.findall(r'<script src="/web/([\w.-]+\.js)"', page):
+        text = (work / "web" / src).read_text(encoding="utf-8")
+        # Code inside a file's own (function(){ ... })() is private to it.
+        text = re.sub(r"^\(function ?\(\) ?\{.*^\}\)\(\);", "", text, flags=re.M | re.S)
+        for name in re.findall(r"^(?:let|const|var|function|class)\s+([A-Za-z_$][\w$]*)", text, re.M):
+            if name in seen and seen[name] != src:
+                clash.append(f"{name} in {seen[name]} and {src}")
+            seen.setdefault(name, src)
+    check(len(seen) > 5 and not clash, "no two dashboard scripts declare the same top-level name",
+          "; ".join(clash) or f"{len(seen)} names")
 
 
 def topbar_check(e: "Env", when: str) -> None:

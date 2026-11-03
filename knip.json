@@ -10,6 +10,7 @@
     "web/ranking.js",
     "web/profile-chat.js",
     "web/theme.js",
+    "web/steps.js",
     "scripts/extension_test.mjs"
   ],
   "project": [

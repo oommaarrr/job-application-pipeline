@@ -756,10 +756,18 @@ def main() -> int:
 
     cache = _read(CACHE_PATH, {})
     profile_fp = hashlib.sha1(profile.encode()).hexdigest()[:12]
-    # Answers cached before the key carried the profile (November 2026) can
-    # never be looked up again; dropped here so an update needs no clean-up.
-    for k in [k for k in cache if k.count("|") < 4]:
+    # Answers cached before the key carried the profile (November 2026) were
+    # given against the profile as it was then, which for nearly everyone is
+    # the profile now. They are carried over to it rather than dropped:
+    # dropping them sent every job back to the model on the first ranking
+    # after the update, which on a slow PC sat on "0 judged" for many minutes
+    # (3 November 2026). Only a later profile change asks again.
+    old = [k for k in cache if k.count("|") == 3]
+    for k in old:
+        cache.setdefault(f"{k}|{profile_fp}", cache[k])
         del cache[k]
+    if old:
+        _save_cache(cache)
     per = (f"{config.CLAUDE_RANK_BATCH} per call, {config.CLAUDE_RANK_CONCURRENCY} calls at a time"
            if engine == "claude" else f"{config.OLLAMA_CONCURRENCY} at a time")
     print(f"model {args.model} ({rank_engine.LABELS[engine]}) · {per}\n")
@@ -838,6 +846,9 @@ def main() -> int:
         done = len(pool) - len(todo)
         if todo:
             print(f"asking Claude about {len(todo)} job(s) in {len(batches)} call(s)")
+            # Counted from the start, so the dashboard shows "0 of N" rather
+            # than a bare 0 until the first call comes back.
+            print(f"  {done}/{len(pool)} judged", flush=True)
         try:
             with futures.ThreadPoolExecutor(max_workers=config.CLAUDE_RANK_CONCURRENCY) as ex:
                 for fut in futures.as_completed([ex.submit(batch, b) for b in batches]):
@@ -858,6 +869,14 @@ def main() -> int:
             print(f"\nRANKING STOPPED: {e}", flush=True)
             return 3
 
+    if engine != "claude" and pool:
+        # Said before the first answer, which can take minutes on a slow PC
+        # (the model is loaded on the first call): without it the dashboard
+        # showed "judged 0" and nothing else, and looked stuck.
+        first_new = next((j for j in pool if args.recheck or cache_key(j) not in cache), None)
+        print(f"  0/{len(pool)} judged"
+              + (" · the model loads on the first job, which can take a few minutes"
+                 if first_new is not None else ""), flush=True)
     with futures.ThreadPoolExecutor(max_workers=config.OLLAMA_CONCURRENCY) as pool_ex:
         for i, (job, v, how) in enumerate(pool_ex.map(one, pool), 1):
             if v is None:

@@ -660,6 +660,11 @@ def main() -> None:
     # Still open? A scrape is a snapshot and a CV takes a day to reach the
     # employer, so each candidate is checked against the live posting before
     # anything is written for it. Unverifiable ones are kept.
+    # Ranking is over: from here the build is preparing its roles for Claude,
+    # and the dashboard's step row moves on. Marked only after the check below
+    # until 3 November 2026, so a slow check of every posting showed Rank as
+    # the running step.
+    stage("writing")
     say(f"checking which of the {ranked} are still open")
     run_logged([PY, str(SCRAPER_DIR / "check_live.py")], tee=True)
     ranked = json_count(ranked_file)
@@ -668,7 +673,6 @@ def main() -> None:
         end_with("info", "every candidate posting has closed, so nothing was built",
                  "Collect fresh jobs, then build again.", 0)
     say(f"{ranked} roles passed and are going to Claude")
-    stage("writing")
 
     # The target is a CEILING, not a quota (19 September): build everything
     # that passed, up to the target. It counts everything built today, so the

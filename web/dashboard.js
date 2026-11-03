@@ -48,14 +48,9 @@ async function tick(){
   const rankDone   = !!rnk.ran_at || !!rrr || (d.ranked_ready||0)>0;
   const buildDone  = !!bld.finished && (bpr.built||0)>0;
   const ph=d.phase;
-  const stt={
-    scrape: ph==="scraping"?"active":(scrapeDone||["ranking","building","done","built-partial"].includes(ph))?"done":"pending",
-    // A build that is still starting (checks, waiting for a scrape) has not
-    // ranked yet, so Rank is not ticked off just because a build is running.
-    rank:   ph==="ranking"?"active":((["building","done","built-partial"].includes(ph)&&d.build_stage!=="starting")||rankDone)?"done":"pending",
-    build:  ph==="building"?"active":(buildDone||["done","built-partial"].includes(ph))?"done":"pending",
-    done:   (ph==="done")?"done":((ph==="built-partial"||buildDone)?"done":"pending"),
-  };
+  // The step row: web/steps.js, where the selftest walks it through a run.
+  const stt=stepStates(d);
+
   document.querySelectorAll("#steps .step").forEach(el=>{
     const st=stt[el.dataset.k]||"pending";
     el.classList.remove("pending","active","done"); el.classList.add(st);
@@ -99,7 +94,7 @@ async function tick(){
   let head, sub;
   if(ph==="scraping"){ head="Scraping in progress";
     sub=(d.scrape.done||0)+" of "+(d.scrape.total||0)+" searches done"; }
-  else if(ph==="ranking"){ head="Ranking the pool";
+  else if(ph==="ranking"){ head=d.build_stage!=null?"Building · ranking the pool first":"Ranking the pool";
     const ac=d.active||{};
     const who=window._engine==="claude"?"Claude":"the local model";
     sub=ac.total? (who+" has judged "+(ac.done||0)+" of "+ac.total+" jobs")
