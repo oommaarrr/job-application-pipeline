@@ -92,6 +92,9 @@ document.querySelectorAll("th[data-sort]").forEach((th) => {
 });
 $("q").addEventListener("input", render);
 $("showDropped").addEventListener("change", render);
+// /ranking?dropped=1 opens with the dropped jobs shown (linkable, and used for
+// the README screenshot).
+if (new URLSearchParams(location.search).has("dropped")) $("showDropped").checked = true;
 
 (async function load() {
   try { DATA = await fetch("/ranking.json").then((r) => r.json()); }

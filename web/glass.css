@@ -46,13 +46,16 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
    longer button pushes the tabs aside instead of sliding under them, which
    is what the equal-width sides did (17 November 2026: "Fit ranking" lay
    over "Preferences" in a 1920 px window). */
-.wrap{max-width:1320px}
+/* Dashboard and Fit ranking use the wider page; Applications keeps its
+   reading width, and its top bar (.topbar-shell, report.css) matches the
+   others so the bar sits in the same place on every page. */
+.page-dashboard .wrap,.page-ranking .wrap,.topbar-shell{max-width:1320px}
 @media (min-width:721px){
   .topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"left right" "nav nav"}
   .topbar .nav{justify-self:center}
 }
 @media (min-width:1700px){
-  .wrap{max-width:1480px}
+  .page-dashboard .wrap,.page-ranking .wrap,.topbar-shell{max-width:1480px}
   .topbar{grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);grid-template-areas:"left nav right"}
 }
 .topbar .go.icon{width:40px;padding:0}
@@ -126,8 +129,13 @@ input[type=number],input[type=text],input[type=search],input[type=url],input:not
 .hero-status{padding:24px 26px 18px}
 .hero-head{display:flex;align-items:flex-start;gap:var(--sp-3)}
 .hero-head #stageline{flex:1;min-width:0}
-.hero-head #btnStartOver{flex:none;color:var(--dim)}
-.hero-head #btnStartOver:hover{color:var(--bad)}
+/* Start over: easy to find (a soft red-tinted pill, not a grey link), calm
+   enough not to compete with the stepper. */
+.hero-head #btnStartOver{flex:none;color:var(--bad);font-weight:var(--fw-semi);
+  background:color-mix(in srgb,var(--bad-bg) 75%,transparent);
+  border:1px solid color-mix(in srgb,var(--bad) 26%,transparent);
+  box-shadow:inset 0 1px 0 var(--glass-spec)}
+.hero-head #btnStartOver:hover{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
 .reset-dlg{width:min(620px,calc(100vw - 32px))}
 .reset-dlg .reset-row{padding:var(--sp-3) 0}
 .reset-dlg .reset-row+.reset-row{border-top-color:var(--glass-sep)}
@@ -163,7 +171,7 @@ input[type=number],input[type=text],input[type=search],input[type=url],input:not
   letter-spacing:.02em;line-height:1.5}
 .steps>.step[data-now="All done"]::after{background:var(--ok-solid);color:var(--on-color)}
 .steps .step-status{order:2;margin-top:4px;max-width:30ch;text-align:left;align-self:center}
-.steps .step-acts{justify-content:center}
+.steps .step-acts{order:3;justify-content:center}
 
 /* ---------------------------------------------------------------- the dock
  * The stages' actions, floating at the foot of the window. */

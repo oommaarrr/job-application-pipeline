@@ -102,6 +102,11 @@ is never paid to write CVs for someone who does not exist.
 
 ## The Chrome extension
 
+**It is required.** Every LinkedIn, Indeed and StepStone search runs through
+it; without it only Arbeitnow is collected. The dashboard's Setup panel checks
+that it is installed (it passes once the extension has checked in, or brought
+jobs in before).
+
 **Why an extension:** job boards block automated requests. A request that gets
 refused from a script succeeds when the page you already have open makes it,
 with your real login. The extension only reads pages you can see, at human pace.
@@ -134,7 +139,8 @@ Each site is read its own way:
 ### Saved searches
 
 The list lives in the pipeline, in `scraper/out/searches.json`, and is edited on
-the dashboard (the settings button attached to **Run scrape**). The extension pulls a copy
+the dashboard (the settings button attached to **Run scrape**, in the bar at the
+foot of the window). The extension pulls a copy
 about once a minute, on every wake of its background worker, and a run always
 uses the copy from its last pull. The popup only adds to it: **Add the page I am
 on** sends the open search to the pipeline, which refuses a duplicate (same
@@ -469,14 +475,17 @@ paragraphs, and a checklist.
 
 | Page | What it shows |
 |---|---|
-| **Dashboard** | setup checklist, the collect / rank / build steps, the funnel, per-source health, the live build |
+| **Dashboard** | setup checklist, a stepper showing where you are (Scrape, Rank, Build, Done, with **Start here**, **Now** or **Next** on the current step), the funnel, per-source health, the live build. The buttons for every step sit in one bar at the foot of the window (under the stepper on tablets and phones); **Start over** is at the top right of the status card |
 | **Fit ranking** | every job the model read: score, verdict and reason. Filter, sort, show dropped. |
 | **Applications** | one card per application: CV, letter, posting link, and applied / skipped marks |
 
 They live in `web/` as plain HTML, CSS and JavaScript: no build step, no
 framework, nothing loaded from the internet. `web/tokens.css` is the only place
-colours, type and spacing are defined. Light, dark or follow-your-system is the
-button at the top right.
+colours, type and spacing are defined. The look (translucent "Liquid Glass"
+layers over a quiet ground) is `web/glass.css`, on top of `web/app.css`; with
+"Reduce transparency" on in your system settings every layer is solid. Light,
+dark or follow-your-system is the button at the top right. The extension's
+popup has the same look, from its own copy of the tokens.
 
 ---
 

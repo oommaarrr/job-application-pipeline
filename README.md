@@ -5,15 +5,18 @@
 <br clear="left">
 
 **Finds jobs that fit you and writes a tailored CV and cover letter for each
-one, on your own computer.** Works on Mac, Windows and Linux.
+one, on your own computer.** For any field and any experience level, from a
+student looking for a working-student job to a senior manager. Works on Mac,
+Windows and Linux.
 
 [![selftest](https://github.com/oommaarrr/job-application-pipeline/actions/workflows/selftest.yml/badge.svg)](https://github.com/oommaarrr/job-application-pipeline/actions/workflows/selftest.yml)
 
-You collect postings with one click. A free AI on your laptop reads every one
-and keeps only the jobs that match you. Claude then writes a CV and a cover
-letter for each match, and you review and send them.
+You collect postings with one click. An AI reads every one against your profile
+and your **Preferences** (the roles and kinds of job you want, where you would
+work, your languages and limits), and keeps the jobs that fit you. Claude then
+writes a CV and a cover letter for each match, and you review and send them.
 
-![Dashboard: every step, and how many jobs survived each filter](docs/screenshots/dashboard.png)
+![Dashboard: where you are in the four steps, how many jobs survived each filter, and the actions in one bar at the foot](docs/screenshots/dashboard.png)
 
 <table>
   <tr>
@@ -26,7 +29,7 @@ letter for each match, and you review and send them.
   </tr>
 </table>
 
-<sub>Screenshots show a made-up person and made-up companies.</sub>
+<sub>Screenshots show a made-up person (a student looking for a working-student job in Munich) and made-up companies.</sub>
 
 ---
 
@@ -45,9 +48,9 @@ flowchart LR
 
 | Step | You do | It does |
 |---|---|---|
-| **Collect** | press **+ Arbeitnow**, and **Run scrape** for your saved LinkedIn, Indeed and StepStone searches (run in Chrome by the extension) | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
-| **Rank** | press **Rank pool** | a local AI reads every posting and drops the ones that don't fit: wrong language, too senior, wrong field |
-| **Build** | choose how many, press **Build** | Claude writes a one-page CV and a cover letter for each of the best matches |
+| **Collect** | press **Run scrape** for your saved LinkedIn, Indeed and StepStone searches (run in Chrome by the extension), and **+ Arbeitnow** | gathers postings with their full descriptions; from Arbeitnow it keeps the jobs that match your searches by meaning |
+| **Rank** | press **Rank pool** | an AI (on your computer, or Claude) reads every posting against your Preferences and drops only what breaks your own limits: a language above your level, a kind of job you did not pick, a place you would not work |
+| **Build** | choose how many, press **Start build** | Claude writes a CV (one to three pages, as your Preferences say) and a cover letter for each of the best matches |
 | **Apply** | open **Applications**, download, send | |
 | **Mark applied** | press **Mark this job applied** in the extension | that job never comes back |
 
@@ -57,7 +60,9 @@ flowchart LR
 
 - **A Mac, Windows or Linux computer.**
 - **A Claude subscription**, for writing the CVs.
-- **Google Chrome**, only for collecting from LinkedIn, Indeed or StepStone.
+- **Google Chrome with the Job Collector extension** (it comes with this
+  project). Required: LinkedIn, Indeed and StepStone are collected only through
+  it, and the dashboard's Setup panel stays red until it is installed.
 
 Everything else (Python on Windows, [Ollama](https://ollama.com), [Claude
 Code](https://claude.com/claude-code), and Git for Windows) is installed by the
@@ -108,7 +113,7 @@ Drive. macOS does not let anything started at login read those folders, so
 start-at-login would never start. `./start.sh` says so instead of offering it.
 Your home folder (for example `~/job-pipeline`) is fine.
 
-**3. Install the Chrome extension**: see [below](#chrome-extension).
+**3. Install the Chrome extension** (required): see [below](#chrome-extension).
 
 <details>
 <summary>Doing the steps by hand instead</summary>
@@ -161,7 +166,7 @@ If you said no, it runs only while that window is open (closing it stops it),
 and `start.bat` asks once more next time. Turn it on later with
 `scripts\install-agent.bat`, off with `scripts\install-agent.bat --remove`.
 
-**3. Install the Chrome extension**: see below.
+**3. Install the Chrome extension** (required): see [below](#chrome-extension).
 
 <details>
 <summary>Doing the steps by hand instead</summary>
@@ -194,10 +199,10 @@ whose description is all LLM work is found by an "AI engineer" search even thoug
 the title doesn't say so. The local model then judges each kept job against your
 profile, like any other job.
 
-![The Arbeitnow window: two searches, how close a match, and how many jobs would be kept](docs/screenshots/arbeitnow.png)
+![The Arbeitnow window: a search described in plain words, and how close a match](docs/screenshots/arbeitnow.png)
 
-**Edit them** with the settings button attached to **+ Arbeitnow** (or **Set them
-on the dashboard** in the extension). The window has three tabs:
+**Edit them** with the settings button attached to **+ Arbeitnow**, in the bar at
+the foot of the dashboard (or **Set them on the dashboard** in the extension). The window has three tabs:
 
 - **Searches.** One card per kind of job. Describe the work, not only the title:
   the role, what you would do, the field, the main tools. For example
@@ -211,7 +216,8 @@ on the dashboard** in the extension). The window has three tabs:
   **internships, working-student jobs, theses and apprenticeships**, and
   **Posted in the last** 1, 3 or 7 days. Until you change them here, the
   countries, remote and student-job switches follow your **Preferences**
-  (places, relocating, kinds of job).
+  (places, relocating, kinds of job). Changed them and want them to follow
+  again? **Use my Preferences** puts them back.
 - **Preview.** A sample of the jobs that would be kept, and the ones just below
   the line.
 
@@ -237,15 +243,15 @@ minute.
 
 The extension, **Job Collector**, collects jobs from LinkedIn, Indeed and
 StepStone and sends them to the pipeline. It reads only pages in your own
-Chrome, where you are already signed in, at a human pace. It is optional only in
-the sense that Arbeitnow works without it: **every LinkedIn, Indeed and StepStone
-search runs through it**, so without it those sites are not collected at all.
+Chrome, where you are already signed in, at a human pace. **It is required:**
+every LinkedIn, Indeed and StepStone search runs through it, so without it only
+Arbeitnow is collected. The dashboard's Setup panel checks that it is installed.
 
 Your searches are managed on the dashboard (see [Saved
 searches](#saved-searches)); the extension pulls them from the pipeline about
 once a minute and runs them when you press **Run scrape**.
 
-<img src="docs/screenshots/extension.png" alt="The extension: collect this page, mark a job applied, add the page you are on to your saved searches" width="428" align="right">
+<img src="docs/screenshots/extension.png" alt="The extension: collect this page, mark a job applied, add the page you are on to your saved searches" width="380" align="right">
 
 **Install it once:**
 
@@ -254,8 +260,9 @@ once a minute and runs them when you press **Run scrape**.
 3. Click **Load unpacked** and choose the `extension` folder inside this project
 4. Click the puzzle icon in the toolbar and pin **Job Collector**
 
-The dashboard says whether the extension is connected: under **Scrape**, and
-at the top of the **Saved searches** window.
+The dashboard says whether the extension is connected: in its Setup panel, and
+at the top of the **Saved searches** window. It updates itself with the
+pipeline: after **Update now** Chrome reloads it within a minute.
 
 **At the top of the popup:**
 
@@ -268,8 +275,8 @@ at the top of the **Saved searches** window.
 **On a job search page** (LinkedIn, Indeed or StepStone):
 
 - **Collect this page** reads every job on the results page and sends them to
-  the pipeline. Keep **Also capture descriptions** ticked: the local AI ranks
-  jobs by reading their descriptions.
+  the pipeline. Keep **Also capture descriptions** on: jobs are ranked by
+  reading their descriptions.
 - **Auto-collect _N_ pages** does the same for the next few pages of results by
   itself. **Stop** ends it at any time.
 - **Mark this job applied**: open a job you applied to and press it. That job
@@ -287,9 +294,10 @@ and sent as soon as it is back.
 ## Saved searches
 
 The searches **Run scrape** runs on LinkedIn, Indeed and StepStone. Open them
-with the settings button attached to **Run scrape** on the dashboard.
+with the settings button attached to **Run scrape**, in the bar at the foot of
+the dashboard.
 
-![The saved searches window: four searches, three on and one off](docs/screenshots/searches.png)
+![The saved searches window: four LinkedIn searches built from the Preferences, each with its switch](docs/screenshots/searches.png)
 
 The badge beside the title says whether the Chrome extension is connected. The
 window has three tabs:
@@ -338,11 +346,20 @@ remove them freely.
    The first time, Claude reads your profile and fills in your **Preferences**
    (top bar): the roles you want, the kinds of job (a regular job, a
    working-student job, an internship, a thesis, freelance work), your years of
-   experience, where you would work, the languages you speak, and how your CV
-   looks. Whatever your profile leaves open, Claude asks you there, as a few
-   short questions. Check them once. When
-   your profile changes, or an update needs a new preference, they are filled
-   in again by themselves, and anything you changed yourself stays as you set it.
+   experience, where you would work and whether you would relocate, the
+   languages you speak, whether roles that manage a team are fine, and how your
+   CV looks (named projects or results in each role, one to three pages).
+   Whatever your profile leaves open, Claude asks you there, as a few short
+   questions. Check them once. When your profile changes, or an update needs a
+   new preference, they are filled in again by themselves, and anything you
+   changed yourself stays as you set it.
+
+   ![The Preferences window: Claude's open questions, the roles you want and the kinds of job](docs/screenshots/preferences.png)
+
+   The status card shows where you are: four steps (Scrape, Rank, Build,
+   Done), finished ones ticked, and the one you are on marked **Start here**,
+   **Now** or **Next**. The buttons for every step sit in the bar at the foot of
+   the window.
 2. **Collect.** Press **+ Arbeitnow** (its searches: [Arbeitnow
    searches](#arbeitnow-searches)), and **Run scrape** for your LinkedIn,
    Indeed and StepStone searches (they need the Chrome extension; edit them
@@ -364,7 +381,7 @@ remove them freely.
    With
    the local model, jobs far from your roles are set aside first to save time.
 4. **Build.** Pick how many applications you want (5 is a good start) and press
-   **Build**. Each one uses some of your Claude usage.
+   **Start build**. Each one uses some of your Claude usage.
 5. **Apply.** Click **Applications** at the top: each job has its CV, its cover
    letter and a link to the posting.
 6. **Mark it.** After applying, open the job's page, click the extension, and
@@ -405,9 +422,9 @@ Installed before the updater existed? Download the ZIP once more and copy your
 | Your CVs and cover letters | `builder/applications/<date>/<Company>/` |
 | After **Erase everything** | moved to `builder/applications/archive/`, never deleted |
 | Jobs you applied to | `scraper/history/applied.csv` (date, company, title, link), kept forever |
-| Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the local AI judged it). A job still posted days later is judged again, and can be built |
+| Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the AI judged it). A job still posted days later is judged again, and can be built |
 
-**Erase everything and start fresh** (on the dashboard: **Start over**, at the top right of the status card)
+**Erase everything and start fresh** (on the dashboard: the red **Start over** button at the top right of the status card)
 clears the collected jobs, in the pipeline and in the extension's copy, so the
 next collection starts from zero, and moves every built CV and letter into the
 archive. It never touches your applied list or the
@@ -432,6 +449,7 @@ that happened.
 | "Your profile is filled in" is red | Run setup again and give it your CV, or `claude "/make-profile <path to your CV>"` |
 | Build stops straight away | Read the message in the build log; usually the profile or the Claude login |
 | The extension shows old things | You have two copies loaded. Remove the old one at `chrome://extensions` |
+| "Chrome extension installed" is red | Install it: `chrome://extensions` → **Developer mode** → **Load unpacked** → the `extension` folder. Then open Chrome once so it checks in |
 | Windows: Python could not be installed | Install it from python.org, tick **Add python.exe to PATH**, then double-click `start.bat` again |
 | Windows: typing `python` opens the Microsoft Store | Same fix: that is Windows' placeholder, not Python |
 | Windows: "Git for Windows is not installed" | Double-click `start.bat` again and answer **Y**, or `winget install -e --id Git.Git --source winget` |

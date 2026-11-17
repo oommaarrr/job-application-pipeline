@@ -254,11 +254,13 @@ def after_venv(py: pathlib.Path) -> int:
     say("4. Your profile")
     profile_step(claude)
 
-    say("5. Chrome extension (optional)")
-    print("  Load it by hand, once:")
+    say("5. Chrome extension (required)")
+    print("  LinkedIn, Indeed and StepStone are collected only through it.")
+    print("  Load it by hand, once, in Google Chrome:")
     print("    1. open chrome://extensions")
     print("    2. turn on Developer mode (top right)")
     print(f"    3. Load unpacked → {ROOT / 'extension'}")
+    print("    4. pin Job Collector (the puzzle icon in the toolbar)")
 
     # Offer to keep it running, so the extension never finds it offline, or at
     # least to start it now. Both optional; both can be done later.

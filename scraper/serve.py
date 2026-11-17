@@ -2389,10 +2389,11 @@ def doctor() -> dict:
         f"ollama pull {emb}", weight="optional")
 
     # --- the extension --------------------------------------------------
-    # Judged by what the EXTENSION brought in, not by whether the pool has
-    # anything: Arbeitnow fills the pool with no extension at all, and the old
-    # check then reported "Chrome extension has pushed jobs" for an extension
-    # that had never run. Optional, because Arbeitnow-only is a valid setup.
+    # Required since 17 November 2026: every LinkedIn, Indeed and StepStone
+    # search runs through it, so a pipeline without it collects from Arbeitnow
+    # alone. It passes once the extension has checked in (it does about once a
+    # minute while Chrome is open) or has ever brought jobs in, so a closed
+    # Chrome does not turn the setup red.
     browser_sources = {"linkedin", "indeed", "stepstone"}
     def _from_browser(jobs):
         return sum(1 for j in jobs if (j.get("source") or "").strip().lower() in browser_sources)
@@ -2400,17 +2401,18 @@ def doctor() -> dict:
     today = _from_browser(inbox)
     earlier = any(_from_browser(_read_json(f, {"jobs": []}).get("jobs", []))
                   for f in (INBOX / "archive").glob(JSON_GLOB)) if (INBOX / "archive").exists() else False
-    add("extension", "Chrome extension has collected jobs", bool(today) or earlier,
-        f"{today} job(s) from LinkedIn, Indeed or StepStone today" if today
-        else ("none today, but an earlier scrape exists" if earlier
-              else "no job has come from the extension yet — Arbeitnow works without it"),
-        "Load extension/ unpacked at chrome://extensions, then press Run scrape",
-        weight="optional")
+    ext = extension_state()
+    installed = ext["connected"] or bool(ext["seen_at"]) or bool(today) or earlier
+    add("extension", "Chrome extension installed", installed,
+        ("connected" if ext["connected"] else "seen earlier; Chrome is closed or idle" if ext["seen_at"]
+         else "it has collected jobs before") + (f" · {today} job(s) from LinkedIn, Indeed or StepStone today" if today else "")
+        if installed else "not installed: LinkedIn, Indeed and StepStone are collected only through it",
+        "In Chrome open chrome://extensions, turn on Developer mode, Load unpacked, and choose "
+        "the extension folder in this project")
 
     # The extension is connected but runs older code than is on disk: the
     # LinkedIn fix of 25 October 2026 sat on a friend's disk while Chrome kept
     # reading 1 job of 25 with the code it was first loaded with.
-    ext = extension_state()
     if ext["connected"] and ext["code"] in ("stale", "old"):
         add("extension-code", "Chrome runs the current extension", False,
             "Chrome is running an older copy of the extension than the one in "
