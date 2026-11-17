@@ -47,4 +47,17 @@ function stepStates(d) {
   if (at >= 0) order.slice(at + 1).forEach((k) => { st[k] = "pending"; });
   return st;
 }
-if (typeof module !== "undefined" && module.exports) module.exports = { stepStates };   // the selftest, in Node
+/*
+ * Where the person is: the running step, or else the next one to do (the
+ * first step still to come after a finished one), or else the first step.
+ * Returns [step key, "Now" | "Next" | "Start here" | "All done"] for the stepper's marker.
+ */
+function currentStep(st) {
+  const order = ["scrape", "rank", "build", "done"];
+  const running = order.find((k) => st[k] === "active");
+  if (running) return [running, "Now"];
+  if (!order.some((k) => st[k] === "done")) return ["scrape", "Start here"];
+  const next = order.find((k, i) => st[k] === "pending" && i > 0 && st[order[i - 1]] === "done");
+  return next ? [next, "Next"] : ["done", "All done"];
+}
+if (typeof module !== "undefined" && module.exports) module.exports = { stepStates, currentStep };   // the selftest, in Node

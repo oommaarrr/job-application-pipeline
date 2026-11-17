@@ -1,0 +1,248 @@
+/*
+ * Liquid Glass: the look the dashboard, Fit ranking and Applications pages
+ * share since November 2026, after the design the user picked (a Claude
+ * Design canvas, "Job Pipeline · Liquid Glass").
+ *
+ * Translucent, blurred layers float over a quiet ground: the navigation and
+ * controls (top bar, tab control, banners, the action dock, sheets) are the
+ * glass; content (cards, tables) sits on denser glass so text keeps its
+ * contrast. Loaded LAST, after app.css (and ranking.css), so it only changes
+ * the look: every colour is a token from tokens.css, no layout logic lives
+ * here except the action dock, which dashboard.html holds.
+ *
+ * Without backdrop-filter (old browsers) the glass falls back to its
+ * translucent fill, which still reads. "Reduce transparency" in the OS turns
+ * every layer solid (the media query at the end).
+ */
+
+/* ---------------------------------------------------------------- ground */
+:root{--control-h:36px;--control-h-sm:30px;--glass-blur:blur(24px) saturate(180%)}
+body{background:var(--wall) fixed,var(--bg);isolation:isolate}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(var(--wall-dot) 1px,transparent 1.2px);background-size:24px 24px;
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.35) 55%,transparent 85%);
+  mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.35) 55%,transparent 85%)}
+
+/* the recipe, shared by every glass surface */
+.topbar,.card,.dock,.stale-banner,.offline,.an-dlg,.topbar .nav{
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-edge);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 12px 32px var(--glass-drop)}
+
+/* ---------------------------------------------------------------- top bar */
+.topbar{top:12px;margin:12px 0 22px;padding:10px 12px 10px 18px;border-radius:28px;background:var(--glass)}
+.topbar .go{height:40px;padding:0 14px;border-radius:var(--radius-pill);font-size:var(--fs-md)}
+.topbar .brand-name,.topbar .health,.topbar .stamp{white-space:nowrap}
+/* The status beside the name wraps under it rather than shrinking into it
+   (topbar.css lets each item shrink to nothing, so long text spilled over the
+   name at tablet widths). The clock is the first thing to go. */
+.topbar .tb-left{flex-wrap:wrap;row-gap:4px}
+.topbar .tb-left>*{min-width:auto}
+@media (max-width:1279px){.topbar .stamp{display:none}}
+/* The glass controls are larger than the old ones. Below 1700 px the tab
+   control takes its own centred row under the status and the buttons; from
+   1700 px it sits between them on one row. Each side is at least as wide as
+   its own content (max-content), so a long status ("2 checks failing") or a
+   longer button pushes the tabs aside instead of sliding under them, which
+   is what the equal-width sides did (17 November 2026: "Fit ranking" lay
+   over "Preferences" in a 1920 px window). */
+.wrap{max-width:1320px}
+@media (min-width:721px){
+  .topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"left right" "nav nav"}
+  .topbar .nav{justify-self:center}
+}
+@media (min-width:1700px){
+  .wrap{max-width:1480px}
+  .topbar{grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);grid-template-areas:"left nav right"}
+}
+.topbar .go.icon{width:40px;padding:0}
+.topbar .go.ghost:hover{background:var(--glass-strong)}
+.topbar .brand-name{font-size:18px;font-weight:var(--fw-bold)}
+.topbar .brand-mark{width:30px;height:30px}
+.topbar .nav{gap:4px;padding:4px;border-radius:var(--radius-pill);background:var(--glass);box-shadow:inset 0 1px 0 var(--glass-spec)}
+.topbar .nav .go[aria-current="page"]{background:var(--glass-strong);color:var(--ink);font-weight:var(--fw-semi);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 4px 14px var(--glass-drop)}
+
+/* ---------------------------------------------------------------- controls */
+.go{border-radius:var(--radius-pill);padding:0 16px;background:var(--glass-strong);border-color:var(--glass-edge);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 1px 3px var(--glass-drop)}
+.go:hover:not(:disabled){background:var(--card);border-color:var(--glass-edge)}
+.go.primary{background:var(--accent);border-color:transparent;color:var(--accent-ink);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 8px 22px var(--accent-glow)}
+.go.primary:hover:not(:disabled){background:var(--accent-strong)}
+/* Disabled reads as disabled, and stays readable (4.5:1 on the glass). */
+.go:disabled,.go.primary:disabled{opacity:1;background:var(--glass);border-color:var(--glass-sep);
+  color:var(--dim);box-shadow:none;font-weight:var(--fw-medium)}
+.go.quiet,.go.ghost{background:transparent;border-color:transparent;box-shadow:none}
+.go.danger{background:var(--glass-strong)}
+.go.icon{width:var(--control-h);padding:0}
+.go.sm{border-radius:var(--radius-pill)}
+.split>.go:first-child{border-radius:var(--radius-pill) 0 0 var(--radius-pill);padding-right:12px}
+.split>.go.gear{border-radius:0 var(--radius-pill) var(--radius-pill) 0;width:40px}
+/* The focus ring follows the pill (app.css's :focus-visible squares corners). */
+.go:focus-visible{border-radius:var(--radius-pill)}
+.split>.go:first-child:focus-visible{border-radius:var(--radius-pill) 0 0 var(--radius-pill)}
+.split>.go.gear:focus-visible{border-radius:0 var(--radius-pill) var(--radius-pill) 0}
+input[type=number],input[type=text],input[type=search],input[type=url],input:not([type]),select,textarea{
+  border-radius:12px;background:var(--glass-strong);border-color:var(--glass-sep)}
+
+/* switches: the autobuild button and every .toggle, drawn like iOS */
+.go.switch::before{width:44px;height:26px;
+  background:radial-gradient(circle at 13px 50%,var(--on-color) 10.5px,transparent 11px),var(--switch-off);
+  box-shadow:inset 0 0 0 1px var(--glass-edge)}
+.go.switch[style*="--green"]::before{
+  background:radial-gradient(circle at calc(100% - 13px) 50%,var(--on-color) 10.5px,transparent 11px),var(--ok)}
+.toggle{width:46px;height:28px}
+.toggle i{background:var(--switch-off);box-shadow:inset 0 0 0 1px var(--glass-edge)}
+.toggle i::after{top:2px;left:2px;width:24px;height:24px;background:var(--on-color);
+  box-shadow:0 2px 6px var(--glass-drop-lg)}
+.toggle input:checked+i::after{transform:translateX(18px)}
+
+/* segmented control (rank engine, sheet choices) */
+.seg{border-radius:var(--radius-pill);background:var(--glass);border:1px solid var(--glass-edge);padding:3px}
+.seg label{border-radius:var(--radius-pill);padding:6px 14px}
+.seg label:has(input:checked){background:var(--glass-strong);box-shadow:inset 0 1px 0 var(--glass-spec),0 3px 10px var(--glass-drop)}
+/* Arbeitnow's strictness (Wide, Balanced, Close, each with its count) */
+.an-seg{gap:3px;padding:3px;border:1px solid var(--glass-edge);border-radius:18px;background:var(--glass)}
+.an-seg label{border:0;border-radius:15px}
+.an-seg label:has(input:checked){background:var(--glass-strong);color:var(--accent);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 3px 10px var(--glass-drop)}
+
+/* ---------------------------------------------------------------- surfaces */
+.card{background:var(--glass-strong);border-radius:24px}
+.chip,.pill,.badge{border-radius:var(--radius-pill)}
+.bar,.bar>span{border-radius:var(--radius-pill)}
+.fn .fn-track{border-radius:var(--radius-pill);background:var(--glass);box-shadow:inset 0 0 0 1px var(--glass-sep);height:22px}
+.fn .fn-fill{border-radius:var(--radius-pill);box-shadow:inset 0 1px 0 var(--glass-spec)}
+.set-list{border-color:var(--glass-sep);border-radius:18px;background:var(--glass);overflow:hidden}
+
+/* banners: glass, tinted by what they say */
+.stale-banner{border-radius:22px;padding:14px 18px;background:color-mix(in srgb,var(--warn-bg) 70%,transparent)}
+.update-banner{background:color-mix(in srgb,var(--accent-bg) 70%,transparent)}
+.offline{border-radius:22px;background:color-mix(in srgb,var(--bad-bg) 75%,transparent)}
+
+/* ---------------------------------------------------------------- the hero */
+.hero{overflow:visible}
+.hero-status{padding:24px 26px 18px}
+.hero-head{display:flex;align-items:flex-start;gap:var(--sp-3)}
+.hero-head #stageline{flex:1;min-width:0}
+.hero-head #btnStartOver{flex:none;color:var(--dim)}
+.hero-head #btnStartOver:hover{color:var(--bad)}
+.reset-dlg{width:min(620px,calc(100vw - 32px))}
+.reset-dlg .reset-row{padding:var(--sp-3) 0}
+.reset-dlg .reset-row+.reset-row{border-top-color:var(--glass-sep)}
+#stageline{font-size:30px;font-weight:var(--fw-bold);letter-spacing:-.025em;line-height:1.15}
+#stageline .sub{margin-top:4px;font-size:var(--fs-lg)}
+/* The stepper: where the person is in the pipeline. One glass track with
+ * four stops joined by a line. A finished stop is a green check and its line
+ * is filled; the running stop spins and its line moves; the stop the person
+ * is on carries a marker ("Now", "Next" or "Start here", from currentStep in
+ * steps.js, and aria-current for screen readers). Each stop's status sits
+ * under its name, so no box stands empty. */
+.steps{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;
+  margin:0 18px 20px;padding:20px 8px 18px;border:1px solid var(--glass-edge);border-radius:22px;
+  background:var(--glass);box-shadow:inset 0 1px 0 var(--glass-spec)}
+.steps>.step{display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 12px;
+  border:0;background:none;min-width:0;text-align:center}
+.steps>.step::before{content:"";display:block;position:absolute;top:17px;left:calc(50% + 26px);right:calc(-50% + 26px);
+  height:3px;border-radius:2px;background:var(--glass-sep);animation:none}
+.steps>.step:last-child::before{display:none}
+.steps>.step.done::before{background:var(--ok)}
+.steps>.step.active::before{background:repeating-linear-gradient(90deg,var(--accent) 0 10px,var(--accent-bg) 10px 16px);
+  background-size:32px 3px;animation:rail 1s linear infinite}
+.steps .step-top{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;max-width:100%}
+.steps .step i{width:36px;height:36px;font-size:15px;z-index:1;background:var(--card);border:1.5px solid var(--glass-sep)}
+.steps .step.done i{font-size:0;background:var(--ok-bg);border-color:transparent}
+.steps .step.active i{background:var(--accent-bg);border-color:transparent}
+.steps .step.current i{box-shadow:0 0 0 4px var(--accent-bg),0 0 0 5.5px var(--accent)}
+.steps .step b{font-size:15px}
+.steps .step.current b{color:var(--ink);font-weight:var(--fw-bold)}
+.steps .step small{max-width:100%;min-height:0}
+.steps>.step[data-now]::after{content:attr(data-now);order:1;padding:2px 10px;border-radius:var(--radius-pill);
+  background:var(--accent);color:var(--accent-ink);font-size:var(--fs-xs);font-weight:var(--fw-semi);
+  letter-spacing:.02em;line-height:1.5}
+.steps>.step[data-now="All done"]::after{background:var(--ok-solid);color:var(--on-color)}
+.steps .step-status{order:2;margin-top:4px;max-width:30ch;text-align:left;align-self:center}
+.steps .step-acts{justify-content:center}
+
+/* ---------------------------------------------------------------- the dock
+ * The stages' actions, floating at the foot of the window. */
+.dock{position:fixed;left:0;right:0;bottom:20px;margin:0 auto;width:fit-content;z-index:30;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:8px;
+  max-width:calc(100vw - 24px);border-radius:var(--radius-pill);background:var(--glass)}
+.dock .go{height:40px}
+.dock .split>.go.gear{width:40px}
+.dock .num-field input{width:58px;height:40px;text-align:center}
+.dock-sep{width:1px;height:26px;background:var(--glass-sep);flex:none}
+.wrap:has(#dock){padding-bottom:140px}
+.toast{bottom:96px}
+/* The next thing to do is the accent button, as it was inside the stages. */
+.wrap:has(.step[data-k="scrape"].done + .step[data-k="rank"].pending) #btnRank:not(:disabled){
+  background:var(--accent);border-color:transparent;color:var(--accent-ink);font-weight:var(--fw-semi);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 8px 22px var(--accent-glow)}
+
+/* ---------------------------------------------------------------- sheets */
+.an-dlg{border-radius:28px;background:var(--glass-sheet);
+  -webkit-backdrop-filter:blur(40px) saturate(180%);backdrop-filter:blur(40px) saturate(180%);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 40px 90px var(--glass-drop-lg)}
+.an-dlg::backdrop{background:var(--glass-scrim);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.an-head{border-bottom:0;padding:18px 20px 12px 26px}
+.an-head h2{font-size:22px;font-weight:var(--fw-bold);letter-spacing:-.02em}
+.an-foot{border-top:1px solid var(--glass-sep);padding:14px 20px 18px 26px}
+.an-body{padding:16px 26px 22px}
+.dlg-tabs{margin:0 22px;padding:4px;gap:4px;border:0;border-radius:var(--radius-pill);background:var(--glass)}
+.dlg-tabs [role=tab]{flex:1;justify-content:center;min-height:38px;padding:0 14px;border-radius:var(--radius-pill)}
+.dlg-tabs [role=tab][aria-selected=true]{background:var(--glass-strong);font-weight:var(--fw-semi);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 4px 14px var(--glass-drop)}
+.dlg-tabs [role=tab][aria-selected=true]::after{display:none}
+.an-note,.pf-ask{border-radius:16px}
+
+/* ---------------------------------------------------------------- narrow */
+@media (max-width:720px){
+  .topbar{position:static;margin:8px 0 16px;border-radius:22px;padding:10px 12px}
+  .topbar .tb-left{flex-wrap:wrap;row-gap:4px}
+  .topbar .stamp{display:none}
+  .topbar .go{height:36px;padding:0 10px;font-size:var(--fs-sm)}
+  .topbar .nav{justify-self:stretch;justify-content:space-between}
+  .topbar .nav .go{padding:0 8px}
+  .hero-status{padding:18px 18px 14px}
+  .hero-head{flex-wrap:wrap;row-gap:0}
+  .hero-head #stageline{flex-basis:100%}
+  .hero-head #btnStartOver{order:-1;margin:-6px -8px 0 auto}
+  /* the stepper turns vertical: stops down the left, their words beside them */
+  .steps{grid-template-columns:minmax(0,1fr);margin:0 14px 14px;padding:16px}
+  .steps>.step{display:grid;grid-template-columns:36px minmax(0,1fr);column-gap:12px;align-items:start;
+    justify-items:start;text-align:left;padding:0 0 16px}
+  .steps>.step:last-child{padding-bottom:0}
+  .steps .step-top{display:contents}
+  .steps .step i{grid-column:1;grid-row:1/span 4}
+  .steps .step b,.steps .step small,.steps>.step[data-now]::after,.steps .step-status{grid-column:2}
+  .steps>.step[data-now]::after{justify-self:start;margin-top:2px}
+  .steps .step-status{max-width:none;margin-top:2px}
+  .steps>.step::before{top:40px;bottom:2px;left:16.5px;right:auto;width:3px;height:auto}
+  .steps>.step.active::before{background:repeating-linear-gradient(180deg,var(--accent) 0 10px,var(--accent-bg) 10px 16px)}
+  #stageline{font-size:24px}
+}
+/* Below 1024 px the dock no longer fits on one line, and floating it would
+   cover much of a tablet or phone screen: it sits under the stepper instead,
+   where the actions used to be. */
+@media (max-width:1023px){
+  .dock{position:static;width:auto;margin:0 0 var(--sp-4);border-radius:24px;gap:6px;padding:8px}
+  .dock-sep{display:none}
+  .wrap:has(#dock){padding-bottom:var(--sp-7)}
+  .toast{bottom:var(--sp-6)}
+}
+
+/* ---------------------------------------------------------------- comfort */
+@media (prefers-reduced-transparency:reduce){
+  body{background:var(--bg)}
+  body::before{display:none}
+  .topbar,.card,.dock,.stale-banner,.offline,.an-dlg,.topbar .nav,.steps,.go,.seg,.dlg-tabs{
+    -webkit-backdrop-filter:none;backdrop-filter:none}
+  .topbar,.dock,.an-dlg,.card,.steps{background:var(--card)}
+}
+@media print{
+  body{background:none}
+  body::before,.dock{display:none}
+  .topbar,.card,.stale-banner,.steps{-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;background:none}
+}

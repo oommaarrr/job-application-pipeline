@@ -52,7 +52,7 @@ _WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 
 def _load_css() -> str:
     parts = []
-    for name in ("tokens.css", "topbar.css", "report.css"):
+    for name in ("tokens.css", "topbar.css", "report.css", "glass.css"):
         try:
             parts.append((_WEB / name).read_text(encoding="utf-8"))
         except OSError:

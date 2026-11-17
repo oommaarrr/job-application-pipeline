@@ -407,7 +407,7 @@ Installed before the updater existed? Download the ZIP once more and copy your
 | Jobs you applied to | `scraper/history/applied.csv` (date, company, title, link), kept forever |
 | Jobs collected in the last 30 days | `scraper/history/seen.csv` (title, company, and the day the local AI judged it). A job still posted days later is judged again, and can be built |
 
-**Erase everything and start fresh** (on the dashboard, under **Start over**)
+**Erase everything and start fresh** (on the dashboard: **Start over**, at the top right of the status card)
 clears the collected jobs, in the pipeline and in the extension's copy, so the
 next collection starts from zero, and moves every built CV and letter into the
 archive. It never touches your applied list or the

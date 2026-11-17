@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/web/tokens.css">
 <link rel="stylesheet" href="/web/topbar.css">
 <link rel="stylesheet" href="/web/app.css">
+<link rel="stylesheet" href="/web/glass.css">
 </head>
 <body class="page-dashboard"><div class="wrap">
 
@@ -66,7 +67,11 @@
        four stages with their actions. -->
   <section class="card hero" aria-label="Pipeline status">
     <div class="hero-status">
-      <div class="stageline" id="stageline" aria-live="polite">…</div>
+      <div class="hero-head">
+        <div class="stageline" id="stageline" aria-live="polite">…</div>
+        <button class="go ghost" id="btnStartOver" type="button" aria-haspopup="dialog"
+          title="erase the collected jobs and start fresh"><span class="ico i-trash" aria-hidden="true"></span>Start over</button>
+      </div>
       <div id="activeWrap" class="active hide">
         <div class="bar bar-lg"><span id="activeBar" style="width:0;background:var(--blue)"></span></div>
         <div id="activeLabel" class="active-label"></div>
@@ -76,43 +81,14 @@
     <ol class="steps" id="steps">
       <li class="step pending" data-k="scrape">
         <div class="step-top"><i>1</i><b>Scrape</b><small id="stScrape"></small></div>
-        <div class="step-acts">
-          <span class="split" role="group" aria-label="Job boards, through the Chrome extension">
-            <button class="go" id="btnScrape" type="button" data-act="scrape"
-              title="run the saved searches that are on, in Chrome, through the extension">&#9654; Run scrape</button>
-            <button class="go gear" id="btnSearches" type="button" aria-haspopup="dialog"
-              title="Saved searches: edit, add, switch off, share" aria-label="Saved searches"></button>
-          </span>
-          <span class="split alt" role="group" aria-label="Arbeitnow">
-            <button class="go" id="btnArbeitnow" type="button" data-act="arbeitnow"
-              title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
-            <button class="go gear" id="btnAnSettings" type="button" aria-haspopup="dialog"
-              title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"></button>
-          </span>
-        </div>
         <div class="step-status" id="ssScrape" aria-live="polite"></div>
       </li>
       <li class="step pending" data-k="rank">
         <div class="step-top"><i>2</i><b>Rank</b><small id="stRank"></small></div>
-        <div class="step-acts">
-          <button class="go" id="btnRank" type="button" data-act="rank">&#9654; Rank pool</button>
-          <div class="seg rank-engine" role="radiogroup" aria-label="Which model ranks"
-               title="Local: free and private, slow on some laptops. Claude: minutes instead of hours, uses some Claude usage.">
-            <label><input type="radio" name="rankEngine" value="local"><span>Local</span></label>
-            <label><input type="radio" name="rankEngine" value="claude"><span>Claude</span></label>
-          </div>
-        </div>
         <div class="step-status" id="ssRank" aria-live="polite"></div>
       </li>
       <li class="step pending" data-k="build">
         <div class="step-top"><i>3</i><b>Build</b><small id="stBuild"></small></div>
-        <div class="step-acts">
-          <label class="num-field" title="how many to build. The model suggests, you decide">
-            <span class="sr-only">How many to build</span>
-            <input id="buildN" type="number" min="1" max="99">
-          </label>
-          <button class="go primary" id="btnBuild" type="button" data-act="build">&#9654; Build</button>
-        </div>
         <div class="step-status" id="ssBuild" aria-live="polite"></div>
       </li>
       <li class="step pending" data-k="done">
@@ -123,6 +99,40 @@
       </li>
     </ol>
   </section>
+
+
+  <!-- ============================================================ dock
+       The actions of the four stages, in one floating glass bar at the foot
+       of the window (Liquid Glass design, November 2026). The stage cards
+       above keep each stage's state and status; the buttons keep their ids,
+       so dashboard.js drives them wherever they sit. -->
+  <div id="dock" class="dock" role="toolbar" aria-label="Pipeline actions">
+    <span class="split" role="group" aria-label="Job boards, through the Chrome extension">
+      <button class="go" id="btnScrape" type="button" data-act="scrape"
+        title="run the saved searches that are on, in Chrome, through the extension">&#9654; Run scrape</button>
+      <button class="go gear" id="btnSearches" type="button" aria-haspopup="dialog"
+        title="Saved searches: edit, add, switch off, share" aria-label="Saved searches"></button>
+    </span>
+    <span class="split alt" role="group" aria-label="Arbeitnow">
+      <button class="go" id="btnArbeitnow" type="button" data-act="arbeitnow"
+        title="pull the Arbeitnow feed. No browser needed, descriptions included">+ Arbeitnow</button>
+      <button class="go gear" id="btnAnSettings" type="button" aria-haspopup="dialog"
+        title="Arbeitnow searches and rules" aria-label="Arbeitnow searches and rules"></button>
+    </span>
+    <span class="dock-sep" aria-hidden="true"></span>
+    <button class="go" id="btnRank" type="button" data-act="rank">&#9654; Rank pool</button>
+    <div class="seg rank-engine" role="radiogroup" aria-label="Which model ranks"
+         title="Local: free and private, slow on some laptops. Claude: minutes instead of hours, uses some Claude usage.">
+      <label><input type="radio" name="rankEngine" value="local"><span>Local</span></label>
+      <label><input type="radio" name="rankEngine" value="claude"><span>Claude</span></label>
+    </div>
+    <span class="dock-sep" aria-hidden="true"></span>
+    <label class="num-field" title="how many to build. The model suggests, you decide">
+      <span class="sr-only">How many to build</span>
+      <input id="buildN" type="number" min="1" max="99">
+    </label>
+    <button class="go primary" id="btnBuild" type="button" data-act="build">&#9654; Build</button>
+  </div>
 
   <!-- ============================================================ attention
        Only present when /progress reports errors. Sits directly under the
@@ -243,21 +253,29 @@
   </section>
 
   <!-- ============================================================ start over
-       Moved here from the extension popup, 28 September 2026. Erasing also
-       clears the copy the extension keeps, at its next check-in. -->
-  <section id="resetCard" class="card reset-card" aria-labelledby="resetTitle">
-    <div class="card-head"><h2 id="resetTitle">Start over</h2></div>
-    <div class="reset-row">
-      <button class="go danger" id="btnEraseAll" type="button">Erase everything and start fresh</button>
-      <p class="muted">Clears the collected jobs and forgets that they were ever seen, so the next
-        scrape returns them all. Built CVs and letters move to applications/archive (never deleted);
-        your applied list, your 30-day job history and your saved searches are kept.</p>
+       Opened by "Start over" at the top of the status card (moved up from the
+       foot of the page, 17 November 2026, so it is easy to reach). Moved here
+       from the extension popup, 28 September 2026. Erasing also clears the
+       copy the extension keeps, at its next check-in. Behaviour: searches.js. -->
+  <dialog id="resetDlg" class="an-dlg reset-dlg" aria-labelledby="resetTitle">
+    <div class="an-head">
+      <h2 id="resetTitle">Start over</h2>
+      <span class="grow"></span>
+      <button class="go quiet icon" id="resetClose" type="button" aria-label="Close">&#10005;</button>
     </div>
-    <div class="reset-row">
-      <button class="go" id="btnEraseJobs" type="button">Erase collected jobs only</button>
-      <p class="muted">Unlike the button above, the pipeline still remembers these jobs as seen.</p>
+    <div class="an-body">
+      <div class="reset-row">
+        <button class="go danger" id="btnEraseAll" type="button">Erase everything and start fresh</button>
+        <p class="muted">Clears the collected jobs and forgets that they were ever seen, so the next
+          scrape returns them all. Built CVs and letters move to applications/archive (never deleted);
+          your applied list, your 30-day job history and your saved searches are kept.</p>
+      </div>
+      <div class="reset-row">
+        <button class="go" id="btnEraseJobs" type="button">Erase collected jobs only</button>
+        <p class="muted">Unlike the button above, the pipeline still remembers these jobs as seen.</p>
+      </div>
     </div>
-  </section>
+  </dialog>
 
   <!-- ============================================================ saved searches
        Opened by "Searches" beside Run scrape, or /dashboard#searches. The

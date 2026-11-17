@@ -52,9 +52,15 @@ async function tick(){
   // The step row: web/steps.js, where the selftest walks it through a run.
   const stt=stepStates(d);
 
+  const [here, hereWord]=currentStep(stt);
   document.querySelectorAll("#steps .step").forEach(el=>{
     const st=stt[el.dataset.k]||"pending";
     el.classList.remove("pending","active","done"); el.classList.add(st);
+    // The stepper's "you are here" marker, said to screen readers as the current step.
+    const now=el.dataset.k===here;
+    el.classList.toggle("current",now);
+    if(now){ el.setAttribute("aria-current","step"); el.dataset.now=hereWord; }
+    else { el.removeAttribute("aria-current"); delete el.dataset.now; }
   });
   $("stScrape").textContent = (d.searches_total? (d.searches_done+"/"+d.searches_total+" searches"):"");
   $("stRank").textContent   = rrr? (rrr.buildable+" buildable") : (poolN>0? (poolN+" to judge"):"");
@@ -552,7 +558,7 @@ $("autobuild").onclick=async()=>{
   if(r) toast("Autobuild "+(r.autobuild?"ON — builds after each scrape":"OFF"));
   tick();
 };
-document.querySelectorAll("#steps .go[data-act]").forEach(b=>b.onclick=()=>
+document.querySelectorAll("#steps .go[data-act], #dock .go[data-act]").forEach(b=>b.onclick=()=>
   (b.dataset.act==="scrape"&&window._scraping)?stopScrape():doAct(b.dataset.act));
 async function stopScrape(){
   if(!confirm("Stop the scrape now?\n\nJobs already collected are kept. Run scrape later continues from the search it stopped at.")) return;

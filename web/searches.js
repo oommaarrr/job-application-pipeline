@@ -481,6 +481,7 @@ async function erase(hard){
       "Your applied list, your 30-day job history (jobs from earlier days stay skipped) and your saved searches are NOT touched."
     : "Erase the collected jobs?\n\nThe pipeline still remembers them as seen. Your applied list, built CVs and saved searches are not touched.";
   if(!confirm(text)) return;
+  $("resetDlg").close();
   const b=$(hard?"btnEraseAll":"btnEraseJobs"); b.disabled=true;
   const r=await post("/reset",{hard});
   b.disabled=false;
@@ -493,4 +494,9 @@ async function erase(hard){
 }
 $("btnEraseAll").onclick=()=>erase(true);
 $("btnEraseJobs").onclick=()=>erase(false);
+// The Start over window, opened from the top of the status card.
+const resetDlg=$("resetDlg");
+$("btnStartOver").onclick=()=>resetDlg.showModal();
+$("resetClose").onclick=()=>resetDlg.close();
+resetDlg.addEventListener("click",e=>{ if(e.target===resetDlg) resetDlg.close(); });   // the backdrop
 })();

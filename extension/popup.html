@@ -7,7 +7,8 @@
 /* ------------------------------------------------------------------ tokens
  * A copy of web/tokens.css. The popup cannot load files from web/, so the
  * values are duplicated here. When tokens.css changes, paste it over this
- * block; nothing below this block contains a colour literal.
+ * block; nothing below this block contains a colour literal (the Liquid Glass
+ * layer at the end uses the same --glass-* and --wall tokens as the dashboard).
  */
 :root {
   color-scheme: light;
@@ -74,6 +75,24 @@
   --shadow-sm: 0 1px 1px rgba(16, 19, 24, .04);
   --shadow:    0 1px 2px rgba(16, 19, 24, .05), 0 1px 3px rgba(16, 19, 24, .04);
   --shadow-lg: 0 12px 32px -8px rgba(16, 19, 24, .28), 0 2px 6px rgba(16, 19, 24, .08);
+
+  /* ---- Liquid Glass (glass.css): translucent layers over a quiet ground ---- */
+  --wall: radial-gradient(1100px 620px at 12% -12%, rgba(150, 166, 192, .30), transparent 62%),
+          radial-gradient(900px 520px at 100% 8%, rgba(176, 184, 200, .26), transparent 60%),
+          radial-gradient(700px 500px at 30% 100%, rgba(160, 185, 195, .18), transparent 65%),
+          linear-gradient(180deg, #f4f6f9 0%, #e7ebf0 100%);
+  --wall-dot:     rgba(30, 40, 60, .08);
+  --glass:        rgba(255, 255, 255, .50);
+  --glass-strong: rgba(255, 255, 255, .74);
+  --glass-sheet:  rgba(250, 251, 253, .84);
+  --glass-edge:   rgba(255, 255, 255, .78);
+  --glass-spec:   rgba(255, 255, 255, .95);
+  --glass-drop:   rgba(28, 36, 54, .10);
+  --glass-drop-lg: rgba(20, 30, 70, .26);
+  --glass-scrim:  rgba(20, 24, 40, .18);
+  --glass-sep:    rgba(20, 24, 33, .12);
+  --switch-off:   rgba(120, 128, 145, .34);
+  --accent-glow:  rgba(79, 70, 229, .32);
 
   /* ---- type ---- */
   --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -162,6 +181,24 @@
     --shadow-sm: 0 1px 1px rgba(0, 0, 0, .3);
     --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .02);
     --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .4);
+
+    /* ---- Liquid Glass, dark ---- */
+    --wall: radial-gradient(1100px 620px at 12% -12%, rgba(92, 112, 150, .28), transparent 62%),
+            radial-gradient(900px 520px at 100% 8%, rgba(70, 84, 112, .24), transparent 60%),
+            radial-gradient(700px 500px at 30% 100%, rgba(60, 90, 110, .16), transparent 65%),
+            linear-gradient(180deg, #141922 0%, #0d1016 100%);
+    --wall-dot:     rgba(255, 255, 255, .05);
+    --glass:        rgba(34, 38, 52, .48);
+    --glass-strong: rgba(28, 32, 44, .74);
+    --glass-sheet:  rgba(24, 28, 38, .86);
+    --glass-edge:   rgba(255, 255, 255, .12);
+    --glass-spec:   rgba(255, 255, 255, .16);
+    --glass-drop:   rgba(0, 0, 0, .35);
+    --glass-drop-lg: rgba(0, 0, 0, .6);
+    --glass-scrim:  rgba(0, 0, 0, .35);
+    --glass-sep:    rgba(255, 255, 255, .12);
+    --switch-off:   rgba(255, 255, 255, .18);
+    --accent-glow:  rgba(143, 147, 251, .30);
   }
 }
 :root[data-theme="dark"] {
@@ -197,6 +234,24 @@
   --shadow-sm: 0 1px 1px rgba(0, 0, 0, .3);
   --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .02);
   --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .4);
+
+  /* ---- Liquid Glass, dark ---- */
+  --wall: radial-gradient(1100px 620px at 12% -12%, rgba(92, 112, 150, .28), transparent 62%),
+          radial-gradient(900px 520px at 100% 8%, rgba(70, 84, 112, .24), transparent 60%),
+          radial-gradient(700px 500px at 30% 100%, rgba(60, 90, 110, .16), transparent 65%),
+          linear-gradient(180deg, #141922 0%, #0d1016 100%);
+  --wall-dot:     rgba(255, 255, 255, .05);
+  --glass:        rgba(34, 38, 52, .48);
+  --glass-strong: rgba(28, 32, 44, .74);
+  --glass-sheet:  rgba(24, 28, 38, .86);
+  --glass-edge:   rgba(255, 255, 255, .12);
+  --glass-spec:   rgba(255, 255, 255, .16);
+  --glass-drop:   rgba(0, 0, 0, .35);
+  --glass-drop-lg: rgba(0, 0, 0, .6);
+  --glass-scrim:  rgba(0, 0, 0, .35);
+  --glass-sep:    rgba(255, 255, 255, .12);
+  --switch-off:   rgba(255, 255, 255, .18);
+  --accent-glow:  rgba(143, 147, 251, .30);
 }
 
 /* Reduced motion: every duration in the system goes to zero. Components
@@ -328,6 +383,51 @@ details>*+*{margin-top:8px}
 .nav{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
 .nav button{padding:6px 4px;font-size:12px}
 .nav button:disabled{opacity:.55}
+
+/* ------------------------------------------------------------------ Liquid Glass
+ * The same look as the dashboard (web/glass.css, November 2026): a quiet
+ * ground, translucent blurred surfaces, pill controls. */
+body{background:var(--wall),var(--bg);min-height:100%;position:relative;isolation:isolate}
+body::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(var(--wall-dot) 1px,transparent 1.2px);background-size:22px 22px;
+  -webkit-mask-image:linear-gradient(180deg,#000,transparent 70%);mask-image:linear-gradient(180deg,#000,transparent 70%)}
+header,.group,details{background:var(--glass-strong);border:1px solid var(--glass-edge);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 10px 26px var(--glass-drop)}
+header{margin:10px 10px 0;padding:12px 14px;border-radius:20px}
+.mark{width:24px;height:24px}
+h1{font-size:15px;font-weight:var(--fw-bold)}
+.stats{gap:8px;background:none;border:0;border-radius:0;overflow:visible}
+.stat{background:var(--glass);border:1px solid var(--glass-edge);border-radius:14px;box-shadow:inset 0 1px 0 var(--glass-spec)}
+.nav{gap:4px;padding:3px;border-radius:var(--radius-pill);background:var(--glass);border:1px solid var(--glass-edge)}
+.nav button{height:30px;border:0;border-radius:var(--radius-pill);background:transparent;box-shadow:none}
+.nav button:hover:not(:disabled){background:var(--glass-strong)}
+.status{padding:0 20px}
+.panel{gap:10px;padding:10px}
+.group,details{border-radius:18px}
+.sep{background:var(--glass-sep)}
+button{height:34px;border-radius:var(--radius-pill);background:var(--glass-strong);border-color:var(--glass-edge);
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 1px 3px var(--glass-drop)}
+button:hover:not(:disabled){background:var(--card);border-color:var(--glass-edge)}
+button.primary{height:40px;background:var(--accent);border-color:transparent;
+  box-shadow:inset 0 1px 0 var(--glass-spec),0 8px 20px var(--accent-glow)}
+button.primary:hover:not(:disabled){background:var(--accent-strong)}
+button:disabled,button.primary:disabled{opacity:1;background:var(--glass);border-color:var(--glass-sep);color:var(--dim);box-shadow:none}
+button.stop{border-color:transparent;box-shadow:inset 0 1px 0 var(--glass-spec)}
+button.sm{height:28px;border-radius:var(--radius-pill)}
+input[type=number],input[type=text],select{border-radius:10px;background:var(--glass-strong);border-color:var(--glass-sep)}
+.built{border-radius:var(--radius-pill)}
+/* the checkbox as a switch, like the dashboard's */
+.opt input[type=checkbox]{-webkit-appearance:none;appearance:none;width:38px;height:22px;border-radius:var(--radius-pill);
+  background:radial-gradient(circle at 11px 50%,var(--on-color) 9px,transparent 9.5px),var(--switch-off);
+  box-shadow:inset 0 0 0 1px var(--glass-edge);transition:background var(--dur-fast) var(--ease)}
+.opt input[type=checkbox]:checked{background:radial-gradient(circle at calc(100% - 11px) 50%,var(--on-color) 9px,transparent 9.5px),var(--accent)}
+button:focus-visible{border-radius:var(--radius-pill)}
+.track{height:5px;background:var(--glass-sep)}
+@media (prefers-reduced-transparency:reduce){
+  body{background:var(--bg)} body::before{display:none}
+  header,.group,details{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--card)}
+}
 </style>
 </head>
 <body>

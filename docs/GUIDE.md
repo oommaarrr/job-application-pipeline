@@ -189,7 +189,7 @@ roles in your first place. Edit or delete them freely.
 
 ### Start over
 
-On the dashboard. **Erase everything and start fresh** clears every collected
+On the dashboard: press **Start over** at the top right of the status card. **Erase everything and start fresh** clears every collected
 job, so the next collection returns everything again, and moves **every built
 CV and cover letter** from `builder/applications/` into
 `builder/applications/archive/`. Nothing is deleted. Your applied list and saved

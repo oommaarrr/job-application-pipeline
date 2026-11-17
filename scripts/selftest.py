@@ -1334,15 +1334,17 @@ def step_row_check(work: pathlib.Path) -> None:
         ("a new scrape after a finished build", {"phase": "scraping", **last,
                                                  "searches_done": 1}, "scrape"),
     ]
-    js = ("const {stepStates}=require(process.argv[1]);"
+    js = ("const {stepStates,currentStep}=require(process.argv[1]);"
           "const run=JSON.parse(process.argv[2]);"
-          "console.log(JSON.stringify(run.map(([,d])=>stepStates(d))));")
+          "console.log(JSON.stringify(run.map(([,d])=>stepStates(d))));"
+          "console.log(JSON.stringify(run.map(([,d])=>currentStep(stepStates(d)))));")
     r = subprocess.run([node, "-e", js, str(work / "web" / "steps.js"), json.dumps(run)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     try:
-        got = json.loads(r.stdout.strip().splitlines()[-1])
+        got = json.loads(r.stdout.strip().splitlines()[-2])
+        here = json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
-        got = []
+        got, here = [], []
     wrong = [f"{label}: {st}" for (label, _, want), st in zip(run, got) if not _steps_right(st, want)]
     done = dict(zip([x[0] for x in run], got))
     if done.get("built", {}).get("done") != "done":
@@ -1352,6 +1354,15 @@ def step_row_check(work: pathlib.Path) -> None:
     check(len(got) == len(run) and not wrong,
           "the step row follows the run: one running step, never back to Rank during a build, "
           "nothing ticked after it", "; ".join(wrong)[:600] or (r.stdout + r.stderr)[-300:])
+    # Where the person is: the running step says Now, a finished step's
+    # successor says Next, a fresh pipeline says Start here.
+    marks = dict(zip([x[0] for x in run], [tuple(h) for h in here]))
+    want_marks = {"idle, nothing yet": ("scrape", "Start here"), "scraping": ("scrape", "Now"),
+                  "ranked, idle": ("build", "Next"), "the build writes": ("build", "Now"),
+                  "built": ("done", "All done")}
+    off = {k: marks.get(k) for k, v in want_marks.items() if marks.get(k) != v}
+    check(not off, "the stepper marks where the person is: Start here, Now, Next, All done",
+          json.dumps(off) or (r.stdout + r.stderr)[-300:])
 
 
 def _steps_right(st: dict, want: str | None) -> bool:

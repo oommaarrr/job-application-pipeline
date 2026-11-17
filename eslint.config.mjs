@@ -38,15 +38,15 @@ export default [
   },
   {
     files: ["web/dashboard.js"],
-    // stepStates comes from steps.js, loaded just before it.
-    languageOptions: { globals: { stepStates: "readonly" } },
+    // stepStates and currentStep come from steps.js, loaded just before it.
+    languageOptions: { globals: { stepStates: "readonly", currentStep: "readonly" } },
     rules: { "no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^dlgTabs$" }] },
   },
   {
     // Loaded by the page, and by the selftest in Node through module.exports.
     files: ["web/steps.js"],
     languageOptions: { globals: { module: "readonly" } },
-    rules: { "no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^stepStates$" }] },
+    rules: { "no-unused-vars": ["error", { ...unused, varsIgnorePattern: "^(stepStates|currentStep)$" }] },
   },
   {
     files: ["web/arbeitnow.js", "web/searches.js", "web/profile-chat.js", "web/preferences.js"],
