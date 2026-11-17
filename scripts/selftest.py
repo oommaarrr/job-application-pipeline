@@ -1862,6 +1862,12 @@ def any_person_section(py: pathlib.Path, work: pathlib.Path) -> None:
         res["seed"] = [len(first), n, [r["label"] for r in after], "location=Dubai" in after[0]["url"],
                        again, moved, kept]
         res["host"] = ss.clean_url("https://ae.linkedin.com/jobs/search/?keywords=x")
+        import profile_chat as pc
+        pa = json.dumps({"made_at": "1", "preferences": {"x": 1}})
+        res["chat_prefs"] = [len(pc.changes({"preferences.json": pa},
+                                            {"preferences.json": json.dumps({"made_at": "2", "preferences": {"x": 2}})})),
+                             len(pc.changes({"preferences.json": pa},
+                                            {"preferences.json": json.dumps({"made_at": "1", "preferences": {"x": 3}})}))]
         fr = {"languages": [{"language": "French", "level": "native"}, {"language": "English", "level": "b1"}]}
         res["lang_or"] = [R.language_gap({"languages_required": [{"language": n, "level": "c1"}]}, fr)
                           for n in ("French or English", "English and French")]
@@ -1926,6 +1932,9 @@ def any_person_section(py: pathlib.Path, work: pathlib.Path) -> None:
           and r["lang_or"][0] == "" and "English C1" in r["lang_or"][1],
           "a LinkedIn country address is read on www; 'French or English' needs only one of them",
           json.dumps([r["host"], r["lang_or"]]))
+    check(r["chat_prefs"] == [0, 1],
+          "Edit profile shows its own edits to preferences.json, not the pipeline's rewrite "
+          "that lands while Claude is working", json.dumps(r["chat_prefs"]))
     check(r["example_copy"] == [False, [], "missing"],
           "journey, first install with Claude unavailable: the example's copied preferences are "
           "not used as the person's (nothing is ruled out, and they are still due)",

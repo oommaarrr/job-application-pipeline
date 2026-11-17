@@ -153,7 +153,7 @@ $("anRemote").onchange=e=>{ state.remote_elsewhere=e.target.checked; setDirty(tr
 $("anUsePrefs").onclick=()=>{ const pr=meta.preference_rules; if(!pr) return;
   state.countries=pr.countries.slice(); state.remote_elsewhere=pr.remote_elsewhere; state.student_roles=pr.student_roles;
   render(); setDirty(true); schedulePreview(0);
-  status("Set from your Preferences. Save, and these follow your Preferences from now on."); };
+  status("From your Preferences. Save to keep them in step."); };
 $("anPrefsLink").onclick=e=>{ e.preventDefault(); if(tryClose()) $("btnPrefs").click(); };
 $("anStudent").onchange=e=>{ state.student_roles=e.target.checked; setDirty(true); schedulePreview(0); };
 $("anDays").onchange=e=>{ state.days=+e.target.value; setDirty(true); schedulePreview(0); };

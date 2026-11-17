@@ -246,6 +246,14 @@ function extNote(x){
 
 /* ------------------------------------------------------------ the list */
 const ICON=(name,label)=>'<span class="ico i-'+name+'" aria-hidden="true"></span><span class="sr-only">'+label+'</span>';
+// One line per row; the full explanation is on hover and shown when a search
+// is added or its address changed.
+function shortWarn(url,warn){
+  if(siteOf(url)!=="LinkedIn") return String(warn).split(/(?<=\.)\s/)[0];
+  let loc=""; try{ loc=(new URL(url).searchParams.get("location")||"").trim(); }catch(e){}
+  return loc?"Place not pinned yet: open it once on LinkedIn to confirm “"+loc+"”."
+            :"No place set: LinkedIn will search the country on your profile.";
+}
 function render(flash){
   const box=$("srList");
   const pages=$("srPages");
@@ -263,7 +271,7 @@ function render(flash){
     return '<div class="sr-row'+(on?"":" off")+(flash===i?" flash":"")+'" data-i="'+i+'">'+
       '<span class="sr-site s-'+esc((site||"x").toLowerCase())+'">'+esc(site||"?")+'</span>'+
       '<div class="sr-main"><div class="sr-name">'+name+'</div><div class="sr-sum">'+esc(describe(q.url))+'</div>'+
-        (issue.warn?'<div class="sr-warn">'+esc(issue.warn)+'</div>':'')+'</div>'+
+        (issue.warn?'<div class="sr-warn" title="'+esc(issue.warn)+'">'+esc(shortWarn(q.url,issue.warn))+'</div>':'')+'</div>'+
       '<span class="toggle" title="'+(on?"On: runs with Run scrape":"Off: skipped, not deleted")+'">'+
         '<input type="checkbox" class="sr-on" aria-label="Run '+name+'"'+(on?" checked":"")+'><i aria-hidden="true"></i></span>'+
       '<div class="sr-tools">'+

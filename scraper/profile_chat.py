@@ -119,12 +119,28 @@ def snapshot(folder: pathlib.Path) -> dict[str, str]:
     return out
 
 
+def _written_by_pipeline(a: str | None, b: str | None) -> bool:
+    """preferences.json rewritten by the bridge itself while Claude was
+    working (Claude writing it from the changed profile, or a Save on the
+    dashboard), not edited in this chat. It is not this message's change, and
+    Undo must not put it back (17 November 2026: on a slow Mac the rewrite
+    after one edit landed during the next message)."""
+    try:
+        x, y = json.loads(a or "{}"), json.loads(b or "{}")
+    except ValueError:
+        return False
+    return isinstance(x, dict) and isinstance(y, dict) and (
+        x.get("made_at") != y.get("made_at") or x.get("saved_at") != y.get("saved_at"))
+
+
 def changes(before: dict[str, str], after: dict[str, str]) -> list[dict]:
     """What a message did, per file: added, changed or removed, with a diff."""
     out = []
     for rel in sorted(set(before) | set(after)):
         a, b = before.get(rel), after.get(rel)
         if a == b:
+            continue
+        if rel == "preferences.json" and _written_by_pipeline(a, b):
             continue
         diff = "".join(difflib.unified_diff(
             (a or "").splitlines(keepends=True), (b or "").splitlines(keepends=True),
