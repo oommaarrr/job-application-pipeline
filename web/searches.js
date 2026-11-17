@@ -257,9 +257,13 @@ function render(flash){
     box.querySelector("[data-go-add]").onclick=()=>tabs.show("srTabAdd");
   } else box.innerHTML=draft.searches.map((q,i)=>{
     const site=siteOf(q.url), on=q.enabled!==false, name=esc(q.label);
+    // Where it really searches, said on every row: a search written for the
+    // person from their Preferences may not have LinkedIn's place id yet.
+    const issue=placeIssue(q.url,geoMapOf(meta.geo));
     return '<div class="sr-row'+(on?"":" off")+(flash===i?" flash":"")+'" data-i="'+i+'">'+
       '<span class="sr-site s-'+esc((site||"x").toLowerCase())+'">'+esc(site||"?")+'</span>'+
-      '<div class="sr-main"><div class="sr-name">'+name+'</div><div class="sr-sum">'+esc(describe(q.url))+'</div></div>'+
+      '<div class="sr-main"><div class="sr-name">'+name+'</div><div class="sr-sum">'+esc(describe(q.url))+'</div>'+
+        (issue.warn?'<div class="sr-warn">'+esc(issue.warn)+'</div>':'')+'</div>'+
       '<span class="toggle" title="'+(on?"On: runs with Run scrape":"Off: skipped, not deleted")+'">'+
         '<input type="checkbox" class="sr-on" aria-label="Run '+name+'"'+(on?" checked":"")+'><i aria-hidden="true"></i></span>'+
       '<div class="sr-tools">'+

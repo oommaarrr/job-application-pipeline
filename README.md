@@ -208,8 +208,10 @@ on the dashboard** in the extension). The window has three tabs:
 - **Rules.** **On site or hybrid in:** The countries you'd work in. Leave it empty to keep
   jobs from anywhere. A job whose location names no country is always kept.
   Then switches for **fully remote jobs based in other countries** and for
-  **internships, working-student jobs, theses and apprenticeships** (off by
-  default), and **Posted in the last** 1, 3 or 7 days.
+  **internships, working-student jobs, theses and apprenticeships**, and
+  **Posted in the last** 1, 3 or 7 days. Until you change them here, the
+  countries, remote and student-job switches follow your **Preferences**
+  (places, relocating, kinds of job).
 - **Preview.** A sample of the jobs that would be kept, and the ones just below
   the line.
 
@@ -217,8 +219,8 @@ Every change updates the count at the bottom of the window ("38 jobs would be
 kept"); click it to see the preview. **Save and pull** saves and collects them.
 
 **Where the first searches come from.** You don't have to write them. The first
-time, the local model reads your profile and suggests the searches, the
-countries, remote and internships. It works in small steps and checks each
+time, the local model reads your profile and suggests the searches (the
+countries, remote and student jobs come from your Preferences). It works in small steps and checks each
 answer: a search your profile rules out is left out, and a country only counts
 if your profile names a place in it. Press **Fill from my profile** to have it
 suggest again, for example after you change your profile. Once you save, the
@@ -322,8 +324,10 @@ Whenever a LinkedIn search is open, the extension tells the pipeline which id
 your place has, and the builder uses it from then on. Until then the builder
 says so; opening the search once with **Preview on the site** is enough.
 
-A new install starts with three example searches, one per site. Edit or remove
-them freely.
+A new install starts with three example searches, one per site. As soon as your
+Preferences are filled in, those examples (if you have not changed them) are
+replaced with LinkedIn searches for your own roles in your first place. Edit or
+remove them freely.
 
 ---
 
@@ -331,6 +335,14 @@ them freely.
 
 1. Open the dashboard: <http://127.0.0.1:8765/dashboard>. With start-at-login
    on it is always there; otherwise run `./start.sh` (Windows: `start.bat`) first.
+   The first time, Claude reads your profile and fills in your **Preferences**
+   (top bar): the roles you want, the kinds of job (a regular job, a
+   working-student job, an internship, a thesis, freelance work), your years of
+   experience, where you would work, the languages you speak, and how your CV
+   looks. Whatever your profile leaves open, Claude asks you there, as a few
+   short questions. Check them once. When
+   your profile changes, or an update needs a new preference, they are filled
+   in again by themselves, and anything you changed yourself stays as you set it.
 2. **Collect.** Press **+ Arbeitnow** (its searches: [Arbeitnow
    searches](#arbeitnow-searches)), and **Run scrape** for your LinkedIn,
    Indeed and StepStone searches (they need the Chrome extension; edit them
@@ -343,8 +355,14 @@ them freely.
      the build already uses. Minutes instead of hours, no extra setup; it uses
      some of your Claude usage.
 
-   Either way, jobs far from your target roles (your Arbeitnow searches) are
-   set aside first, so neither model reads a gardener or a car mechanic.
+   Every job is judged against your profile and your **Preferences**: a sales
+   role is kept for a salesperson, a German posting for someone who speaks
+   German, a Werkstudent job for a student who wants one, and what is dropped is
+   dropped for your own reasons (a language above your level, more years than
+   your limit, a kind of job you did not pick, a place you would not work). No
+   rule in the code decides on its own; the build follows the same Preferences.
+   With
+   the local model, jobs far from your roles are set aside first to save time.
 4. **Build.** Pick how many applications you want (5 is a good start) and press
    **Build**. Each one uses some of your Claude usage.
 5. **Apply.** Click **Applications** at the top: each job has its CV, its cover
@@ -383,6 +401,7 @@ Installed before the updater existed? Download the ZIP once more and copy your
 | What | Where |
 |---|---|
 | Your profile | `profiles/me/`, never uploaded anywhere |
+| Your preferences | `profiles/me/preferences.json`, edited under **Preferences** on the dashboard |
 | Your CVs and cover letters | `builder/applications/<date>/<Company>/` |
 | After **Erase everything** | moved to `builder/applications/archive/`, never deleted |
 | Jobs you applied to | `scraper/history/applied.csv` (date, company, title, link), kept forever |

@@ -41,7 +41,8 @@ things change:
    results to `applications/<date>/batch.shard-<APPLY_SHARD>.json`, in the same
    shape as `batch.json`. The runner merges the shards afterwards.
 3. **Run `check_spread.py` only on the payloads you wrote**, listed explicitly,
-   never a glob that could catch another shard's half-written file.
+   never a glob that could catch another shard's half-written file. (It only
+   reports; it never fails.)
 
 ## 0. Check the ranker's work, briefly
 
@@ -49,8 +50,9 @@ Read `../scraper/out/ollama_rank.txt`. It lists the roles sent to you, the ones
 each gate dropped, and the ones that passed but fell below the cut.
 
 Spend your attention on the roles you are about to build. You will read their
-descriptions in full in step 1, so check what the local model extracted
-(language level, years, role family) against the text. Skim the dropped
+descriptions in full in step 1, so check what the ranking model extracted
+(languages required, years, kind of job, whether it is one of their roles)
+against the text. Skim the dropped
 sections; if one is plainly wrong, say so in one line so the rule can be fixed.
 Do not build it. If nothing looks wrong, say that in one line.
 
@@ -68,7 +70,12 @@ yours, renumber `rank` across the whole list.
 .venv/bin/python shortlist.py --full
 ```
 
-Read every description it prints. A CV written from a job title is worthless.
+It prints **the person's limits** first: the roles they want, the kinds of job,
+their languages and levels, the most years a posting may ask for, where and how
+they would work, whether management roles are fine, and how their CV is shaped.
+Claude wrote these from their profile, or the person set them. They are the only
+yardstick in steps 3 and 5. Then read every description it prints. A CV written
+from a job title is worthless.
 Always use `.venv/bin/python`, never bare `python3`, which may not have the PDF
 libraries. That path works on Windows too: setup adds it to the venv for Git
 Bash (if it is ever missing there, `.venv/Scripts/python.exe` is the same
@@ -80,7 +87,11 @@ Invoke the `cv-builder` skill. **If it does not load, stop and say so** rather
 than writing from memory.
 
 Then read the candidate's profile: `profile/identity.md`, `profile/profile.md`
-and `profile/reference/PROJECTS.md`. For a role that leans heavily on one
+and `profile/reference/PROJECTS.md`. Rows copied word for word from the
+fictional example (Demand forecasting service, Document retrieval pipeline, Model release gate, Open-source contribution, with the example's own descriptions, such as "a 14%
+MAPE reduction") are not this person's work, even when they sit beside their
+own: ignore those rows, use the rest, and say so in your report. A row of their
+own that only shares a name is theirs. For a role that leans heavily on one
 project, also read that project's file in `profile/reference/projects/`. These
 files are the only source of facts. Nothing goes on a document that is not in
 them.
@@ -93,20 +104,29 @@ Read `reference/DOCUMENT_WORKFLOW.md` and follow it for every document.
 
 ## 3. Decide what to drop
 
-The local model is good at extraction and blunt at nuance. **Drop a role only
-when reading its description shows a fact the ranker got wrong**, and name it:
+The ranker already held every role against the person's limits. **Drop a role
+only when reading its description shows it breaks one of those limits** (the
+block `shortlist.py` printed first), and name which:
 
-- a language requirement above what `profile/identity.md` lists;
-- more years explicitly required than the profile's own rule allows;
-- a core capability the profile lists as out of lane;
-- a different field entirely;
-- a genuinely organisational role (Head of, Director, VP, or a job that is
-  really managing people), not merely an inflated title;
+- it requires a language above the level they have (a limit only when their
+  languages are listed);
+- it explicitly requires more years than their "most years" limit (only when
+  there is one);
+- it is a kind of job they did not choose (an internship when they want regular
+  jobs, a full-time job when they only want working-student jobs), only when
+  their kinds are set;
+- it is work their limits say is not theirs, or a different field from every
+  role they want;
+- it is mainly managing a team, only when their limits say management roles are
+  not wanted;
+- it is somewhere, or a way of working, their limits rule out;
 - no usable description was captured;
 - already applied, or a duplicate of another role in this pool.
 
-**Judge the description, never the title.** "Senior", "Staff" and "Lead" are
-not blockers on their own. A missing company name is not a reason to drop
+There is no other reason to drop a role. A limit that is not set rules nothing
+out. **Judge the description, never the title.** "Senior", "Head of",
+"Director", "Lead", "Intern" or "Werkstudent" decide nothing on their own; the
+description and the limits do. A missing company name is not a reason to drop
 either: the description almost always names the employer, so take it from there.
 
 ## 4. Report before you build
@@ -141,14 +161,15 @@ limit), and a role with documents but no record was once built a second time
 the next day. The runner reads these files if the batch record never gets
 written.
 
-`check_spread.py` fails on a project with more than two bullets, fewer than four
-distinct projects, or a topic masquerading as a project label. Fix the payload
-until it passes; never edit the checker. `build_docs.py` refuses em dashes, en
-dashes, double hyphens and an underfilled page. When it refuses a thin CV, add
-real content from the profile (skill, section 3), never spacing. Set
-`ALLOW_SHORT_CV=1` only when the profile genuinely has nothing more to add, and
-then say so in that role's `flags` in `batch.json` and name what the profile is
-missing, so the user can fill it in.
+`check_spread.py` prints how the experience bullets spread across roles and
+projects; use it to see whether one thing dominates the page. It never fails.
+`build_docs.py` rewrites any dash it finds and says so, and prints how many
+pages the CV is and how full a one-page CV is. Nothing in either refuses a
+build: shaping the CV is your judgement, from the skill and the person's limits.
+When a one-page CV is noticeably short, add real content from the profile
+(skill, section 3) if there is more that fits the posting, never spacing. When
+the profile genuinely has nothing more, keep it and say so in that role's
+`flags`, naming what the profile is missing, so the user can fill it in.
 
 Every CV in the batch must read differently from the others: its own tagline,
 summary, lead project and skills lines.
@@ -164,7 +185,8 @@ for p in sorted(pathlib.Path('applications/<date>').rglob('*.pdf')):
 "
 ```
 
-A letter is one page; a CV is at most two.
+A letter is one page. A CV is at most the number of pages in the person's
+limits; if it runs longer, cut the weakest content and build it again.
 
 ## 6. Record the batch
 

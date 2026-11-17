@@ -1,6 +1,6 @@
 ---
 name: cv-builder
-description: Write a tailored, one-page CV and a cover letter for a specific job posting, from the facts in the active profile. Use it whenever a CV, resume, Lebenslauf, cover letter or Anschreiben is being written or reviewed, when judging whether a role fits, or when phrasing an experience or project for an application.
+description: Write a tailored CV and a cover letter for a specific job posting, from the facts in the active profile. Use it whenever a CV, resume, Lebenslauf, cover letter or Anschreiben is being written or reviewed, when judging whether a role fits, or when phrasing an experience or project for an application.
 ---
 
 # CV builder
@@ -23,8 +23,13 @@ links at `profile/`:
 |---|---|
 | `profile/identity.md` | name as it goes on the CV, contact line, location, availability, languages, **employment history and education exactly as they go on the CV**, anything private (work authorisation, salary expectation) |
 | `profile/profile.md` | what they are looking for and what they have done, in brief |
+| `profile/preferences.json` | their limits and CV settings: roles, kinds of job, languages, years, places, management, CV shape and length. `shortlist.py` prints them in plain words |
 | `profile/reference/PROJECTS.md` | every project, what it proves, the real numbers |
 | `profile/reference/projects/` | long-form write-ups, read when a posting leans on that project |
+
+Rows in `PROJECTS.md` copied word for word from the fictional example (Demand forecasting service, Document retrieval pipeline, Model release gate, Open-source contribution,
+with the example's own descriptions) were left over from the template and are not
+this person's: ignore them. A row of their own that only shares a name is theirs.
 
 **Never write a fact that is not in those files.** Not a date, not a number, not
 a tool, not an employer. If something the posting needs is missing, say so and
@@ -39,8 +44,18 @@ only to answer a direct question in chat.
 
 ## 1. CV structure
 
-One A4 page, filled top to bottom. Two pages only when a genuinely full second
-page is justified by the role.
+As long as the person's preferences say (`cv_max_pages`): one A4 page filled top
+to bottom, or two or three when they have the career to fill them (long CVs are
+normal in academia, medicine, law and for senior executives). How experience is
+shown follows `cv_shape`:
+
+- **projects**: bullets lead with the named thing that was built or delivered
+  (engineering, research, design).
+- **achievements**: bullets are results inside each role, led by the outcome and
+  its number (sales, marketing, operations, finance, management, consulting).
+
+Students and early careers use whichever shows their real work best: an
+internship, a working-student job, a thesis, university or side projects.
 
 ```
 NAME
@@ -52,7 +67,7 @@ Summary: two or three sentences.
 EXPERIENCE
 Title, Employer                          (most relevant role first)
 Month Year to Month Year · City · one-line context
-• Project label: what was built, the outcome, a number.
+• Label: what was built or achieved, the outcome, a number.
 • ...
 
 SELECTED PROJECTS                        (only when they earn the space)
@@ -110,8 +125,8 @@ One page. Four short paragraphs, each doing one job:
 
 1. **Why this company, specifically.** Something true about what they build or
    the problem the role solves. Never a sentence that fits any company.
-2. **The strongest evidence, mapped to their top requirement.** One project, one
-   outcome, one number.
+2. **The strongest evidence, mapped to their top requirement.** One project or
+   result, one outcome, one number.
 3. **Range.** A second, different piece of evidence covering the next
    requirement, so the letter is not one story told twice.
 4. **Close.** Availability and a plain invitation to talk. No begging, no
@@ -139,32 +154,42 @@ Address a named person only when the posting names one.
 ## 3. Fill the page
 
 A one-page CV that stops two thirds of the way down reads as a thin candidate,
-whatever is on it. `build_docs.py` measures the rendered page and **refuses** a
-single-page CV that fills less than 90% of it.
+whatever is on it. `build_docs.py` measures the rendered page and prints a note
+when a single-page CV fills less than 90% of it. It never refuses: you decide.
 
-When it refuses, the fix is always **more real content**, never bigger spacing
-or longer words. Reach for, in order:
+When the page is short and the profile has more that fits the posting, add
+**real content**, never bigger spacing or longer words. Reach for what this
+person has:
 
-- more experience bullets, across **four or more distinct projects**, at most two
-  bullets per project;
-- a **Selected Projects** section, chosen for this posting;
-- an Education block with content: the full thesis title, the focus, the grade
-  if it is strong;
+- more experience bullets, from more of their roles, projects or results;
+- for a projects CV, a **Selected Projects** section chosen for this posting;
+- for an achievements CV, key accounts, deals, campaigns, launches,
+  certifications or awards from the profile;
+- an Education block with content: the thesis or focus, the grade if it is
+  strong, relevant coursework for a student;
 - three to five **labelled skills lines** instead of one or two.
+
+When the profile has nothing more, a shorter page is better than padding: keep
+it and name what is missing in the role's flags.
 
 ---
 
 ## 4. Writing bullets
 
-**Open every experience bullet with a bold label naming the real project**:
-`<b>Demand forecasting service:</b> ...`. The label says what was built before
-the sentence says anything else, and it lets a skimming reader count projects.
+**For a projects CV, open each experience bullet with a bold label naming the
+real project**: `<b>Demand forecasting service:</b> ...`. The label says what
+was built before the sentence says anything else, and it lets a skimming reader
+count projects. A label names a project, never a topic: "Reliability:" on a
+third bullet about the same system looks like range and is not.
 
-- **A label names a project, never a topic.** "Reliability:" or "Evaluation:"
-  used to fit a third bullet about the same system onto the page looks like
-  range and is not. `check_spread.py` fails these.
-- **At most two bullets per project, at least four distinct projects.** One
-  system described five times reads as one system, not a portfolio.
+**For an achievements CV, lead each bullet with the result**: `Grew the DACH
+mid-market book from EUR 1.2M to EUR 2.1M ARR in 18 months`. A bold label is
+optional (a key account, a campaign); a bold number alone is fine.
+
+- **Show range.** One system or one deal described five times reads as one
+  thing, not a career. Spread the page across what the person has done, as far
+  as their profile allows; how many bullets each gets is your judgement for
+  this posting. `check_spread.py` shows the spread; it never fails.
 - **At most one "war story" per CV** (a bug found, an incident fixed), and only
   when the posting asks for debugging, reliability or security. Two read as a
   pattern.
@@ -226,8 +251,12 @@ models into production and keeping them honest there."
   in the company name are a failure. Pull these levers every time, in order of
   impact: tagline, summary, which projects lead, bullet order, which skills lines
   appear and the words inside them.
-- **The document language follows the posting.** A German posting gets German
-  documents.
+- **The document language follows the posting when the person can work in it.**
+  A German posting gets German documents when their German (in their
+  preferences) is B2 or better, native, or not stated. When it is lower, write in
+  the strongest language of theirs that the posting accepts (most often English),
+  and say so in the role's flags: a CV in a language they cannot interview in
+  misrepresents them.
 - **Languages by market.** List a language when it helps in that market, for
   example a regional language for a role serving that region. Do not pad the line
   with languages that change nothing.
@@ -259,8 +288,9 @@ reviewed it"). That reads as a complaint about a former employer and makes the
 work sound unvetted.
 
 **Seniority comes from scope, not from years.** Describe what was owned and
-decided, and let the reader conclude. Do not state a year count, and do not hedge
-the level when the scope supports it.
+decided, and let the reader conclude. State a year count only when the person's
+preferences say to (`cv_state_years`), and then only the true one from the
+profile. Do not hedge the level when the scope supports it.
 
 ---
 
@@ -284,12 +314,17 @@ the level when the scope supports it.
 Give a short, honest assessment in chat for each role: strong fit, fit with soft
 flags, or a hard blocker. This is the one place gaps are named plainly.
 
-**Hard blockers: do not build, say why.**
-- A language requirement above what `identity.md` lists.
-- More years required than the profile's own rule allows (stated in the posting,
-  not guessed from a title).
-- A different field entirely, per the profile's "not their lane" list.
-- A people-management role when the profile targets individual contributor work.
+**Do not build, say why, only when the posting breaks one of the person's own
+limits** (`preferences.json`, printed by `shortlist.py`):
+- a language required above the level they have, when their languages are listed;
+- more years explicitly required than their limit, when they set one;
+- a kind of job they did not choose (internship, working student, regular,
+  freelance...), when their kinds are set;
+- work their limits say is not theirs, or a field far from every role they want;
+- a role that is mainly managing a team, only when management is not wanted;
+- a place or way of working they rule out.
+
+A limit that is not set rules nothing out, and nothing else is a blocker.
 
 **Soft flags: build anyway, and keep them out of the documents.** A preferred
 language, a stack the candidate has not used, a stretch in seniority. Mirror
@@ -307,15 +342,16 @@ worth taking. The description's own requirements decide.
 - [ ] Name, contact line and dates match `identity.md` exactly.
 - [ ] Tagline mirrors the job title. Summary is two or three sentences, leads
       with a fact, and uses none of the banned words.
-- [ ] Experience bullets open with a bold project label; four or more distinct
-      projects; no project has more than two bullets; at most one war story.
+- [ ] Bullets follow the CV shape (named projects, or results inside each role),
+      the page shows range across what the person has done, at most one war story.
 - [ ] The posting's key terms and named stack appear on the page.
 - [ ] No weakness or gap is stated anywhere in the CV or the letter.
 - [ ] Every bullet passes the interview test.
 - [ ] It reads differently from the previous CV in the batch.
-- [ ] Education carries the full thesis or focus line.
+- [ ] Education carries the thesis or focus line when the profile has one.
 - [ ] Three to five labelled skills lines; languages chosen for this market.
 - [ ] No em dashes, en dashes or double hyphens. Black text, no tables.
-- [ ] The CV fills its page (`build_docs.py` built it without an underfill error),
-      and the letter fits on one page.
-- [ ] Document language matches the posting.
+- [ ] The CV is no longer than the person's page limit and a one-page CV fills
+      its page when the profile has the content; the letter fits on one page.
+- [ ] Document language matches the posting, or the person's strongest language the
+      posting accepts when their level in the posting's language is below B2.

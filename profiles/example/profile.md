@@ -31,9 +31,14 @@ feature pipelines, experiment tracking.
 Computer vision, embedded ML, frontend-led roles, pure DevOps or SRE, and data
 annotation or AI-training contractor work.
 
-## The two hard rules
+## What rules a job out
 
-1. **Years.** Out only when the description itself states five or more years
-   required. A number quoted for any other reason does not count.
-2. **Titles are noise.** "Senior" or "Lead" alone is not a blocker; only roles
-   whose actual job is managing a team and owning headcount are out.
+- **Years.** Only when the description itself requires five or more years. A
+  number quoted for any other reason does not count.
+- **Managing a team.** Roles whose actual job is managing people and owning
+  headcount. "Senior" or "Lead" in a title alone is fine.
+- **Kinds of job.** Regular jobs only: no internships, working-student jobs or
+  freelance gigs.
+
+Everything else is open. The pipeline turns this page into your Preferences on
+the dashboard, where any of it can be changed.

@@ -96,14 +96,17 @@ LEVELS = {
 }
 DEFAULT_LEVEL = "balanced"
 
-# Internships, working-student jobs, theses and apprenticeships, from the title
-# or from the job types Arbeitnow lists ("Working student", "Intern", ...).
-STUDENT_TITLE = re.compile(
-    r"\b(werkstudent\w*|praktikum|praktikant\w*|intern|internship|trainee\w*|"
-    r"thesis|abschlussarbeit|bachelorarbeit|masterarbeit|ausbildung|"
-    r"auszubildende\w*|duales?\b|dual stud\w*|schüler\w*|apprentice\w*)\b", re.I)
-STUDENT_TYPE = re.compile(
-    r"student|intern|trainee|apprentic|werkstudent|praktik|ausbildung|combined-study", re.I)
+# Internships, working-student jobs, theses and apprenticeships, by the job
+# type the employer picked on Arbeitnow, matched whole ("Working student",
+# "Intern"). Until November 2026 this also searched titles for words like
+# "trainee", "intern" or "Ausbildung", which dropped graduate trainee
+# programmes, a "Leiter Ausbildung" and anything typed "International". A job
+# not typed as one still reaches the ranker, which says what kind of job it is
+# and holds that against the person's own kinds of job.
+STUDENT_TYPES = {"working student", "werkstudent", "werkstudentin", "student", "student job",
+                 "student college", "hilfstätigkeit / student", "intern", "internship",
+                 "praktikum", "praktikant", "apprenticeship", "ausbildung", "azubi",
+                 "thesis", "abschlussarbeit", "bachelor thesis", "master thesis"}
 # Hybrid is not remote. Checked on the location text and on Arbeitnow's own
 # remote flag; the model is never asked, because a word match cannot be wrong
 # about whether a word is there.
@@ -191,21 +194,110 @@ def normalise(raw) -> dict:
     except (TypeError, ValueError):
         days = MAX_DAYS
     s["days"] = days if days in DAY_CHOICES else MAX_DAYS
-    for k in ("made_by", "profile", "profile_sig", "saved_at", "model"):
+    for k in ("made_by", "rules_by", "profile", "profile_sig", "saved_at", "model"):
         if isinstance(raw.get(k), str):
             s[k] = raw[k]
     return s
 
 
+STUDENT_KINDS = ("working_student", "internship", "thesis", "apprenticeship")
+
+
+def rules_from_preferences() -> dict | None:
+    """
+    Where, and whether student jobs, from the person's preferences.json
+    (written by Claude from the whole profile, or set by them), or None when
+    there is none yet. November 2026: these rules used to be guessed by the
+    local model from profile.md alone, which missed "open to relocating" in
+    identity.md and dropped every Werkstudent job unless the profile said so.
+    Wherever the preferences leave room, the job is kept: the ranker reads
+    every description against the same preferences and makes the real call.
+    """
+    try:
+        import preferences
+        st = preferences.load()
+    except Exception:                                        # noqa: BLE001
+        return None
+    if not st["exists"] and not st["example"]:
+        return None
+    pr = st["preferences"]
+    kinds = pr.get("job_kinds") or []
+    places = pr.get("places") or []
+    codes: list[str] = []
+    for pl in places:
+        if not pl.get("country"):
+            continue
+        if pl["country"] not in codes:
+            codes.append(pl["country"])
+    # A place with no single country (the EU, Europe) for on-site work, or
+    # being willing to move: no country limit at all.
+    open_anywhere = (pr.get("relocate") or not places
+                     or any(not pl.get("country") and set(pl.get("work") or []) & {"onsite", "hybrid"}
+                            for pl in places))
+    remote_elsewhere = bool(pr.get("remote_anywhere")
+                            or any(not pl.get("country") and "remote" in (pl.get("work") or [])
+                                   for pl in places))
+    return {"countries": [] if open_anywhere else codes,
+            "remote_elsewhere": True if open_anywhere else remote_elsewhere,
+            "student_roles": not kinds or any(k in STUDENT_KINDS for k in kinds)}
+
+
+RULE_KEYS = ("countries", "remote_elsewhere", "student_roles")
+
+
+def _same_rules(s: dict, rules: dict) -> bool:
+    return (set(s.get("countries") or []) == set(rules["countries"])
+            and bool(s.get("remote_elsewhere")) == rules["remote_elsewhere"]
+            and bool(s.get("student_roles")) == rules["student_roles"])
+
+
+def _follow_preferences(s: dict) -> dict:
+    """
+    The rules (countries, remote from abroad, student jobs) follow the
+    preferences unless the person set them differently in the Arbeitnow window
+    (rules_by "you"). Saving the window with a reworded search but the rules as
+    the preferences have them keeps them following, so a later change in
+    Preferences still reaches Arbeitnow. Settings saved before rules_by existed
+    and saved by hand stay as they were saved.
+    """
+    rules = rules_from_preferences()
+    owned = s.get("rules_by") == "you" or (s.get("made_by") == "you" and not s.get("rules_by"))
+    if owned or not rules:
+        return s
+    return {**s, **rules, "rules_from": "preferences"}
+
+
 def load() -> dict | None:
-    """The saved settings, or None when there are none yet."""
+    """The saved settings, or None when there are none yet. Unless the person
+    saved them, the rules (countries, student jobs) follow their preferences."""
     raw = _read(SETTINGS, None)
-    return normalise(raw) if isinstance(raw, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    s = normalise(raw)
+    if s.get("made_by") == "you" and not s.get("rules_by"):
+        # Saved by hand before rules_by existed (November 2026). Rules that are
+        # what the preferences say anyway follow them from now on; others stay
+        # the person's. Decided once and written, so a later change in the
+        # preferences cannot flip it.
+        rules = rules_from_preferences()
+        if rules is not None:
+            s["rules_by"] = "preferences" if _same_rules(s, rules) else "you"
+            try:
+                _write(SETTINGS, {**raw, "rules_by": s["rules_by"]})
+            except OSError:
+                pass
+    return _follow_preferences(s)
 
 
 def save(settings: dict, made_by: str = "you") -> dict:
     s = normalise(settings)
     s["made_by"] = made_by
+    rules = rules_from_preferences()
+    # With no preferences yet, rules left at the window's defaults are not a
+    # choice: they follow the preferences once those exist.
+    base = empty_settings()
+    s["rules_by"] = ("preferences" if made_by != "you"
+                     or _same_rules(s, rules or {k: base[k] for k in RULE_KEYS}) else "you")
     # Which profile these were saved against, so the dashboard can say when
     # the profile has changed since.
     s["profile"], s["profile_sig"] = profile_signature()
@@ -386,11 +478,14 @@ def suggest(log=print) -> dict:
     searches, student = _searches_from(profile, log)
     if not searches:
         raise RuntimeError("the local model suggested no search it could stand behind")
-    codes, remote = _where_from(profile)
+    rules = rules_from_preferences()
+    if rules is None:
+        codes, remote = _where_from(profile)
+        rules = {"countries": codes, "remote_elsewhere": remote if codes else True,
+                 "student_roles": student}
     name, sig = profile_signature()
-    s = normalise({"searches": searches, "strictness": DEFAULT_LEVEL,
-                   "countries": codes, "remote_elsewhere": remote if codes else True,
-                   "student_roles": student, "days": MAX_DAYS})
+    s = normalise({"searches": searches, "strictness": DEFAULT_LEVEL, **rules,
+                   "days": MAX_DAYS})
     s.update(made_by="model", profile=name, profile_sig=sig, model=_model())
     return s
 
@@ -643,9 +738,9 @@ def rule_out(job: dict, s: dict, places: dict, now: float | None = None) -> str:
     now = now or time.time()
     if (job.get("created_at") or 0) < now - s["days"] * 86400:
         return "old"
-    if not s["student_roles"] and (
-            STUDENT_TITLE.search(job.get("title") or "")
-            or any(STUDENT_TYPE.search(t) for t in job.get("types") or [])):
+    if not s["student_roles"] and any(
+            re.sub(r"\s+", " ", str(t)).strip().lower() in STUDENT_TYPES
+            for t in job.get("types") or []):
         return "student"
     if s["countries"]:
         codes = places.get((job.get("location") or "").strip(), [])

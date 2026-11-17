@@ -139,6 +139,32 @@ if "--append-system-prompt" in args and "job-application profile" in args[args.i
         reply = "What are the dates?"
     print(json.dumps({"type": "result", "is_error": False, "result": reply, "session_id": sid}))
     sys.exit(0)
+if "--system-prompt" in args and "job seeker's profile" in args[args.index("--system-prompt") + 1]:
+    # Job preferences (preferences.py): the profile on stdin, one JSON object
+    # back. The role comes from a "SELFTEST ROLE:" line when the profile has
+    # one, and a marketing role is shaped by achievements, like Claude would.
+    import re
+    text = sys.stdin.read()
+    with open(pathlib.Path(__file__).with_name("prefs-calls.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"args": args, "chars": len(text)}) + "\n")
+    if mode == "prefsfail": print("Invalid API key · Please run /login"); sys.exit(1)
+    m = re.findall(r"SELFTEST ROLE: (.+)", text)
+    role = m[-1].strip() if m else "Machine Learning Engineer"
+    ans = {"target_roles": [role, "Ärztliche Beratung"], "not_my_field": ["Computer vision"],
+           "years_experience": 3, "max_years_asked": 4,
+           "languages": [{"language": "English", "level": "C1"}, {"language": "German", "level": "a2"}],
+           "places": [{"place": "Berlin", "country": "DE", "work": ["onsite", "hybrid", "remote"]},
+                      {"place": "EU", "country": "", "work": ["remote"]}],
+           "remote_anywhere": None, "relocate": False, "accept_management": False,
+           "job_kinds": ["working_student"] if "Werkstudent" in role else ["regular", "Freelance"],
+           "cv_shape": "achievements" if "Marketing" in role else "projects",
+           "cv_max_pages": 1, "cv_state_years": False,
+           "open_questions": [{"field": "accept_management",
+                               "question": "Would you take a role that mainly manages a team?"},
+                              {"field": "nonsense", "question": "  "}]}
+    print(json.dumps({"type": "result", "is_error": False,
+                      "result": "```json\n" + json.dumps(ans, ensure_ascii=False) + "\n```"}))
+    sys.exit(0)
 if "--output-format" in args:
     # The ranker's Claude engine: postings on stdin, answers by id. Like real
     # Haiku now and then, a batch leaves its last posting unanswered.
@@ -146,8 +172,8 @@ if "--output-format" in args:
     ids = re.findall(r"=== POSTING (\S+) ===", sys.stdin.read())
     if mode == "rankhang": time.sleep(3600)       # a call that never answers
     keep = ids[:-1] if len(ids) > 1 else ids
-    ans = [{"id": i, "german_level": "none", "years_required": 2, "role_family": "ai_engineer",
-            "is_management": False, "berlin": True, "remote_germany": False, "fit": 80,
+    ans = [{"id": i, "role_match": "yes", "years_required": 2, "languages_required": [],
+            "is_management": False, "location": "best", "job_kind": "regular", "fit": 80,
             "reason": "selftest"} for i in keep]
     print(json.dumps({"type": "result", "is_error": False, "result": json.dumps({"answers": ans})}))
     sys.exit(0)
@@ -285,8 +311,8 @@ def answering_ollama(port: int, models: list[dict] | None = None) -> None:
                 return self._send({"embeddings": [[0.0, 1.0] if "Gardener" in t else [1.0, 0.0]
                                                   for t in texts]})
             self._send({"response": json.dumps({
-                "german_level": "none", "years_required": 2, "role_family": "ml",
-                "is_management": False, "berlin": True, "remote_germany": False,
+                "role_match": "yes", "years_required": 2, "languages_required": [],
+                "is_management": False, "location": "best", "job_kind": "regular",
                 "fit": 80, "reason": "selftest answer"})})
 
         def log_message(self, *a):
@@ -309,7 +335,8 @@ class Env:
         self.py = py
         self.env = dict(os.environ, BRIDGE_PORT=str(port), NO_NOTIFY="1",
                         PATH=str(fakebin) + os.pathsep + os.environ.get("PATH", ""),
-                        PYTHONUTF8="1", RETRY_GAP_S="1", AUTOBUILD="0")
+                        PYTHONUTF8="1", RETRY_GAP_S="1", AUTOBUILD="0",
+                        PREFS_EVERY_S="2", PREFS_LOCAL="0")
         self.env.pop("PROFILE_DIR", None)
         if IS_WIN:
             # The fake claude runs no shell commands, so it needs no Git Bash;
@@ -800,8 +827,8 @@ def arbeitnow_ollama(port: int) -> None:
                                   {"name": "the EU", "countries": [], "office": False}],
                        "remote_abroad": True}
             else:
-                ans = {"german_level": "none", "years_required": 2, "role_family": "ml",
-                       "is_management": False, "berlin": True, "remote_germany": False,
+                ans = {"role_match": "yes", "years_required": 2, "languages_required": [],
+                       "is_management": False, "location": "best", "job_kind": "regular",
                        "fit": 80, "reason": "selftest answer"}
             self._send({"response": json.dumps(ans)})
 
@@ -932,7 +959,7 @@ def arbeitnow_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
           json.dumps(s)[:400])
     check(s.get("countries") == ["DE"] and s.get("remote_elsewhere") is True
           and s.get("student_roles") is False,
-          "location read from the profile's own words (a country it never names is ignored)",
+          "the location and student-job rules follow the preferences Claude wrote",
           json.dumps({k: s.get(k) for k in ("countries", "remote_elsewhere", "student_roles")}))
     check(3 in hits["pages"] and hits["429"] == 1,
           "reads past a stale first job and waits out a 429", str(hits))
@@ -1053,10 +1080,20 @@ def searches_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
     """
     sc = work / "scraper"
     st = e.get(SEARCHES_LIST_ROUTE)[1]
-    check(st.get("ok") and len(st.get("searches", [])) == 3
-          and {("linkedin" in q["url"], "indeed" in q["url"], "stepstone" in q["url"]).index(True)
-               for q in st["searches"]} == {0, 1, 2},
-          "a new install starts with one example search per site", json.dumps(st)[:300])
+    # A new install starts with one example per site (any_person_section
+    # checks that); by now the bridge has written this person's preferences,
+    # so the untouched examples have become searches for their own roles.
+    check(st.get("ok") and [q["label"] for q in st.get("searches", [])]
+          == ["Machine Learning Engineer in Berlin", "Ärztliche Beratung in Berlin"]
+          and all("linkedin.com" in q["url"] for q in st["searches"]),
+          "the first-install examples became searches for the person's own roles and place",
+          json.dumps(st)[:300])
+    examples = json.loads(ps(py, work, """
+        import json, saved_searches as ss
+        print(json.dumps(ss.EXAMPLES))
+    """))
+    e.post("/searches/save", {"searches": examples})
+    st = e.get(SEARCHES_LIST_ROUTE)[1]
     check(not st["extension"]["connected"], "no extension has checked in yet",
           json.dumps(st.get("extension")))
 
@@ -1486,6 +1523,645 @@ def profile_chat_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None
     check(blocked == "True", "the fictional example profile is never edited", blocked)
 
 
+PREFERENCES_ROUTE = "/preferences"
+PREFS_JSON = "preferences.json"
+
+
+def verdict_section(py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    The ranker's verdict reads the person's preferences, not one engineer's
+    constants. User journeys: a senior salesperson, a native German speaker, a
+    student who only wants Werkstudent jobs, an engineer who wants regular jobs,
+    and someone with no preferences at all. Every drop is one of the person's
+    own limits; nothing is decided by a title. Pure functions, no model.
+    """
+    out = ps(py, work, r'''
+        import json, rank_ollama_real as R
+        sales = {"target_roles": ["Account Executive", "Head of Sales"], "not_my_field": ["retail sales"],
+                 "years_experience": 8, "max_years_asked": None,
+                 "languages": [{"language": "English", "level": "native"}],
+                 "places": [{"place": "Berlin", "country": "DE", "work": ["onsite", "hybrid", "remote"]}],
+                 "remote_anywhere": False, "accept_management": True, "job_kinds": []}
+        german = {**sales, "languages": [{"language": "German", "level": "native"},
+                                         {"language": "English", "level": "c1"}],
+                  "max_years_asked": 4, "accept_management": False}
+        student = {"target_roles": ["Werkstudent Marketing"], "not_my_field": [], "years_experience": 0,
+                   "max_years_asked": None, "languages": [{"language": "German", "level": "native"}],
+                   "places": [{"place": "München", "country": "DE", "work": ["onsite", "hybrid"]}],
+                   "remote_anywhere": False, "accept_management": True,
+                   "job_kinds": ["working_student", "internship"]}
+        engineer = {**sales, "target_roles": ["AI Engineer"], "accept_management": False,
+                    "job_kinds": ["regular", "freelance"]}
+        nothing = R.prefs_mod.defaults()
+        def ans(**kw):
+            a = {"role_match": "yes", "years_required": None, "languages_required": [],
+                 "is_management": False, "location": "best", "job_kind": "regular", "fit": 80, "reason": "r"}
+            a.update(kw)
+            return R.normalise(a)
+        anything = ans(is_management=True, years_required=15, job_kind="gig",
+                       languages_required=[{"language": "Japanese", "level": "native"}])
+        res = {
+          "sales_head": R.verdict(ans(is_management=True, years_required=10), sales)[0],
+          "sales_needs_de": R.verdict(ans(languages_required=[{"language": "German", "level": "C1"}]), sales),
+          "native_de_ok": R.verdict(ans(languages_required=[{"language": "German", "level": "native"}]), german)[0],
+          "own_years_limit": R.verdict(ans(years_required=5), german),
+          "own_mgmt": R.verdict(ans(is_management=True), german)[0],
+          "place": R.verdict(ans(location="no"), sales)[0],
+          "place_open": R.verdict(ans(location="no"), {**sales, "places": []})[0],
+          "off": R.verdict(ans(role_match="no", reason="retail"), sales),
+          "no_langs_listed": R.verdict(ans(languages_required=[{"language": "German", "level": "c1"}]),
+                                       {**sales, "languages": []})[0],
+          "student_ws": R.verdict(ans(job_kind="working_student"), student)[0],
+          "student_intern": R.verdict(ans(job_kind="internship"), student)[0],
+          "student_regular": R.verdict(ans(job_kind="regular"), student),
+          "eng_intern": R.verdict(ans(job_kind="internship"), engineer),
+          "eng_gig": R.verdict(ans(job_kind="gig"), engineer)[0],
+          "eng_freelance": R.verdict(ans(job_kind="freelance"), engineer)[0],
+          "eng_head": R.verdict(ans(is_management=True), engineer)[0],
+          "nothing_set": R.verdict(anything, nothing)[0],
+          "level_unknown": R.verdict(ans(languages_required=[{"language": "English", "level": "c1"}]),
+                                     {**engineer, "languages": R.prefs_mod.normalise({"languages": [
+                                         {"language": "German", "level": "B1"},
+                                         {"language": "English", "level": None}]})["languages"]}),
+          "level_unknown_text": R.preferences_text({**engineer, "languages": [{"language": "English", "level": ""}]}),
+          "no_title_rule": not hasattr(R, "not_a_job") and not hasattr(R, "NOT_A_JOB"),
+          "score": R.score(ans(years_required=10), sales),
+          "score_close": R.score(ans(role_match="close", location="ok"), sales),
+          "junk": R.normalise({"role_match": "maybe", "location": 3, "languages_required": "German",
+                               "job_kind": "summer job"}),
+          "old_gig": R.normalise({"gig_work": True})["job_kind"],
+          "prompt": "Roles they want: Account Executive; Head of Sales" in R.candidate_text("P", sales)
+                    and "Languages they speak: English native" in R.preferences_text(sales)
+                    and "Kinds of job they want: working-student job, internship" in R.preferences_text(student)
+                    and "Kinds of job they want: any kind" in R.preferences_text(sales),
+        }
+        print(json.dumps(res))
+    ''')
+    try:
+        r = json.loads(out)
+    except ValueError:
+        check(False, "the verdict functions run", out[-600:])
+        return
+    check(r["sales_head"] == "passed" and r["no_title_rule"],
+          "a Head of Sales role asking 10 years passes for a senior salesperson; no rule reads "
+          "the title", json.dumps(r)[:300])
+    check(r["sales_needs_de"][0] == "language" and "German C1" in r["sales_needs_de"][1]
+          and r["native_de_ok"] == "passed" and r["no_langs_listed"] == "passed",
+          "languages are held against the person's own levels (and none listed rules nothing out)",
+          json.dumps(r)[:300])
+    check(r["own_years_limit"][0] == "years" and "your limit is 4" in r["own_years_limit"][1]
+          and r["own_mgmt"] == "management",
+          "the years limit and management rule are the person's own", json.dumps(r)[:300])
+    check(r["student_ws"] == "passed" and r["student_intern"] == "passed"
+          and r["student_regular"][0] == "job-kind" and "regular job" in r["student_regular"][1]
+          and "working-student job" in r["student_regular"][1],
+          "journey, a student: Werkstudent jobs and internships pass, a regular job is not what "
+          "they want, said plainly", json.dumps(r)[:400])
+    check(r["eng_intern"][0] == "job-kind" and "internship" in r["eng_intern"][1]
+          and r["eng_gig"] == "job-kind" and r["eng_freelance"] == "passed"
+          and r["eng_head"] == "management",
+          "journey, an engineer: internships and gig work are not the kinds they picked, "
+          "contract work is", json.dumps(r)[:400])
+    check(r["level_unknown"] == ["passed", ""]
+          and "English (level not stated)" in r["level_unknown_text"],
+          "a language Claude found without a level is kept, and never drops a job",
+          json.dumps([r["level_unknown"], r["level_unknown_text"][-300:]]))
+    check(r["nothing_set"] == "passed",
+          "journey, no preferences at all: management, 15 years, gig work and a native Japanese "
+          "requirement all pass (an unset limit rules nothing out)", json.dumps(r)[:300])
+    check(r["place"] == "location" and r["place_open"] == "passed"
+          and r["off"] == ["off-lane", "retail"],
+          "place and not-their-field come from the model's judgement", json.dumps(r)[:300])
+    check(r["score"] == 80 + 15 + 12 - 8 * 2 and r["score_close"] == 80,
+          "the score rewards their roles and first-choice place, less per year over theirs",
+          json.dumps(r)[:200])
+    check(r["junk"]["role_match"] == "close" and r["junk"]["location"] == "ok"
+          and r["junk"]["languages_required"] == [] and r["junk"]["job_kind"] == "regular"
+          and r["old_gig"] == "gig" and r["prompt"],
+          "an unreadable answer rules nothing out; the prompt carries the preferences and kinds",
+          json.dumps(r)[:300])
+
+
+def build_rules_section(py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    Nothing in the build refuses a role or a document by a fixed rule: the CV
+    spread check only reports, the PDF builder rewrites dashes and notes a short
+    page, the shortlist prints the person's own limits, and the instructions
+    Claude builds by drop a role only for one of those limits. Arbeitnow's
+    rules follow the same preferences. Journeys: a salesperson's achievement CV
+    and a student's half-page CV both build.
+    """
+    b = work / "builder"
+    tmp = work / "selftest-build"
+    tmp.mkdir(exist_ok=True)
+    sales = {"name": "Sam Doyle", "tagline": "Account Executive",
+             "contact": ["Berlin, Germany", "sam@example.com"],
+             "summary": "Closed EUR 2.1M in new ARR in 2025 — 132% of quota.",
+             "sections": [{"type": "experience", "title": "Experience", "items": [
+                 {"role": "Account Executive", "org": "Acme", "meta": "2021 – 2025 · Berlin",
+                  "bullets": ["<b>132%</b> of quota in 2025, top of a team of 12 -- the largest book.",
+                              "Grew the DACH mid-market book from EUR 1.2M to EUR 2.1M ARR."]}]},
+                 {"type": "skills", "title": "Skills", "items": [["Sales", "MEDDIC · Salesforce"]]}]}
+    student = {**sales, "name": "Lea Brandt", "tagline": "Werkstudentin Marketing",
+               "summary": "Studies business in Munich.",
+               "sections": [{"type": "experience", "title": "Erfahrung", "items": [
+                   {"role": "Praktikantin Marketing", "org": "Beispiel GmbH", "meta": "2025",
+                    "bullets": ["Ran the newsletter for 3,000 readers."]}]}]}
+    (tmp / "cv_sales.json").write_text(json.dumps(sales, ensure_ascii=False), encoding="utf-8")
+    (tmp / "cv_student.json").write_text(json.dumps(student, ensure_ascii=False), encoding="utf-8")
+
+    def run(*args) -> subprocess.CompletedProcess:
+        return subprocess.run([str(py), *args], cwd=b, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=120,
+                              env=dict(os.environ, PYTHONUTF8="1"))
+
+    r = run("check_spread.py", str(tmp / "cv_sales.json"), str(tmp / "cv_student.json"))
+    check(r.returncode == 0 and "0 with a bold label" in r.stdout and "FAILED" not in r.stdout,
+          "the spread check only reports: an achievement CV with no project labels and a "
+          "one-bullet student CV both pass", r.stdout[-400:] + r.stderr[-300:])
+    pdfs = {}
+    for name in ("sales", "student"):
+        out = tmp / f"{name}.pdf"
+        r = run("build_docs.py", "cv", str(tmp / f"cv_{name}.json"), str(out))
+        pdfs[name] = (r, out)
+    rs, out = pdfs["sales"]
+    text = ps(py, work, f"""
+        from pypdf import PdfReader
+        print(" ".join(p.extract_text() for p in PdfReader(r"{out}").pages))
+    """)
+    check(rs.returncode == 0 and out.exists() and "rewrote dashes" in rs.stdout
+          and "—" not in text and "–" not in text and "--" not in text
+          and "2021-2025" in text.replace(" ", "") and "12, the largest" in text,
+          "dashes are rewritten, not refused (a range keeps a hyphen, the rest a comma)",
+          rs.stdout[-300:] + rs.stderr[-300:] + text[:300])
+    rs, out = pdfs["student"]
+    check(rs.returncode == 0 and out.exists() and "fills about" in rs.stdout and "pages: 1" in rs.stdout,
+          "journey, a student with one internship: a short CV is built with a note, not refused",
+          rs.stdout[-300:] + rs.stderr[-300:])
+
+    lim = ps(py, work, f"""
+        import sys
+        sys.path.insert(0, r"{b}")
+        import shortlist
+        print(shortlist.limits())
+    """)
+    check("Kinds of job:" in lim and "Roles that mainly manage a team:" in lim
+          and "Most years a posting may ask for:" in lim,
+          "the shortlist prints the person's limits for the build to judge by", lim[:400])
+
+    batch = (b / ".claude" / "commands" / "apply-batch.md").read_text(encoding="utf-8")
+    skill = (b / ".claude" / "skills" / "cv-builder" / "SKILL.md").read_text(encoding="utf-8")
+    mk = (work / ".claude" / "commands" / "make-profile.md").read_text(encoding="utf-8")
+    ex = (work / "profiles" / "example" / PROFILE_MD).read_text(encoding="utf-8")
+    check("Head of, Director" not in batch and "breaks one of those limits" in batch
+          and "There is no other reason to drop a role" in batch
+          and "four or more distinct projects" not in skill and "at most two\n  bullets per project" not in skill
+          and "A limit that is not set rules nothing out" in skill
+          and "two hard rules" not in mk and "kinds of job" in mk and "hard rules" not in ex,
+          "the build instructions drop a role only for the person's own limits; no fixed "
+          "management, project-count or hard-rule text is left")
+
+    rules = ps(py, work, r'''
+        import json, preferences as P, arbeitnow_match as am
+        base = P.defaults()
+        def with_(**kw):
+            P.load = lambda folder=None: {"exists": True, "example": False,
+                                          "preferences": {**base, **kw}}
+            return am.rules_from_preferences()
+        out = {
+          "student": with_(job_kinds=["working_student"],
+                           places=[{"place": "München", "country": "DE", "work": ["onsite"]}]),
+          "engineer": with_(job_kinds=["regular"],
+                            places=[{"place": "Berlin", "country": "DE", "work": ["onsite", "hybrid", "remote"]},
+                                    {"place": "EU", "country": "", "work": ["remote"]}]),
+          "mover": with_(job_kinds=["regular"], relocate=True,
+                         places=[{"place": "Dubai", "country": "AE", "work": ["onsite"]}]),
+          "open": with_(),
+        }
+        P.load = lambda folder=None: {"exists": False, "example": False, "preferences": base}
+        out["none"] = am.rules_from_preferences()
+        print(json.dumps(out))
+    ''')
+    try:
+        r = json.loads(rules)
+    except ValueError:
+        check(False, "Arbeitnow's rules from the preferences run", rules[-400:])
+        return
+    check(r["student"] == {"countries": ["DE"], "remote_elsewhere": False, "student_roles": True}
+          and r["engineer"] == {"countries": ["DE"], "remote_elsewhere": True, "student_roles": False}
+          and r["mover"]["countries"] == [] and r["open"]["student_roles"] is True
+          and r["open"]["countries"] == [] and r["none"] is None,
+          "Arbeitnow follows the preferences: student jobs for a student, no country limit for "
+          "someone who would relocate, nothing ruled out when nothing is set", json.dumps(r))
+
+
+def any_person_section(py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    The blind review's findings (17 November 2026), each held as a check:
+    language names in any language, a posting's own language judged by the
+    work, career changers kept for the roles they want, the pre-filter
+    stepping aside for a field it was not tuned on, CVs up to three pages,
+    letters outside Western European scripts, Arbeitnow's student rule and its
+    rules following Preferences, and first-install searches for the person's
+    own roles.
+    """
+    out = ps(py, work, r'''
+        import json, os, pathlib, tempfile
+        import preferences as P, rank_ollama_real as R, arbeitnow_match as am, saved_searches as ss, config
+        res = {}
+        de = P.normalise({"languages": [{"language": "Deutsch", "level": "native"},
+                                        {"language": "Français", "level": "b2"},
+                                        {"language": "German", "level": "a1"}]})
+        res["lang_names"] = [len(de["languages"]), P.level_of(de, "German"), P.level_of(de, "allemand"),
+                             P.level_of(de, "French"), P.level_of(de, "Englisch (verhandlungssicher)")]
+        prefs = {**P.defaults(), **de}
+        v = R.normalise({"role_match": "yes", "fit": 80, "languages_required": [{"language": "Deutsch", "level": "c1"}]})
+        res["deutsch_ok"] = R.verdict(v, prefs)[0]
+        res["prompt_lang"] = "the level the work" in R.ANSWER_FIELDS and "requires it at c1 unless" not in R.ANSWER_FIELDS
+        res["trainee_regular"] = "trainee or graduate programme, which is \"regular\"" in R.ANSWER_FIELDS
+        res["changer_yes"] = R.verdict(R.normalise({"role_match": "yes", "fit": 15}), P.defaults())[0]
+        res["changer_close"] = R.verdict(R.normalise({"role_match": "close", "fit": 15}), P.defaults())[0]
+        res["yes_other_field"] = R.verdict(R.normalise({"role_match": "yes", "fit": 5}), P.defaults())[0]
+        res["lang_compound"] = [P.language_key(x) for x in ("Business English", "Swiss German",
+                                "Deutschkenntnisse", "Mandarin Chinese", "Cantonese", "Serbian")]
+        res["lang_keep"] = len(P.normalise({"languages": [{"language": "Mandarin", "level": "b1"},
+                               {"language": "Cantonese", "level": "native"},
+                               {"language": "Serbian", "level": "native"},
+                               {"language": "Croatian", "level": "b1"}]})["languages"])
+        res["version"] = R.PROMPT_VERSION
+        old_fit = config.MIN_FIT
+        config.MIN_FIT = config.CLAUDE_MIN_FIT
+        res["strong_claude"] = R.strong_line({"places": [{"place": "X"}]})
+        config.MIN_FIT = old_fit
+        rows = ss.from_preferences({"target_roles": ["Data Scientist (production ML)"],
+                                    "places": [{"place": "Berlin", "country": "DE", "work": ["onsite"]}]})
+        res["seed_clean"] = ["keywords=Data+Scientist&" in rows[0]["url"], "geoId=106967730" in rows[0]["url"]]
+        res["strong"] = [R.strong_line({"places": []}), R.strong_line({"places": [{"place": "X"}]})]
+        res["pages"] = [P.normalise({"cv_max_pages": x})["cv_max_pages"] for x in (3, "5", "x", 2)]
+        # The pre-filter steps aside when it would set aside most of the pool.
+        R.target_roles = lambda: ["Pflegefachkraft"]
+        R.VEC_CACHE = pathlib.Path(tempfile.mkdtemp()) / "vec.json"
+        config.EMBED_PREFILTER_FLOOR = 0.62
+        far = lambda texts: [[1.0, 0.0] if t.startswith("search_query") else [0.0, 1.0] for t in texts]
+        am.embed = far
+        pool = [{"url": f"https://example.org/{i}", "title": f"Pflege {i}", "description": "x" * 300}
+                for i in range(4)]
+        kept, aside, note = R.prefilter(pool)
+        res["prefilter_all"] = [len(kept), len(aside), "does not fit your field" in note]
+        am.embed = lambda texts: [[1.0, 0.0] if t.startswith("search_query") or "Pflege 0" not in t
+                                  else [0.0, 1.0] for t in texts]
+        R.VEC_CACHE = pathlib.Path(tempfile.mkdtemp()) / "vec.json"
+        kept, aside, note = R.prefilter(pool)
+        res["prefilter_some"] = [len(kept), len(aside)]
+        # Arbeitnow: whole job types only; titles never drop a job.
+        s = am.normalise({"searches": [{"name": "x", "looking_for": "x"}], "student_roles": False})
+        now = __import__("time").time()
+        def ro(title, types=()):
+            return am.rule_out({"created_at": now, "title": title, "types": list(types), "location": ""},
+                               s, {}, now)
+        res["student_rule"] = [ro("Sales Trainee (m/w/d)", ["Trainee"]), ro("Leiter Ausbildung Pflege"),
+                               ro("Account Manager", ["International"]), ro("Werkstudent Marketing"),
+                               ro("Marketing", ["Working student"]), ro("X", ["Intern"])]
+        # Arbeitnow's rules keep following Preferences after a Save that left them alone.
+        am.SETTINGS = pathlib.Path(tempfile.mkdtemp()) / "an.json"
+        rules = {"countries": ["DE"], "remote_elsewhere": False, "student_roles": False}
+        am.rules_from_preferences = lambda: dict(rules)
+        a = am.save({"searches": [{"name": "Nurse", "looking_for": "nurse"}], **rules})
+        rules["student_roles"] = True            # the person ticks working student in Preferences
+        res["rules_follow"] = [a["rules_by"], am.load()["student_roles"]]
+        b = am.save({"searches": [{"name": "Nurse", "looking_for": "nurse"}], "countries": ["FR"],
+                     "remote_elsewhere": False, "student_roles": True})
+        rules["countries"] = ["DE", "AT"]
+        res["rules_own"] = [b["rules_by"], am.load()["countries"]]
+        # Saved before any preferences existed, rules left at their defaults: they follow later.
+        am.rules_from_preferences = lambda: None
+        c = am.save({"searches": [{"name": "Nurse", "looking_for": "nurse"}]})
+        am.rules_from_preferences = lambda: dict(rules)
+        res["rules_before_prefs"] = [c["rules_by"], am.load()["countries"]]
+        # Saved by hand before rules_by existed, rules as the preferences have them: follow.
+        am._write(am.SETTINGS, {**am.normalise({"searches": [{"name": "N", "looking_for": "n"}],
+                                               **rules}), "made_by": "you"})
+        am.load()                                # the first read decides, and writes it down
+        rules["student_roles"] = False
+        res["rules_legacy"] = am.load()["student_roles"]
+        # First-install searches give way to the person's own.
+        ss.FILE = pathlib.Path(tempfile.mkdtemp()) / "searches.json"
+        first = [r["label"] for r in ss.load()["searches"]]
+        n = ss.seed_from_preferences({"target_roles": ["Account Executive", "Head of Sales"],
+                                      "places": [{"place": "Dubai", "country": "AE", "work": ["onsite"]}]})
+        after = ss.load()["searches"]
+        again = ss.seed_from_preferences({"target_roles": ["Account Executive", "Head of Sales"],
+                                          "places": [{"place": "Abu Dhabi", "country": "AE", "work": ["onsite"]}]})
+        moved = [r["label"] for r in ss.load()["searches"]]
+        off = ss.load()["searches"]
+        off[0]["enabled"] = False                # switched off by the person: theirs now
+        ss.save(searches=off)
+        res["seed_off"] = ss.seed_from_preferences({"target_roles": ["Nurse"], "places": []})
+        ss.save(searches=[*ss.load()["searches"], {"label": "Mine", "url": "https://www.linkedin.com/jobs/search/?keywords=Mine"}])
+        kept = ss.seed_from_preferences({"target_roles": ["Nurse"], "places": []})
+        res["seed"] = [len(first), n, [r["label"] for r in after], "location=Dubai" in after[0]["url"],
+                       again, moved, kept]
+        res["host"] = ss.clean_url("https://ae.linkedin.com/jobs/search/?keywords=x")
+        fr = {"languages": [{"language": "French", "level": "native"}, {"language": "English", "level": "b1"}]}
+        res["lang_or"] = [R.language_gap({"languages_required": [{"language": n, "level": "c1"}]}, fr)
+                          for n in ("French or English", "English and French")]
+        # The example's own preferences, copied into someone's folder, are not theirs.
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "profile.md").write_text("# A nurse in Dubai", encoding="utf-8")
+        (d / P.FILE_NAME).write_text((P.EXAMPLE / P.FILE_NAME).read_text(encoding="utf-8"), encoding="utf-8")
+        st = P.load(d)
+        res["example_copy"] = [st["exists"], st["preferences"]["target_roles"], P.due(d)]
+        print(json.dumps(res, ensure_ascii=False))
+    ''')
+    try:
+        r = json.loads(out)
+    except ValueError:
+        check(False, "the any-person checks run", out[-800:])
+        return
+    check(r["lang_names"] == [2, "native", "native", "b2", "none"] and r["deutsch_ok"] == "passed",
+          "language names match in any language: Deutsch is German, Français is French",
+          json.dumps(r["lang_names"]) + r["deutsch_ok"])
+    check(r["prompt_lang"] and r["trainee_regular"],
+          "a posting's own language is judged by the work, not a fixed C1; trainee programmes are "
+          "regular jobs")
+    check(r["yes_other_field"] == "weak-fit",
+          "a role they asked for with a fit near zero (a different field) is still dropped",
+          r["yes_other_field"])
+    check(r["lang_compound"] == ["english", "german", "german", "chinese", "cantonese", "serbian"]
+          and r["lang_keep"] == 4,
+          "compound language names match; Mandarin and Cantonese, Serbian and Croatian stay apart",
+          json.dumps([r["lang_compound"], r["lang_keep"]]))
+    check(r["version"] == "6" and r["strong_claude"] == 80 and r["seed_clean"] == [True, True],
+          "a changed prompt re-judges cached jobs; the strong line allows for Claude's lower scores; "
+          "seeded searches drop notes in brackets and carry a known place id",
+          json.dumps([r["version"], r["strong_claude"], r["seed_clean"]]))
+    check(r["rules_before_prefs"] == ["preferences", ["DE", "AT"]] and r["rules_legacy"] is False,
+          "Arbeitnow rules saved before Preferences existed, or before this change, still follow them",
+          json.dumps([r["rules_before_prefs"], r["rules_legacy"]]))
+    check(r["changer_yes"] == "passed" and r["changer_close"] == "weak-fit",
+          "journey, a career changer: a role they asked for is not dropped on fit alone",
+          json.dumps([r["changer_yes"], r["changer_close"]]))
+    check(r["strong"] == [83, 95] and r["pages"] == [3, 3, 1, 2],
+          "the strong line allows for no places; a CV may be up to three pages",
+          json.dumps([r["strong"], r["pages"]]))
+    check(r["prefilter_all"] == [4, 0, True] and r["prefilter_some"] == [3, 1],
+          "the local pre-filter steps aside when it would set aside most of a pool",
+          json.dumps([r["prefilter_all"], r["prefilter_some"]]))
+    check(r["student_rule"] == ["", "", "", "", "student", "student"],
+          "Arbeitnow drops student jobs only by the employer's own job type, never by title words",
+          json.dumps(r["student_rule"]))
+    check(r["rules_follow"] == ["preferences", True] and r["rules_own"] == ["you", ["FR"]],
+          "Arbeitnow's rules keep following Preferences after a save that left them as they were; "
+          "rules set differently are the person's", json.dumps([r["rules_follow"], r["rules_own"]]))
+    check(r["seed"][0] == 3 and r["seed"][1] == 2
+          and r["seed"][2] == ["Account Executive in Dubai", "Head of Sales in Dubai"]
+          and r["seed"][3] and r["seed"][4] == 2
+          and r["seed"][5] == ["Account Executive in Abu Dhabi", "Head of Sales in Abu Dhabi"]
+          and r["seed"][6] == 0,
+          "journey, a salesperson in Dubai: the ML examples become searches for their own roles, "
+          "follow a corrected place, and a list they changed is left alone", json.dumps(r["seed"]))
+    check(r["seed_off"] == 0, "a seeded search the person switched off is never written over",
+          str(r["seed_off"]))
+    check(r["host"] == "https://www.linkedin.com/jobs/search/?keywords=x"
+          and r["lang_or"][0] == "" and "English C1" in r["lang_or"][1],
+          "a LinkedIn country address is read on www; 'French or English' needs only one of them",
+          json.dumps([r["host"], r["lang_or"]]))
+    check(r["example_copy"] == [False, [], "missing"],
+          "journey, first install with Claude unavailable: the example's copied preferences are "
+          "not used as the person's (nothing is ruled out, and they are still due)",
+          json.dumps(r["example_copy"]))
+
+    b = work / "builder"
+    tmp = work / "selftest-build"
+    tmp.mkdir(exist_ok=True)
+    cjk = {"name": "张伟 Zhang Wei", "tagline": "日本語 · 한국어", "contact": ["Berlin"],
+           "summary": "Office in 北京.", "sections": []}
+    (tmp / "cv_cjk.json").write_text(json.dumps(cjk, ensure_ascii=False), encoding="utf-8")
+    rc = subprocess.run([str(py), "build_docs.py", "cv", str(tmp / "cv_cjk.json"), str(tmp / "cjk.pdf")],
+                        cwd=b, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                        timeout=120, env=dict(os.environ, PYTHONUTF8="1"))
+    ctext = ps(py, work, f"""
+        from pypdf import PdfReader
+        print(PdfReader(r"{tmp / 'cjk.pdf'}").pages[0].extract_text())
+    """) if (tmp / "cjk.pdf").exists() else ""
+    check(rc.returncode == 0 and ("张伟" in ctext or "no font on this computer has these letters" in rc.stdout),
+          "Chinese, Japanese and Korean render when a font has them, and a missing letter is said, "
+          "never silently dropped", rc.stdout[-300:] + rc.stderr[-200:] + ctext[:100])
+    cv = {"name": "Łukasz Żółć", "tagline": "Satış Müdürü", "contact": ["Jiří Dvořák · Москва"],
+          "summary": "Grew revenue at Ünal Ltd.", "sections": []}
+    (tmp / "cv_intl.json").write_text(json.dumps(cv, ensure_ascii=False), encoding="utf-8")
+    rr = subprocess.run([str(py), "build_docs.py", "cv", str(tmp / "cv_intl.json"), str(tmp / "intl.pdf")],
+                        cwd=b, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                        timeout=120, env=dict(os.environ, PYTHONUTF8="1"))
+    text = ps(py, work, f"""
+        from pypdf import PdfReader
+        print(PdfReader(r"{tmp / 'intl.pdf'}").pages[0].extract_text())
+    """) if (tmp / "intl.pdf").exists() else ""
+    check(rr.returncode == 0 and (("Łukasz Żółć" in text and "Москва" in text)
+                                  or "no font with these letters" in rr.stdout),
+          "Polish, Turkish, Czech and Cyrillic names render as letters, not boxes (or it says so)",
+          rr.stdout[-300:] + rr.stderr[-300:] + text[:200])
+    js = (work / "web" / "preferences.js").read_text(encoding="utf-8")
+    skill = (b / ".claude" / "skills" / "cv-builder" / "SKILL.md").read_text(encoding="utf-8")
+    page = (work / "web" / "dashboard.html").read_text(encoding="utf-8")
+    batch = (b / ".claude" / "commands" / "apply-batch.md").read_text(encoding="utf-8")
+    check('st.languages.push({language:"",level:""})' in js and 'name="pfPages" value="3"' in page
+          and "when the person can work in it" in skill and 'id="anUsePrefs"' in page
+          and "Rows copied word for word from the\nfictional example" in batch,
+          "a new language starts with no level; three pages can be chosen; documents are written "
+          "in a language the person can work in")
+
+
+def preferences_section(e: "Env", py: pathlib.Path, work: pathlib.Path) -> None:
+    """
+    preferences.json: the bridge has Claude (the fake) write it from the
+    profile on its own, rewrites it when the profile changes, never writes over
+    what the person changed, says plainly when it cannot, and never touches the
+    example profile's copy.
+    """
+    me = work / "profiles" / "me"
+    f = me / PREFS_JSON
+    calls = e.fakebin / "prefs-calls.jsonl"
+    example = work / "profiles" / "example" / PREFS_JSON
+    example_before = example.read_bytes() if example.exists() else b""
+    e.mode("ok")
+
+    def doc() -> dict:
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def brief() -> dict:
+        return (e.get(PROGRESS_ROUTE)[1] or {}).get("preferences") or {}
+
+    def wait(cond, seconds: float = 40) -> bool:
+        end = time.time() + seconds
+        while time.time() < end:
+            try:
+                if cond():
+                    return True
+            except (OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.4)
+        return False
+
+    # 1. On its own: the bridge has been up a while, so the file is there, and
+    # written for the profile as it is now (the sections before this one edit
+    # it, and each edit is caught up within seconds).
+    sig = ps(py, work, f'''
+        import pathlib, preferences as P
+        print(P.profile_sig(pathlib.Path(r"{me}")))
+    ''')
+    ok = wait(lambda: brief().get("state") == "ready" and doc().get("profile_sig") == sig)
+    d = doc()
+    check(ok and d.get("version") == 2 and set(d.get("made_by", {}).values()) == {"model"}
+          and d.get("model") == "claude-sonnet-5-5" and d.get("reviewed") is False,
+          "the bridge writes profiles/me/preferences.json from the profile by itself",
+          json.dumps(d)[:400])
+    p = d.get("preferences") or {}
+    check(p.get("target_roles", [""])[0] == "Machine Learning Engineer"
+          and p.get("languages") == [{"language": "English", "level": "c1"},
+                                     {"language": "German", "level": "a2"}]
+          and p.get("remote_anywhere") is False and p.get("cv_shape") == "projects"
+          and p.get("job_kinds") == ["regular", "freelance"],
+          "Claude's answer is cleaned into the fields (levels, kinds, defaults for nulls, fenced JSON)",
+          json.dumps(p)[:300])
+    qs = brief().get("questions") or []
+    check(len(qs) == 1 and qs[0]["field"] == "accept_management" and "manages a team" in qs[0]["question"],
+          "Claude's open questions reach the dashboard (an empty one is dropped)", json.dumps(qs))
+    rows = [json.loads(x) for x in calls.read_text(encoding="utf-8").splitlines()] if calls.exists() else []
+    a = rows[-1]["args"] if rows else []
+    check(bool(rows) and "--tools" in a and a[a.index("--tools") + 1] == "" and "--model" in a
+          and a[a.index("--model") + 1] == "claude-sonnet-5-5" and rows[-1]["chars"] > 500,
+          "one lean Sonnet call: no tools, the profile on stdin", json.dumps(rows[-1:])[:300])
+    b = brief()
+    check(b.get("state") == "ready" and b.get("reviewed") is False,
+          "the dashboard is told to ask the person to check them", json.dumps(b))
+    n_calls = len(rows)
+    time.sleep(5)
+    rows = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+    check(len(rows) == n_calls, "nothing changed, nothing asked again", f"{len(rows)} calls, was {n_calls}")
+
+    code, g = e.get(PREFERENCES_ROUTE)
+    check(code == 200 and g.get("exists") and not g.get("example") and g.get("has_profile")
+          and len(g.get("choices", {}).get("countries", [])) > 150
+          and g.get("made_by", {}).get("target_roles") == "model",
+          "GET /preferences: values, who set them, the form's choices", json.dumps(g)[:300])
+
+    # 2. The person's edit is theirs.
+    r = e.post(PREFERENCES_ROUTE, {"preferences": {**p, "target_roles": ["Account Executive"],
+                                                    "years_experience": 7}})
+    d = doc()
+    check(r.get("ok") and d["preferences"]["target_roles"] == ["Account Executive"]
+          and d["made_by"]["target_roles"] == "you" and d["made_by"]["years_experience"] == "you"
+          and d["made_by"]["places"] == "model" and d.get("reviewed") is True,
+          "Save makes a changed field the person's and marks the set as checked", json.dumps(d)[:400])
+    check(brief().get("reviewed") is True and brief().get("questions") == [],
+          "after Save the dashboard stops asking, questions included", json.dumps(brief()))
+
+    # 3. A hand edit of the file (or the Edit profile chat) counts as theirs too.
+    d["preferences"]["max_years_asked"] = 9
+    d["preferences"]["accept_management"] = True
+    f.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    check(e.get(PREFERENCES_ROUTE)[1].get("made_by", {}).get("max_years_asked") == "you",
+          "a field changed in the file by hand is the person's")
+
+    # 4. The profile changes: Claude writes the rest again, the person's fields stay.
+    pm = me / PROFILE_MD
+    pm.write_text(pm.read_text(encoding="utf-8") + "\nSELFTEST ROLE: Head of Marketing\n", encoding="utf-8")
+    ok = wait(lambda: doc()["preferences"]["cv_shape"] == "achievements" and brief().get("state") == "ready")
+    d = doc()
+    check(ok and d["preferences"]["target_roles"] == ["Account Executive"]
+          and d["preferences"]["years_experience"] == 7 and d["preferences"]["max_years_asked"] == 9
+          and d["preferences"]["cv_shape"] == "achievements" and d.get("changed") == ["cv_shape"]
+          and d.get("reviewed") is False,
+          "a changed profile rewrites the model's fields and keeps the person's", json.dumps(d)[:500])
+    check(brief().get("changed") == ["cv_shape"], "the dashboard says what changed", json.dumps(brief()))
+    check(d.get("questions") == [] and brief().get("questions") == [],
+          "a question about a field the person already set is not asked again", json.dumps(d)[:300])
+
+    # 5. Fill from my profile: everything again, the person's edits included.
+    r = e.post("/preferences/refresh", {"reset": True})
+    ok = r.get("started") and wait(lambda: doc()["preferences"]["target_roles"][0] == "Head of Marketing"
+                                   and brief().get("state") == "ready")
+    d = doc()
+    check(ok and d["preferences"]["target_roles"][0] == "Head of Marketing"
+          and set(d["made_by"].values()) == {"model"},
+          "Fill from my profile rewrites every field from the profile", json.dumps(d)[:300])
+
+    # 6. Claude cannot answer: said plainly, nothing half-written, no call every 2 s.
+    sig2 = ps(py, work, f'''
+        import pathlib, preferences as P
+        print(P.profile_sig(pathlib.Path(r"{me}")))
+    ''')
+    e.mode("prefsfail")
+    time.sleep(0.5)
+    before = len(calls.read_text(encoding="utf-8").splitlines())
+    f.unlink()
+    ok = wait(lambda: brief().get("state") == "failed")
+    b = brief()
+    check(ok and "signed out" in b.get("error", "") and "claude auth login" in b.get("fix", "")
+          and not f.exists(),
+          "a signed-out Claude is reported with the fix, and no file is written", json.dumps(b))
+    time.sleep(6)
+    after = len(calls.read_text(encoding="utf-8").splitlines())
+    check(after - before == 1, "after a failure the same profile is not asked again by itself",
+          f"{after - before} calls")
+    ev = e.get("/events")[1].get("events", [])
+    check(any(x.get("step") == "preferences" and x.get("status") == "failed" and x.get("fix") for x in ev),
+          "the failure is in the activity list with what to do")
+    # Filled in by hand meanwhile: only what the person set is theirs, and the
+    # rest is still Claude's to fill in once it can.
+    form = {**g["preferences"], "target_roles": ["Chief of Staff"], "places": [],
+            "languages": [], "not_my_field": [], "years_experience": None,
+            "max_years_asked": None, "remote_anywhere": False, "accept_management": True,
+            "cv_shape": "achievements", "cv_max_pages": 1, "cv_state_years": False}
+    e.post(PREFERENCES_ROUTE, {"preferences": form})
+    d = doc()
+    check(d.get("made_by", {}).get("target_roles") == "you" and d["made_by"]["places"] == "model"
+          and d.get("profile_sig") is None,
+          "filled in by hand without Claude: only the fields set are the person's", json.dumps(d)[:300])
+    e.mode("ok")
+    r = e.post("/preferences/refresh", {})
+    ok = r.get("started") and wait(lambda: brief().get("state") == "ready" and doc().get("profile_sig") == sig2)
+    d = doc()
+    check(ok and d["preferences"]["target_roles"] == ["Chief of Staff"]
+          and d["preferences"]["places"] and d["made_by"]["places"] == "model",
+          "Try again fills in the rest once Claude answers, and keeps what the person set",
+          json.dumps(d)[:400])
+
+    # 7. A damaged file is kept aside and written again.
+    f.write_text("{not json", encoding="utf-8")
+    ok = wait(lambda: doc().get("version") == 2)
+    check(ok and any(x.name.startswith(PREFS_JSON + ".damaged-") for x in me.iterdir()),
+          "a damaged preferences.json is kept aside and written again from the profile")
+
+    # 8. The example profile's copy ships with the code and is never written.
+    check(example.exists() and example.read_bytes() == example_before,
+          "the example profile's preferences.json is left exactly as shipped")
+    code, _ = e.get("/web/preferences.js")
+    status, page = e.get(DASHBOARD_ROUTE)
+    check(code == 200 and b'id="pfDlg"' in page and b'id="btnPrefs"' in page
+          and b"/web/preferences.js" in page,
+          "the dashboard has the Preferences button, window and script")
+
+    # 9. The local model takes over when Claude cannot answer (a stand-in Ollama).
+    port = free_port()
+    answering_ollama(port)
+    out = ps(py, work, f'''
+        import os, pathlib, config, preferences as P
+        config.OLLAMA_URL = "http://127.0.0.1:{port}"
+        def no(prompt): raise P.GenerateError("Claude is signed out", "sign in")
+        P.ask_claude = no
+        os.environ.pop("PREFS_LOCAL", None)
+        values, model, asked = P.generate(pathlib.Path(r"{me}"), log=lambda m: None)
+        print(model, values["accept_management"], values["target_roles"])
+    ''')
+    check(out.startswith("local:") and "True []" in out,
+          "without Claude, the local model writes them (and an empty answer rules nothing out)", out)
+
+
 def updater_section(py: pathlib.Path, work: pathlib.Path) -> None:
     """
     Update now (scraper/updater.py) against a stand-in GitHub, in a throwaway
@@ -1908,6 +2584,15 @@ def main() -> int:
         section("which jobs the ranker reads (real ranker, real pool rules)")
         pool_section(py, work, fakebin)
 
+        section("the verdict follows the person's preferences, not fixed rules")
+        verdict_section(py, work)
+
+        section("the build: no fixed rule refuses a role or a document")
+        build_rules_section(py, work)
+
+        section("anyone, any field: the blind review's findings")
+        any_person_section(py, work)
+
         section("Arbeitnow: searches by meaning, rules, and the dashboard panel")
         arbeitnow_section(e, py, work)
 
@@ -1916,6 +2601,9 @@ def main() -> int:
 
         section("Edit profile: tell Claude what to change, see it, undo it")
         profile_chat_section(e, py, work)
+
+        section("job preferences: written from the profile, kept in step, yours when you change them")
+        preferences_section(e, py, work)
 
         section("LinkedIn collector: waits for the page, then reads every card (headless Chrome)")
         collector_section(work)

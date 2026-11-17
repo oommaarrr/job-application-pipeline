@@ -829,3 +829,31 @@ pre.log .err{color:var(--log-err)}
 .pc-foot textarea:focus{outline:2px solid var(--focus);outline-offset:1px}
 .pc-actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 @media (max-width:640px){.topbar #btnProfile{font-size:0;gap:0;width:var(--control-h);padding:0}}
+
+/* Job preferences (web/preferences.js): rows for places and languages, small
+   number boxes, and the "yours" tag on a field the person set. */
+.i-sliders{--i:var(--i-sliders)}
+.pf-rows{display:flex;flex-direction:column;gap:var(--sp-2)}
+.pf-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);
+  border:1px solid var(--line);border-radius:var(--radius-sm,6px)}
+.pf-row input[type=text]{flex:1 1 9em;min-width:0}
+.pf-row .pf-country{flex:1 1 8em}
+.pf-row select{width:auto}
+.pf-work{display:inline-flex;gap:4px}
+.pf-work label{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--line-strong);
+  border-radius:var(--radius-pill);font-size:var(--fs-xs);cursor:pointer;user-select:none}
+.pf-work label:has(input:checked){background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.pf-work input{position:absolute;opacity:0;pointer-events:none}
+.pf-work label:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:1px}
+.pf-num{width:5em}
+.pf-you{display:none;margin-left:6px;padding:0 6px;border-radius:var(--radius-pill);background:var(--bg2);
+  color:var(--dim);font-size:var(--fs-2xs);font-weight:var(--fw-semi);vertical-align:middle}
+.pf-you.on{display:inline-block}
+.pf-empty{color:var(--dim);font-size:var(--fs-sm)}
+.pf-kinds{display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 2px}
+.pf-kinds label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.pf-ask{margin:0 0 var(--sp-3);padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-sm,6px);font-size:var(--fs-sm);background:var(--bg2);line-height:1.45}
+.pf-ask ul{margin:6px 0 0;padding-left:18px}
+.pf-ask li{margin:3px 0}
+.pf-ask li .go{margin-left:6px;vertical-align:baseline}
+.sr-warn{margin-top:2px;font-size:var(--fs-sm);color:var(--warn-ink,var(--ink));background:var(--warn-bg);border-radius:var(--radius-sm,6px);padding:2px 6px;display:inline-block}

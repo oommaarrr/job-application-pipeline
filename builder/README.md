@@ -28,9 +28,9 @@ payload per document, and `build_docs.py` renders the PDFs.
 | `.claude/commands/apply-batch.md` | the `/apply-batch` procedure Claude follows |
 | `CLAUDE.md` | loads automatically in any Claude session opened here |
 | `reference/DOCUMENT_WORKFLOW.md` | plan, criticise, then build each document once |
-| `build_docs.py` | renders a CV or letter payload to an A4 PDF; refuses dashes and thin pages |
-| `check_spread.py` | refuses a CV that leans on one project |
-| `shortlist.py` | joins the ranked list to the full job descriptions |
+| `build_docs.py` | renders a CV or letter payload to an A4 PDF; rewrites dashes, notes a short page |
+| `check_spread.py` | shows how a CV's bullets spread across roles and projects (never fails) |
+| `shortlist.py` | prints the person's limits, then the ranked list with full descriptions |
 | `batch_report.py` | renders the Applications review page |
 | `applications/<date>/<Company>/` | the payloads and the two PDFs per role |
 

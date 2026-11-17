@@ -118,6 +118,11 @@ function render(){
   $("anRemote").checked=!!state.remote_elsewhere;
   $("anRemote").disabled=!state.countries.length;
   $("anStudent").checked=!!state.student_roles;
+  $("anFromPrefs").classList.toggle("hide", state.rules_from!=="preferences");
+  const pr=meta.preference_rules;
+  $("anOwnRules").classList.toggle("hide", !pr || state.rules_from==="preferences" ||
+    (state.countries.slice().sort().join()===pr.countries.slice().sort().join()
+     && !!state.remote_elsewhere===pr.remote_elsewhere && !!state.student_roles===pr.student_roles));
   $("anDays").value=String(state.days);
   document.querySelectorAll('#anLevel input').forEach(i=>i.checked=(i.value===state.strictness));
   syncButtons();
@@ -145,6 +150,11 @@ function addCountry(){
 $("anCountryIn").addEventListener("change",addCountry);
 $("anCountryIn").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); addCountry(); } });
 $("anRemote").onchange=e=>{ state.remote_elsewhere=e.target.checked; setDirty(true); schedulePreview(0); };
+$("anUsePrefs").onclick=()=>{ const pr=meta.preference_rules; if(!pr) return;
+  state.countries=pr.countries.slice(); state.remote_elsewhere=pr.remote_elsewhere; state.student_roles=pr.student_roles;
+  render(); setDirty(true); schedulePreview(0);
+  status("Set from your Preferences. Save, and these follow your Preferences from now on."); };
+$("anPrefsLink").onclick=e=>{ e.preventDefault(); if(tryClose()) $("btnPrefs").click(); };
 $("anStudent").onchange=e=>{ state.student_roles=e.target.checked; setDirty(true); schedulePreview(0); };
 $("anDays").onchange=e=>{ state.days=+e.target.value; setDirty(true); schedulePreview(0); };
 $("anAdd").onclick=()=>{ if(state.searches.length>=(meta.max_searches||8)) return;

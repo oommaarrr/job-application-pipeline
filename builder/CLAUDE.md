@@ -17,7 +17,9 @@ cover letter per role, as PDFs, plus a review page. The batch procedure is the
 2. **Read the profile at `profile/`.** `run_batch.py` links the active profile
    there before Claude starts. `identity.md`, `profile.md` and
    `reference/PROJECTS.md` are the only source of facts. Nothing goes on a
-   document that is not in them.
+   document that is not in them. Rows in `PROJECTS.md` copied word for word
+   from the fictional example (Demand forecasting service, Document retrieval pipeline, Model release gate, Open-source contribution, with the
+   example's descriptions) are not this person's: ignore them.
 3. **Follow `reference/DOCUMENT_WORKFLOW.md`**: plan each document, criticise the
    plan as an applicant tracking system and as a human screener, then build once.
 
@@ -41,11 +43,17 @@ interpreter.
   the profile.
 - **No stated weaknesses** on any document. Honest caveats go in the chat
   assessment only.
-- **No em dashes, en dashes or double hyphens.** `build_docs.py` refuses them.
-- **A single-page CV fills its page.** `build_docs.py` refuses one under 90%;
-  add real content from the profile, never spacing.
-- **Evidence is spread**: four or more distinct projects, at most two bullets
-  each. `check_spread.py` enforces it; fix the payload, never the checker.
+- **No em dashes, en dashes or double hyphens.** `build_docs.py` rewrites any it
+  finds (a hyphen in a range, a comma elsewhere) and says so.
+- **The person's limits decide.** Their `preferences.json`, printed at the top of
+  `shortlist.py`, says which roles, kinds of job, languages, years, places and
+  CV shape and length are theirs. Nothing in the code refuses a role or a
+  document; a role is dropped only when its description breaks one of those
+  limits, and a limit that is not set rules nothing out.
+- **A one-page CV fills its page** when the profile has the content.
+  `build_docs.py` notes a short page; add real content, never spacing.
+- **Show range**: spread the page across what the person has done.
+  `check_spread.py` shows the spread; it never fails.
 - **Every CV in a batch reads differently.** A clone with a swapped company name
   is a failure.
 

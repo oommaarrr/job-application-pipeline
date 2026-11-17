@@ -25,6 +25,7 @@ async function tick(){
   $("health").innerHTML='<span class="dot" style="background:'+(h.ok?"var(--green)":"var(--red)")+'"></span>'+(h.ok?"all good":"needs attention");
   staleBanner(d);
   updateBanner(d);
+  if(window.prefsBanner) window.prefsBanner(d);
   versionLine(d);
   rankEngine(d);
   window._autobuild=!!d.autobuild;
@@ -304,7 +305,7 @@ async function tick(){
  * application already on disk. */
 const STEP_NAME={scrape:"Extension",arbeitnow:"Arbeitnow",collect:"Collect",rank:"Rank",
   build:"Build",reset:"Erase",applied:"Applied",searches:"Searches",data:"Data",bridge:"Bridge",pool:"Pool",model:"Model",
-  "rank-engine":"Ranker"};
+  "rank-engine":"Ranker",preferences:"Preferences"};
 const WORD={failed:"Failed",stopped:"Stopped",ok:"Done",info:"Note",started:"Running"};
 const hhmm=s=>{try{return new Date(s).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}catch(e){return "";}};
 const sameDay=(a,b)=>a.toDateString()===b.toDateString();
@@ -400,7 +401,7 @@ document.querySelectorAll('input[name="rankEngine"]').forEach(i=>i.onchange=asyn
 
 /* The page is read from disk on every load, the pipeline keeps running the code
    it started with, so an update needs a restart before the two agree. */
-const PIPELINE_API=7;     // keep equal to API_VERSION in scraper/serve.py
+const PIPELINE_API=8;     // keep equal to API_VERSION in scraper/serve.py
 function staleBanner(d){
   const old=d.api==null||d.api<PIPELINE_API, changed=!!d.code_changed;
   const el=$("staleBanner"); if(!el) return;

@@ -18,23 +18,23 @@ deliverable, and it stays in the folder so a later tweak has the reasoning.
 # <Company> · <Role>
 
 ## What they actually ask for, in their words
-1. "<exact phrase from the posting>"   → answered by: <real project name>
-2. "<exact phrase>"                    → answered by: <real project name>
-3. "<exact phrase>"                    → answered by: <real project name>
+1. "<exact phrase from the posting>"   → answered by: <real project, role or result>
+2. "<exact phrase>"                    → answered by: <real project, role or result>
+3. "<exact phrase>"                    → answered by: <real project, role or result>
 4. "<exact phrase>"                    → not answered (say so in chat only)
 
 ## Hard keywords to land
 <the literal strings a filter would search for. Mark any that would be
 dishonest to include.>
 
-## Bullet order, with the project label for each
-1. <b>Project A:</b> answers requirement 1
-2. <b>Project B:</b> requirement 2
-3. <b>Project C:</b> requirement 3
-4. <b>Project D:</b> breadth
-Spread check: N distinct projects, max 2 from any one, war stories: 0 or 1
+## Bullet order (CV shape from the preferences: projects or achievements)
+1. <project label, or the result it leads with>: answers requirement 1
+2. ...: requirement 2
+3. ...: requirement 3
+4. ...: breadth
+Range: what the page covers, and whether one thing dominates; war stories: 0 or 1
 
-## Selected Projects, and why each earns the space
+## Extra sections (Selected Projects, key accounts, certifications), and why each earns the space
 ## Tagline and summary angle, in one line
 ```
 
@@ -54,7 +54,8 @@ Both are hostile on purpose. Write the findings down.
 - Is the matching evidence in Experience, or stranded in Selected Projects, which
   scores lower?
 - Do the job titles carry a signal that fights the posting?
-- Single column, no tables, no photo, a real text layer, two pages at most.
+- Single column, no tables, no photo, a real text layer, no more pages than the
+  person's limit (1 to 3).
 
 **A senior recruiter with seven seconds and a thousand CVs.** Human:
 
@@ -92,7 +93,7 @@ for p in sorted(pathlib.Path('applications/<date>').rglob('*.pdf')):
 PY
 ```
 
-A letter is one page, a CV at most two, and no dashes.
+A letter is one page, a CV no longer than the person's page limit, and no dashes.
 
 ## 5. Flag what could still reject it
 

@@ -55,6 +55,7 @@ reads everything, and Claude only writes.
 | `reference/PROJECTS.md` | every project: what it proves, with real numbers |
 | `reference/projects/` | long write-ups Claude reads when a job leans on that project |
 | `writing-rules.md` | optional: your own standing rules for Claude ("always call project X by this name", "never list Y"). Where it disagrees with the general CV skill, it wins |
+| `preferences.json` | your job preferences, as settings: the roles you want, kinds of work you do not, your years of experience, the most years a job may ask for, where you would work (on site, hybrid or remote, per place) and whether you would relocate, the languages you speak and how well, whether roles that manage a team are fine, the kinds of job you want (regular, working student, internship, thesis, apprenticeship, freelance, gig work), and how your CV looks (named projects or results per role, one to three pages). Written for you; see below |
 
 The fastest way to create them is `claude "/make-profile path/to/cv.pdf"` in the
 project folder. Anything your CV does not say is marked `TODO:` rather than
@@ -68,6 +69,20 @@ changed file with the lines added and removed. **Undo last change** puts the
 files back. It asks rather than guessing when something is missing, can only
 touch files in your profile folder, and never edits the fictional example.
 The model is `CLAUDE_PROFILE_MODEL` in `scraper/config.py`.
+
+**Your preferences** (`preferences.json`) are filled in by Claude (Sonnet) from `profile.md` and `identity.md`, so nobody has to write them
+by hand. The pipeline does this by itself: when it starts and the file is
+missing, when either file changes (Edit profile, `/make-profile`, or by hand),
+and when an update adds a preference it did not have before. Each time is one
+short Claude call; if Claude is not available, the local model does it. The
+dashboard then asks you to check them, along with any **questions** Claude has about what
+your profile leaves open (whether you would manage a team, relocate, which kinds of
+job), and **Preferences** in the top bar
+opens them. A preference you changed, there or in the file, is yours: it is
+marked "yours" and is never written over. **Fill from my profile** writes all
+of them again, yours included. The fictional example ships with its own and is
+never rewritten. The code is `scraper/preferences.py`; the model is
+`CLAUDE_PREFS_MODEL` in `scraper/config.py`.
 
 **Which profile is used:** `$PROFILE_DIR` if set, otherwise `profiles/me`,
 otherwise the fictional example. The ranker, the dashboard and the build all
@@ -168,7 +183,9 @@ it happens once. Reload the extension at `chrome://extensions` after updating;
 until then the old one keeps its own list and the pipeline ignores it.
 
 Three example searches are added on a new install, one each for LinkedIn,
-Indeed and StepStone. Edit or delete them freely.
+Indeed and StepStone. Once your Preferences are written, the examples, if still
+untouched, are replaced with up to four LinkedIn searches for your own target
+roles in your first place. Edit or delete them freely.
 
 ### Start over
 
@@ -215,7 +232,10 @@ decides what goes on to the ranker:
    after two pages with nothing new. The API allows 50 requests per window: 1.3 s
    between pages, and a 429 is waited out.
 2. **Rules**, which need no judgement: days back, internships and working-student
-   jobs (by title and by Arbeitnow's job types), and location. The local model
+   jobs (by title and by Arbeitnow's job types), and location. Unless you change
+   them in the Arbeitnow window, the countries, remote and student-job rules
+   follow your Preferences: student jobs are kept when you picked a student kind
+   of job (or none), and no country is ruled out when you would relocate. The local model
    turns each location string into countries, 25 at a time, cached in
    `arbeitnow_places.json`; a broken answer is retried in halves. Places the
    model can't name are kept.
@@ -245,12 +265,22 @@ shows the new source automatically.
 
 ## How ranking decides
 
-The rule is **the model reads, the code decides.** The local model pulls facts
-out of each posting: the language level it requires, the years it asks for, what
-the work actually is, whether it is a management job. Plain code then applies
-the filters. The model is never trusted with the yes or no, because it gets
-those wrong in ways that cost real applications: it reads "fluent German" as
-intermediate, and "2 to 5 years" as 5 when the lower number is what matters.
+The model reads each posting **against your profile and your Preferences**
+(roles you want, work that is not yours, years, languages, places, whether you
+would relocate, management) and answers: is this one of your roles, which
+languages and how many years does it really require, is it a management job, is
+it somewhere and in a way you would work, what kind of job it is (regular,
+working student, internship, thesis, apprenticeship, freelance, gig work), and
+how well do you fit. Your own limits from Preferences are then applied to those answers in code:
+a language above your level, more years than your limit, a management role when
+you said no, a place you would not work, a kind of job you did not pick.
+Nothing else is hard-coded: no list of job titles, no fixed language, years or
+internship rule. Only a posting with no description is skipped, because there is
+nothing to read. Anything your Preferences leave open (no languages listed, no
+years limit, no places) rules nothing out.
+
+With **Claude** ranking, every job is read. With the **local model**, jobs far
+from your roles by meaning are set aside first, to save hours on a slow laptop.
 
 **Before anything is read, these checks skip work entirely.** Every collected
 job lands in exactly one of them or goes to the model, so the numbers always add
@@ -278,8 +308,9 @@ already applied or built, 1 no description to read*. The ranker and the dashboar
 Both files survive **Erase everything**, and both are plain CSV you can open in
 any spreadsheet.
 
-Filters, in order: required language, years of experience, management role,
-wrong field, weak fit. **A dropped job is never deleted.** Every one is on the
+Filters, in order: a kind of job you did not pick, not one of your roles, a language above your
+level, more years than your limit, management (if you said no), a place you
+would not work, weak fit. **A dropped job is never deleted.** Every one is on the
 Fit ranking page with its reason (tick **Show dropped**), so you can see if a
 filter is too strict.
 
@@ -297,14 +328,14 @@ is set the way it is. The ones you are most likely to touch:
 | Setting | Does |
 |---|---|
 | `BUILD_TARGET` / `BUILD_TARGET_MAX` | applications per build (default 5), rising up to the max when many jobs score strongly |
-| `DROP_YEARS_AT` / `DROP_YEARS_AT_REMOTE` | the years of experience that rules a job out, in Germany and elsewhere |
-| `GERMAN_CAP`, `DROP_GERMAN_AT` | the German level you can work in, and where a requirement rules a job out |
+| `MIN_FIT` / `CLAUDE_MIN_FIT` | the fit score below which a job is not worth a CV (local model / Claude) |
+| `PENALTY_PER_YEAR_OVER` | points off per year a job asks above your years of experience |
 | `STRONG_SCORE` | the score that counts as a strong match |
 | `OLLAMA_MODEL` | any model from `ollama list`; bigger reads better, slower |
 | `OLLAMA_USE_INSTALLED` | `True` (default): if `OLLAMA_MODEL` is not installed, use a model Ollama already has instead of downloading it. `False`: always use exactly `OLLAMA_MODEL` |
 
-The defaults suit English-speaking technical roles in Germany. The German
-language filter is the one to change first if you are elsewhere.
+Your languages, years limit, places and the rest are not here: they are your
+**Preferences** on the dashboard, filled in from your profile.
 
 **Autobuild** (the switch at the top of the dashboard) builds automatically when
 a scrape finishes. It is **off by default**, because it spends Claude usage
@@ -409,11 +440,16 @@ to work when opened straight from disk.
 `builder/.claude/skills/cv-builder/SKILL.md` is the rulebook Claude writes by,
 distilled from building a few hundred real applications. The short version:
 
-- **One page, filled.** A half-empty page reads as a thin candidate. The builder
-  refuses a single-page CV under 90% full; the fix is more real content, never
-  bigger spacing.
-- **Named projects, spread out.** Every bullet opens with the project's name in
-  bold. At least four different projects, at most two bullets each.
+- **Your limits decide, nothing else.** A role is dropped at build time only
+  when its description breaks one of your Preferences. No code refuses a role or
+  a document: "Head of" is fine when you accept management, an internship when
+  you want one.
+- **As long as your Preferences say, and filled.** One page, or up to two or three. A
+  half-empty page reads as a thin candidate, so the builder notes a short page
+  and Claude adds real content when your profile has more, never bigger spacing.
+- **Shaped like your career.** Named projects in bold for engineers and
+  researchers; results inside each role for sales, marketing and operations.
+  Either way the page shows range, not one thing told five times.
 - **Outcomes over mechanisms.** Every bullet must be something you could explain
   out loud in an interview without notes.
 - **A summary that doesn't sound generated.** Two or three sentences, leading

@@ -16,10 +16,20 @@ TOP_N go to Claude already ranked.
 
 What the model is asked for
 ---------------------------
-Extraction plus one judgement, as strict JSON. The model never gets to decide
-whether a job is dropped; it reports what the posting says and how close the
-work is, and the gates below make the call. A wording change in a posting
-therefore cannot quietly loosen a rule.
+Since November 2026 the model judges each posting against the person's own
+job preferences (profiles/<name>/preferences.json, see preferences.py) as well
+as their profile: is it one of the roles they want, where is it and does that
+suit them, what languages and how many years does it really require, is it a
+management role, and what kind of job it is (a regular job, a working-student
+job, an internship, a thesis, an apprenticeship, freelance or gig work). The
+code then applies the person's own limits
+to those answers (verdict below). Before, the limits were constants and word
+lists set for one AI engineer in Berlin, and a salesperson, a marketer or
+anyone outside Germany had nearly every job thrown out before a model read it.
+Every limit comes from the preferences, which Claude writes from the profile
+and the person can change: a student looking for working-student jobs gets
+them, and an engineer does not get internships. The one rule left in code is
+that a posting with no description cannot be judged.
 
 Every answer is cached by job and prompt version, so re-running after a config
 change costs nothing for jobs already seen.
@@ -66,14 +76,13 @@ PROFILE_PATH = profile_file()   # profiles/me, else profiles/example — see pro
 
 # Bump when the prompt or the answer shape changes, so old cached answers are
 # not silently reused against a different question.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "6"      # 4: preferences.json; 5: job_kind; 6: posting language by the work
 
-GERMAN_SCALE = {"none": 0, "a1": 1, "a2": 2, "b1": 3, "b2": 4, "c1": 5,
-                "c2": 6, "native": 6, "fluent": 6, "unknown": 0}
+import preferences as prefs_mod   # noqa: E402
 
-AI_FAMILIES = {"ai_engineer", "ml_engineer", "ai_platform"}
-OFF_LANE = {"data_engineer", "frontend", "computer_vision", "embedded_ml",
-            "research", "devops", "annotation"}
+# Language levels in order; "native" counts as the top.
+LEVEL_RANK = {lv: i for i, lv in enumerate(prefs_mod.LEVELS)}
+LEVEL_RANK["c2"] = LEVEL_RANK["native"]
 
 
 # --------------------------------------------------------------- input
@@ -102,28 +111,81 @@ def _read(path: pathlib.Path, default):
 
 # --------------------------------------------------------------- the model
 # The fields asked for, shared by the local prompt (one posting) and Claude's
-# (several postings in one call).
-ANSWER_FIELDS = """  "german_level": one of "none","a1","a2","b1","b2","c1","native" — the German
-      the posting REQUIRES. "German is a plus" is "none". Only say "c1" or
-      "native" when fluent or business-fluent German is stated as a requirement.
-      A posting written in German does not by itself require German.
-  "years_required": integer, or null when the posting states no number. Read
-      only years of professional experience the posting REQUIRES. A range like
-      "2-4 years" is 2. Ignore years mentioned for anything else, such as how
-      long the company has existed or the length of a contract.
-  "role_family": one of "ai_engineer","ml_engineer","ai_platform","backend",
-      "data_engineer","frontend","devops","computer_vision","embedded_ml",
-      "research","annotation","other" — what the work ACTUALLY is, judged from
-      the responsibilities, not from the job title.
-  "is_management": true only when the core of the job is leading people, owning
-      headcount or setting department strategy. A senior engineer who mentors
-      is NOT management.
-  "berlin": true when the job is in Berlin or hybrid in Berlin.
-  "remote_germany": true when it is remote and open to Germany.
-  "fit": integer 0-100, how close this work is to what the candidate has actually built.
-      100 means it could have been written for them. 0 means a different field.
+# (several postings in one call). The model judges against the candidate's
+# profile and preferences; the code applies their limits (verdict).
+ANSWER_FIELDS = """  "role_match": "yes", "close" or "no". What the work ACTUALLY is, judged from
+      the responsibilities, not the title, against the roles the candidate wants
+      and the work they say is not theirs. "yes": one of the roles they want.
+      "close": a neighbouring role they could credibly do. "no": a different
+      field, or work they say is not theirs.
+  "years_required": integer, or null when the posting states no number. The
+      years of professional experience the posting REQUIRES, at the low end of a
+      range ("2-4 years" is 2, "5+ years" is 5, "mindestens 3 Jahre" is 3).
+      Ignore numbers about anything else, such as how long the company has
+      existed or the length of a contract.
+  "languages_required": the languages the posting REQUIRES and at what level, as
+      [{"language": "German", "level": "b2"}], level one of "a1","a2","b1","b2",
+      "c1","c2","native". "Fluent", "business fluent" or "verhandlungssicher" is
+      c1; "native" or "Muttersprache" is native. A language that is only "a
+      plus" or "nice to have" is not required. A posting written entirely in one
+      language and silent about it needs that language at the level the work
+      itself needs: say c1 only for work done mostly in writing or with clients
+      in it, b2 for a team that works in it, nothing when the posting says
+      another language is the working language. [] when none.
+  "is_management": true only when the core of the job is leading people or
+      owning headcount. A senior individual role that mentors is NOT management.
+  "location": "best", "ok" or "no", against where the candidate would work.
+      A fully remote job that someone living in one of their places may take
+      counts as remote in that place, wherever the employer is. "best": the
+      first place they list, in a way they would work there (on site, hybrid
+      or remote). "ok": another place or way they would take, or a posting that
+      does not say where. "no": a place or way they would not take, such as on
+      site in a city they do not list, or remote only for people in a country
+      they do not list (unless remote jobs from anywhere are fine for them).
+      When they would relocate, an on-site or hybrid job elsewhere is "ok",
+      not "no".
+  "job_kind": what kind of job this is: "regular" (an ordinary full-time or
+      part-time job), "working_student" (Werkstudent), "internship" (Praktikum,
+      not a trainee or graduate programme, which is "regular"), "thesis" (a Bachelor or Master thesis
+      placement), "apprenticeship" (Ausbildung, dual study), "freelance"
+      (freelance or contract work for a client), or "gig" (per-task work
+      through a platform, such as data annotation or AI-training tasks).
+  "fit": integer 0-100, how well the candidate's actual experience matches what
+      this job needs. 100 means it could have been written for them. 0 means a
+      different field.
   "reason": one short sentence, at most 20 words, naming the deciding factor.
 """
+
+
+def preferences_text(prefs: dict) -> str:
+    """The person's preferences in plain words, for the prompt. Anything not
+    set is said to be open, so the model does not invent a limit."""
+    def lst(v):
+        return "; ".join(v) if v else "not stated"
+    places = [f"{p['place']}" + (f" ({p['country']})" if p.get("country") else "")
+              + f": {', '.join(p['work'])}" for p in prefs.get("places") or []]
+    langs = [f"{x['language']} {prefs_mod._level_word(x['level'])}"
+             for x in prefs.get("languages") or []]
+    yrs = prefs.get("years_experience")
+    return "\n".join([
+        "=== WHAT THE CANDIDATE IS LOOKING FOR ===",
+        f"Roles they want: {lst(prefs.get('target_roles'))}",
+        f"Work that is not theirs: {lst(prefs.get('not_my_field'))}",
+        f"Years of professional experience: {yrs if yrs is not None else 'not stated'}",
+        f"Languages they speak: {lst(langs)}",
+        "Where they would work, best first: " + (lst(places) if places else "anywhere"),
+        "Remote jobs only open to people in other countries: "
+        + ("fine" if prefs.get("remote_anywhere") or not places else "not wanted"),
+        "Would relocate for the right job: " + ("yes" if prefs.get("relocate") else "no"),
+        "Roles that mainly manage a team: "
+        + ("fine" if prefs.get("accept_management") else "not wanted"),
+        "Kinds of job they want: " + (", ".join(prefs_mod.KIND_NAMES[k] for k in prefs["job_kinds"])
+                                      if prefs.get("job_kinds") else "any kind"),
+    ])
+
+
+def candidate_text(profile: str, prefs: dict) -> str:
+    return f"{profile.strip()}\n\n{preferences_text(prefs)}"
 
 
 def build_prompt(job: dict, profile: str) -> str:
@@ -330,7 +392,11 @@ VEC_CACHE = OUT / "rank_similarity.json"
 
 
 def target_roles() -> list[str]:
-    """What the candidate is looking for, as the Arbeitnow searches put it."""
+    """What the candidate is looking for: the roles in their preferences, or
+    else the Arbeitnow searches (which said it in more words)."""
+    roles = prefs_mod.current().get("target_roles") or []
+    if roles:
+        return list(roles)
     try:
         import arbeitnow_match as am
         st = am.load() or {}
@@ -353,7 +419,7 @@ def prefilter(pool: list[dict]) -> tuple[list[dict], list[tuple[dict, float]], s
         return pool, [], ""
     roles = target_roles()
     if not roles:
-        return pool, [], "pre-filter skipped: no target roles yet (set them in the Arbeitnow window)"
+        return pool, [], "pre-filter skipped: no target roles yet (set them under Preferences)"
     import arbeitnow_match as am
     qkey = hashlib.sha1(json.dumps([am.EMBED_MODEL, roles]).encode()).hexdigest()[:10]
     cache = _read(VEC_CACHE, {})
@@ -379,6 +445,12 @@ def prefilter(pool: list[dict]) -> tuple[list[dict], list[tuple[dict, float]], s
     for j in pool:
         sim = cache["sims"][key(j)]
         (aside.append((j, sim)) if sim < floor else kept.append(j))
+    # The floor was measured on one field in English. When it would set aside
+    # most of a pool, it does not fit this person's field or language (a
+    # German nursing pool against "Pflegefachkraft", say): read everything.
+    if len(aside) > len(pool) / 2:
+        return pool, [], (f"pre-filter skipped: it would set aside {len(aside)} of {len(pool)}, "
+                          "so it does not fit your field; every job is read")
     return kept, aside, (f"pre-filter: {len(aside)} of {len(pool)} set aside as far from "
                          f"your target roles (similarity below {floor})")
 
@@ -396,7 +468,8 @@ def _parse(raw: str) -> dict:
 
 
 def normalise(a: dict) -> dict:
-    """Coerce whatever came back into the shape the gates expect."""
+    """Coerce whatever came back into the shape the verdict expects. Anything
+    unreadable comes out as the answer that rules nothing out."""
     def _int(v):
         if isinstance(v, bool) or v is None:
             return None
@@ -405,357 +478,140 @@ def normalise(a: dict) -> dict:
         m = re.search(r"\d+", str(v))
         return int(m.group(0)) if m else None
 
-    lvl = str(a.get("german_level", "none")).strip().lower()
+    def _pick(v, allowed, default):
+        t = str(v or "").strip().lower()
+        return t if t in allowed else default
+
     yrs = _int(a.get("years_required"))
     fit = _int(a.get("fit")) or 0
+    langs = []
+    for item in a.get("languages_required") or []:
+        if not isinstance(item, dict):
+            continue
+        name = re.sub(r"\s+", " ", str(item.get("language") or "")).strip()[:30]
+        lv = prefs_mod._level(item.get("level"))
+        if name and lv and lv != "none":
+            langs.append({"language": name[:1].upper() + name[1:], "level": lv})
     return {
-        "german_level": lvl if lvl in GERMAN_SCALE else "none",
-        "german_num": GERMAN_SCALE.get(lvl, 0),
+        "role_match": _pick(a.get("role_match"), ("yes", "close", "no"), "close"),
         "years_required": yrs if (yrs is None or 0 <= yrs <= 30) else None,
-        "role_family": str(a.get("role_family", "other")).strip().lower(),
-        "is_management": bool(a.get("is_management")),
-        "berlin": bool(a.get("berlin")),
-        "remote_germany": bool(a.get("remote_germany")),
+        "languages_required": langs[:6],
+        "is_management": a.get("is_management") is True,
+        "location": _pick(a.get("location"), ("best", "ok", "no"), "ok"),
+        "job_kind": _pick(a.get("job_kind"), prefs_mod.KINDS,
+                          "gig" if a.get("gig_work") is True else "regular"),
         "fit": max(0, min(100, fit)),
         "reason": str(a.get("reason", ""))[:160],
     }
 
 
-# --------------------------------------------------------------- the gates
-# Berlin postcodes are 10115-14199. A posting that gives only "10587" is a
-# Berlin job and a posting that gives "30938" is not, and no model needs to be
-# asked about either.
-POSTCODE = re.compile(r"\b(\d{5})\b")
-
-
-def berlin_from_text(location: str, description: str) -> bool | None:
-    """
-    True, False, or None when the text genuinely does not say.
-
-    llama3.1 answered berlin=true for all 188 postings, Burgwedel and
-    Bergkirchen included, which made the Berlin bonus meaningless: everything
-    got it, so it ranked nothing. The location string was sitting right there in
-    every one of those records. Read it instead of asking.
-    """
-    loc = (location or "").strip().lower()
-    if not loc:
-        head = (description or "")[:400].lower()
-        if "berlin" in head:
-            return True
-        return None
-    if "berlin" in loc:
-        return True
-    codes = POSTCODE.findall(loc)
-    if codes:
-        # A postcode that is not Berlin's is a definite no, whatever else the
-        # line says.
-        return any(10115 <= int(c) <= 14199 for c in codes)
-    if re.search(r"remote|homeoffice|home office|bundesweit|deutschlandweit|"
-                 r"anywhere|deutschland|germany", loc):
-        return None          # not Berlin specifically, but not ruled out either
-    return False             # a named place that is not Berlin
-
-
-# Shapes of role that are wrong whatever the description says, judged from the
-# title because that is where they are declared. Added 18 September 2026 after a
-# top 20 came back holding a Chief of Staff, two internships, a Product Manager
-# and a Working Student.
-#
-# These are not seniority filters. A junior or graduate engineering role is
-# fine and stays: the objection to an internship is that it is not a job, and
-# the objection to a Product Manager is that it is not engineering.
-NOT_A_JOB = re.compile(
-    r"\b(intern|internship|praktikum|praktikant\w*|working\s*student|"
-    r"werkstudent\w*|ausbildung|azubi|dual(?:es)?\s*stud\w*|"
-    r"master\s*thesis|bachelor\s*thesis|abschlussarbeit)\b", re.I)
-
-NOT_ENGINEERING = re.compile(
-    r"\b(product\s*manager|product\s*owner|project\s*manager|programme?\s*manager|"
-    r"chief\s*of\s*staff|scrum\s*master|agile\s*coach|recruit\w*|"
-    r"account\s*(?:executive|manager)|sales|business\s*development|"
-    r"marketing|designer|ux\s*research\w*)\b", re.I)
-
-
-# Marketplaces and AI-training contractors. Decision, 18 September 2026.
-#
-# These are not employers. They are platforms that place you on task work, or
-# annotation and model-training gigs dressed as engineering roles: "Machine
-# Learning Engineer" at Alignerr is paid per task, not a job at a company with a
-# product. They rank well because the titles are perfect and the descriptions
-# talk about ML all the way through, which is exactly why a title-and-fit
-# ranking cannot catch them and a name list is needed.
-MARKETPLACE_NAMES = re.compile("|".join([
-    r"alignerr", r"xpertdirect", r"jobgether", r"turing\b", r"toptal", r"upwork",
-    r"fiverr", r"andela", r"crossover", r"remotasks", r"outlier\s*ai", r"mercor",
-    r"scale\s*ai", r"appen", r"lionbridge", r"telus\s*international", r"clickworker",
-    # Deel was on this list and should not have been: it is a payroll and HR
-    # SaaS company that hires its own engineers, not a task marketplace, and the
-    # entry silently dropped real in-lane roles. Oyster is kept: it is an EOR
-    # whose postings are placements, not its own roles.
-    r"braintrust", r"gun\.io", r"arc\.dev", r"revelo", r"oyster\s*hr",
-    r"micro1", r"invisible\s*technologies", r"surge\s*ai", r"labelbox",
-    r"dataannotation", r"data\s*annotation",
-]), re.I)
-
-# The same thing said in the posting rather than in the name.
-GIG_SIGNALS = re.compile("|".join([
-    r"pay(?:ment)?\s*per\s*(?:task|project|hour|word|assignment)",
-    r"per[- ]task", r"task[- ]based\s*(?:work|pay)", r"work\s*when\s*you\s*want",
-    r"set\s*your\s*own\s*(?:hours|schedule)", r"as\s*(?:much|little)\s*as\s*you\s*want",
-    r"no\s*(?:long[- ]term\s*)?commitment", r"1099\b", r"independent\s*contractor",
-    r"freelance\s*(?:marketplace|platform)", r"training\s*data\s*(?:contributor|annotator)",
-    r"(?:rate|earn)[^.]{0,40}\$\d+\s*(?:/|per\s*)h",
-]), re.I)
-
-
-def is_marketplace(company: str, description: str) -> str:
-    if MARKETPLACE_NAMES.search(company or ""):
-        return "a task marketplace, not an employer"
-    hits = GIG_SIGNALS.findall(description or "")
-    # One phrase can appear innocently; two is the shape of a gig posting.
-    if len(hits) >= 2:
-        return "the posting describes per-task gig work, not a role"
-    return ""
-
-
-def shape_of(title: str) -> tuple[str, str]:
-    t = title or ""
-    if NOT_A_JOB.search(t):
-        return "not-a-job", "internship, working student or thesis placement"
-    if NOT_ENGINEERING.search(t):
-        return "not-engineering", "the role is not an engineering job"
-    return "", ""
-
-
-# --------------------------------------------------------------- German
-# The most common German function words. Deliberately closed-class: articles,
-# prepositions, conjunctions, pronouns and auxiliaries appear in any German
-# prose regardless of subject, while nouns would make this a topic detector.
-GERMAN_STOPWORDS = frozenset("""
-und der die das mit fuer für von den dem des ein eine einer einem einen als auch
-im in bei sich nicht sind ist wir uns unser unsere unserem unseren du dir dein
-deine sie ihre ihr wird werden haben hat sowie oder zu zum zur aus ueber über
-nach durch bis dass wenn was wie sehr gute guten gutes kenntnisse erfahrung
-aufgaben profil bieten suchen freuen dich dass weil damit schon noch mehr
-""".split())
-
-_WORDS = re.compile(r"[a-zäöüß]+")
-
-
-def written_in_german(description: str) -> float:
-    """
-    Share of the posting's words that are German function words.
-
-    An English posting scores near zero even when the company, the city and half
-    the benefits are German, because none of those are function words. A German
-    posting scores a quarter or more, because you cannot write a German sentence
-    without them.
-    """
-    words = _WORDS.findall((description or "").lower())
-    if len(words) < 40:          # too short to measure; do not guess from noise
-        return 0.0
-    return sum(w in GERMAN_STOPWORDS for w in words) / len(words)
-
-
-# --------------------------------------------------------------------------- #
-# Deterministic scans of the actual description, because the model under-calls
-# every one of these. On 21 September the ranker sent 20 roles to Claude and
-# Claude rejected 18 by hand: EIGHT were hard German-fluency requirements the
-# model had tagged "b1", THREE were stated years gates ("5-8 years", "5+ years")
-# the model missed entirely, and the rest were plainly off-lane roles the model
-# still labelled "ai_engineer". The whole point of ranking locally is to spend
-# Claude on writing, not on rejecting — so these gates read the text ourselves.
-# The model extracts; the code below decides.
-
-# Each of these names German at a hard level (fluent, C1/C2, native, professional,
-# verhandlungssicher) that the profile (see GERMAN_CAP) does not meet. They are specific enough —
-# every one requires the word "german"/"deutsch" adjacent to a fluency term — that
-# a softened "German is a plus" (which carries none of these terms) never matches,
-# so no soft-window exception is needed. An earlier version applied one and it
-# read "TypeScript being a plus. Fluent German" as softened, leaking the role.
-# "both" and a hyphen in "professional-level" are allowed because real postings
-# use them ("Fluency in both German and English", "Professional-level German").
-_GERMAN_HARD = [re.compile(p, re.I) for p in (
-    r"fluent\s+(?:in\s+)?(?:both\s+)?german", r"german\s+fluency",
-    r"fluency\s+(?:in\s+)?(?:both\s+)?german",
-    r"(?:professional|business|native|proficient|advanced)[-\s]+(?:level\s+)?(?:in\s+)?german",
-    r"german\s*[:(]?\s*(?:c1|c2)\b", r"\b(?:c1|c2)\s+(?:level\s+)?(?:in\s+)?german",
-    r"german\s+to\s+a\s+minimum\s+(?:of\s+)?(?:c1|c2)", r"you\s+speak\s+german",
-    r"german\s+and\s+english\s+(?:language\s+)?(?:fluency|proficiency|skills|communication|speaking)",
-    r"(?:fluent|fluency|proficient|proficiency)\s+(?:in\s+)?(?:both\s+)?german\s+and\s+english",
-    r"verhandlungssicher", r"muttersprach", r"flie(?:ss|ß)end(?:e|es)?\s+deutsch",
-    r"sehr\s+gute?\s+deutschkenntnisse",
-    r"deutschkenntnisse\s*[:(]?\s*(?:c1|c2|verhandlungssicher|flie)",
-    r"deutsch\s*[:(]?\s*(?:c1|c2)\b",
-)]
-
-
-def german_required(description: str) -> str:
-    """The hard German-fluency requirement the posting states, or '' if none."""
-    text = (description or "").lower()
-    if not text:
+# --------------------------------------------------------------- the verdict
+# Internships, working-student jobs and theses used to be dropped here by a
+# title word list, for everyone (18 September 2026). Since November 2026 the
+# model says what kind of job each posting is and the person's own job_kinds
+# decide, so a student looking for a Werkstudent job is shown them.
+def kind_gap(v: dict, prefs: dict) -> str:
+    """Why the kind of job is not one the person wants, or "". No kinds set
+    means any kind is fine."""
+    want = prefs.get("job_kinds") or []
+    if not want or v["job_kind"] in want:
         return ""
-    for rx in _GERMAN_HARD:
-        m = rx.search(text)
-        if m:
-            return " ".join(m.group(0).split())
+    names = prefs_mod.KIND_NAMES
+    return (f"{names[v['job_kind']]}, not a kind of job you want "
+            f"({', '.join(names[k] for k in want)})")
+
+
+def _level_name(lv: str) -> str:
+    return "native" if lv == "native" else lv.upper()
+
+
+def language_gap(v: dict, prefs: dict) -> str:
+    """The first language the posting requires above the person's level, said
+    plainly, or "". Nothing is ruled out when the person listed no languages:
+    an unknown is never a reason to drop a job."""
+    if not prefs.get("languages"):
+        return ""
+    for req in v.get("languages_required") or []:
+        # "French or English": any one is enough. "English and German": each.
+        for need in re.split(r"\s*(?:,|&|\band\b|\bund\b|\bet\b)\s*", req["language"]):
+            options = [x for x in re.split(r"\s*(?:/|\bor\b|\boder\b|\bou\b)\s*", need) if x]
+            gaps = []
+            for name in options or [need]:
+                have = prefs_mod.level_of(prefs, name)
+                if have == "" or LEVEL_RANK.get(req["level"], 0) <= LEVEL_RANK.get(have, 0):
+                    gaps = []          # they speak it well enough, or at a level nobody stated
+                    break
+                gaps.append((name, have))
+            if gaps:
+                name, have = gaps[0]
+                said = "none" if have == "none" else _level_name(have)
+                return f"needs {name} {_level_name(req['level'])}; you have {said}"
     return ""
 
 
-# A stated minimum years-of-experience requirement. The floor of a range is the
-# requirement ("5-8 years" -> 5), and "experience" must be near the number so a
-# founding date or a "2 year contract" is not read as a seniority bar.
-# Only EXPLICIT requirement phrasings, each read at its FLOOR (the least the
-# posting would accept): "5+ years", "at least 8 years", and a range at its lower
-# bound ("2-5 years" -> 2, so a two-year candidate is not gated; "5-8 years" -> 5).
-# Bare "5 years of existence" carries none of these markers and is ignored, which
-# is why this is trusted over the model — the model reads a range at its ceiling
-# and gated "2-5 years" roles the user qualifies for. The MAX across matches is the
-# seniority bar (a posting stating both "2-5" somewhere and "8+ years required"
-# is an eight-year role).
-_YEARS_REQ = [re.compile(p, re.I) for p in (
-    r"(\d{1,2})\s*\+\s*years?",
-    r"(?:at\s+least|minimum(?:\s+of)?|min\.?|mindestens)\s+(\d{1,2})\s*\+?\s*years?",
-    r"(\d{1,2})\s*(?:-|–|to|bis)\s*\d{1,2}\s*\+?\s*years?",
-)]
-
-
-def stated_years(description: str):
-    """The stated years-of-experience requirement (its floor), or None. Read from
-    the text, because the model mis-reads ranges as their upper bound."""
-    text = (description or "").lower()
-    floors = [int(m.group(1)) for rx in _YEARS_REQ for m in rx.finditer(text)
-              if 0 <= int(m.group(1)) <= 30]
-    return max(floors) if floors else None
-
-
-# Unambiguous off-lane markers: phrases that name a different discipline outright.
-# Kept deliberately narrow — a false positive here throws away a good role — so
-# only fields the user plainly does not work in, by their own specific vocabulary.
-_OFF_LANE_TEXT = [
-    (re.compile(r"\bmidjourney\b|\brunway\s+ml\b|ad[- ]creative|creative\s+production", re.I),
-     "creative/ad-media production, not AI engineering"),
-    (re.compile(r"computational\s+geometry|\bcad/cae\b|\bcae\b|mesh\s+(?:generation|representation)|finite[-\s]element", re.I),
-     "CAD/CAE/geometry engineering, off-lane for this profile"),
-    (re.compile(r"\bitil\b|incident\s+management|infrastructure\s+administration|"
-                r"service\s+management", re.I),
-     "IT service management / infra administration, not AI engineering"),
-    (re.compile(r"automated\s+driving|autonomous\s+driving|\badas\b|iso\s*26262|functional\s+safety", re.I),
-     "automotive/autonomous-driving safety, off-lane for this profile"),
-]
-
-
-def off_lane_text(description: str) -> str:
-    text = description or ""
-    for rx, why in _OFF_LANE_TEXT:
-        if rx.search(text):
-            return why
-    return ""
-
-
-# German places that appear in a LinkedIn location string without the word
-# "Germany" attached. Everything else that is not "Germany"/"Deutschland" counts
-# as outside Germany, which is the looser-years side of the line.
-# in_germany() lives in countries.py since 28 September 2026, shared with the
-# Arbeitnow location rule, which must not import the ranker.
-from countries import in_germany  # noqa: E402,F401
-
-
-def years_ceiling(v: dict) -> int:
-    """The years ceiling for this posting: tighter at home, looser abroad."""
-    if v.get("in_germany", True):
-        return config.DROP_YEARS_AT
-    return getattr(config, "DROP_YEARS_AT_REMOTE", config.DROP_YEARS_AT)
-
-
-def verdict(v: dict) -> tuple[str, str]:
-    """The decision is here, in code, never in the model's answer."""
-    # Written in German beats anything the model said about German. On
-    # 19 September both Reply and secureIO were returned as german_level="none"
-    # and both postings are German from first line to last.
-    if v.get("german_share", 0.0) >= config.GERMAN_TEXT_SHARE:
-        return "german", (f"the posting is written in German "
-                          f"({v['german_share']:.0%} German prose)")
-    # A hard German requirement the text states outright, whatever level the
-    # model guessed. This is the gate that leaked eight roles on 21 September.
-    if v.get("german_req_text"):
-        return "german", f"requires fluent German (\"{v['german_req_text']}\")"
-    if v["german_num"] >= config.DROP_GERMAN_AT:
-        return "german", f"needs {v['german_level'].upper()} German"
-    if v.get("years_gate") is not None and v["years_gate"] >= years_ceiling(v):
-        where = "" if v.get("in_germany", True) else " for a role outside Germany"
-        return "years", f"asks for {v['years_gate']}+ years{where}"
-    if config.DROP_MANAGEMENT and v["is_management"]:
-        return "management", "the job is running a team, not building"
-    # A different discipline named outright in the description, even when the
-    # model still labelled the role "ai_engineer".
-    if v.get("off_lane_text"):
-        return "off-lane", v["off_lane_text"]
-    if v["role_family"] in OFF_LANE:
-        return "off-lane", f"{v['role_family'].replace('_', ' ')} is off-lane for this profile"
-    if v["fit"] < config.MIN_FIT:
-        return "weak-fit", f"scored {v['fit']}, below the {config.MIN_FIT} floor"
+def verdict(v: dict, prefs: dict) -> tuple[str, str]:
+    """The model's answers, held against the person's own limits."""
+    gap = kind_gap(v, prefs)
+    if gap:
+        return "job-kind", gap
+    if v["role_match"] == "no":
+        return "off-lane", v["reason"] or "not one of the roles you want"
+    gap = language_gap(v, prefs)
+    if gap:
+        return "language", gap
+    most = prefs.get("max_years_asked")
+    if most is not None and v["years_required"] is not None and v["years_required"] > most:
+        return "years", f"asks for {v['years_required']}+ years; your limit is {most}"
+    if v["is_management"] and not prefs.get("accept_management", True):
+        return "management", "the job is mainly managing a team"
+    if v["location"] == "no" and (prefs.get("places") or []):
+        return "location", v["reason"] or "not somewhere, or not a way, you would work"
+    # One of the roles they asked for is not dropped on fit alone: a career
+    # changer or a student is, by definition, a weak fit on experience for the
+    # very roles they want. It still ranks below closer fits. Only a fit near
+    # zero, which the prompt defines as a different field, still counts.
+    floor = config.MIN_FIT if v["role_match"] != "yes" else getattr(config, "ROLE_MATCH_MIN_FIT", 15)
+    if v["fit"] < floor:
+        return "weak-fit", f"scored {v['fit']}, below the {floor} floor"
     return "passed", ""
 
 
-def score(v: dict) -> int:
+_LOCAL_MIN_FIT = config.MIN_FIT     # before main() swaps in Claude's floor
+
+
+def strong_line(prefs: dict | None = None) -> int:
+    """STRONG_SCORE was set on the local model's scores, including the
+    first-place bonus. With no places set nobody can earn that bonus, and
+    Claude scores the same jobs lower (its fit floor is lower by as much), so
+    the line comes down by both."""
+    prefs = prefs if prefs is not None else prefs_mod.current()
+    return (config.STRONG_SCORE - (0 if prefs.get("places") else config.BONUS_BEST_PLACE)
+            - max(0, _LOCAL_MIN_FIT - config.MIN_FIT))
+
+
+def score(v: dict, prefs: dict) -> int:
     s = v["fit"]
-    if v["role_family"] in AI_FAMILIES:
-        s += config.BONUS_AI_ROLE
-    if v["berlin"]:
-        s += config.BONUS_BERLIN
-    elif v["remote_germany"]:
-        s += config.BONUS_REMOTE_DE
-    if v["role_family"] in OFF_LANE:
-        s -= config.PENALTY_OFF_LANE
-    # A role asking more years than the user has is kept (unless it crosses
-    # DROP_YEARS_AT) but ranked lower, one step per extra year.
-    yrs = v.get("years_required")
-    if yrs is not None and yrs > config.YOUR_YEARS:
-        s -= config.PENALTY_PER_YEAR_OVER * (yrs - config.YOUR_YEARS)
+    if v["role_match"] == "yes":
+        s += config.BONUS_ROLE_MATCH
+    if v["location"] == "best":
+        s += config.BONUS_BEST_PLACE
+    # A role asking more years than the person has is kept (unless it is over
+    # their own limit) but ranked lower, one step per extra year.
+    have, yrs = prefs.get("years_experience"), v.get("years_required")
+    if have is not None and yrs is not None and yrs > have:
+        s -= config.PENALTY_PER_YEAR_OVER * (yrs - have)
     return max(0, s)
 
 
-# An 8B model scores in blunt steps — five roles came back at exactly 80 — so
-# the headline score alone leaves most of the order to chance. These two are
-# deterministic, read from the posting rather than from the model, and only
-# ever break a tie.
-TITLE_EXACT = re.compile(
-    r"\b(applied ai|ai engineer|a\.?i\.? engineer|llm engineer|genai engineer|"
-    r"machine learning engineer|ml engineer|ai/ml engineer|agent engineer)\b", re.I)
-
-
-def title_bonus(title: str) -> int:
-    """Does the posting actually call itself the thing the user is looking for."""
-    t = title or ""
-    if TITLE_EXACT.search(t):
-        return 2
-    if re.search(r"\b(ai|ml|machine learning|llm)\b", t, re.I):
-        return 1
-    return 0
-
-
-def berlin_precision(location: str) -> int:
-    """
-    Berlin alone beats Berlin in a list of nine cities.
-
-    "bundesweit, Berlin, Frankfurt, Hamburg, Köln, München" is a nationwide
-    posting that mentions Berlin, not a Berlin job, and it should not outrank a
-    role that is actually in Berlin.
-    """
-    loc = (location or "").lower()
-    if "berlin" not in loc:
-        return 0
-    if re.search(r"bundesweit|nationwide|deutschlandweit", loc):
-        return 1
-    cities = [p for p in re.split(r"[,/|]| und ", loc) if p.strip()]
-    return 3 if len(cities) <= 2 else 2
+_ORDER = {"yes": 0, "close": 1, "no": 2, "best": 0, "ok": 1}
 
 
 def sort_key(r: dict) -> tuple:
+    # Ties (models score in blunt steps) go to the closer role, then the
+    # better place.
     return (-r["rank_score"],
-            -title_bonus(r["title"]),
-            -berlin_precision(r["location"]),
+            _ORDER.get(r.get("role_match"), 1),
+            _ORDER.get(r.get("location_fit"), 1),
             -r["match_score"],
             r["title"])
 
@@ -786,7 +642,15 @@ def main() -> int:
         args.model = args.model or ollama_model.resolve(config) or ollama_model.wanted(config)
 
     OUT.mkdir(exist_ok=True)
-    profile = PROFILE_PATH.read_text(encoding="utf-8")
+    # What the model reads about the person: their profile, then their job
+    # preferences in plain words. The same preferences decide the verdicts.
+    prefs = prefs_mod.current()
+    behind = prefs_mod.due()
+    if behind:
+        print(f"note: your job preferences are not up to date with your profile ({behind}); "
+              "jobs are judged against them as they are. They are rewritten when Claude can "
+              "answer (Preferences on the dashboard).")
+    profile = candidate_text(PROFILE_PATH.read_text(encoding="utf-8"), prefs)
 
     # Which jobs the model reads is decided in pool.py, the one rule the
     # dashboard's numbers use too, so the two can never disagree again.
@@ -809,7 +673,10 @@ def main() -> int:
         print("Nothing to rank. Scrape some jobs first.")
         return 1
     print(pool_rules.explain(breakdown))
-    pool, aside, note = prefilter(pool)
+    # The pre-filter saves the local model hours on a slow laptop. Claude reads
+    # every job itself and decides: no similarity cut stands in for its
+    # judgement (decided 16 November 2026).
+    pool, aside, note = prefilter(pool) if engine != "claude" else (pool, [], "")
     if note:
         print(note)
 
@@ -989,49 +856,26 @@ def main() -> int:
                 # answer not on disk is an answer bought twice. The write is a
                 # few milliseconds against seconds per model call.
                 _save_cache(cache)
-            # The location string decides Berlin, not the model. Fall back to
-            # the model only where the posting truly does not say.
-            b = berlin_from_text(job.get("location"), job.get("description"))
-            v["berlin"] = v["berlin"] if b is None else b
-            if b is False:
-                v["remote_germany"] = False
-            vd, why = shape_of(job.get("title", ""))
-            if not vd:
-                gig = is_marketplace(job.get("company", ""), job.get("description", ""))
-                if gig:
-                    vd, why = "marketplace", gig
-            if not vd and len((job.get("description") or "").strip()) < 200:
+            vd, why = "", ""
+            if len((job.get("description") or "").strip()) < 200:
                 # Nothing to judge and nothing to tailor against. Both survivors
                 # of the 19 September re-rank were empty records that passed on
                 # a default score: a CV cannot be written from a blank posting,
                 # so a blank posting is not a candidate.
                 vd, why = "no-description", "the posting has no description to read"
             if not vd:
-                desc = job.get("description") or ""
-                v["german_share"] = written_in_german(desc)
-                # Which years ceiling applies, decided from the location string
-                # rather than the model: Germany gets the tight one, anything
-                # remote/abroad (other countries, EMEA, EU) the looser one.
-                v["in_germany"] = in_germany(job.get("location"))
-                # Deterministic overrides for what the model routinely under-calls.
-                v["german_req_text"] = german_required(desc)
-                # Gate on the text's own figure, not the model's — the model reads
-                # a range at its ceiling and gated roles the user qualifies for. The
-                # model's number is still used for scoring (ranking seniors lower).
-                v["years_gate"] = stated_years(desc)
-                v["off_lane_text"] = off_lane_text(desc)
-                vd, why = verdict(v)
+                vd, why = verdict(v, prefs)
             rows.append({
                 "title": job.get("title") or "", "company": job.get("company") or "",
                 "location": job.get("location") or "", "url": job["url"],
                 "source": job.get("source") or "", "query": job.get("query") or "",
                 "description": job.get("description") or "",
-                "verdict": vd, "why": why, "rank_score": score(v),
+                "verdict": vd, "why": why, "rank_score": score(v, prefs),
                 "match_score": round(v["fit"] / 100, 2),
                 "years_required": v["years_required"],
-                "german_level": v["german_level"],
-                "years_source": "ollama" if v["years_required"] is not None else "unstated",
-                "role_family": v["role_family"], "berlin": v["berlin"],
+                "languages_required": v["languages_required"],
+                "role_match": v["role_match"], "location_fit": v["location"],
+                "job_kind": v["job_kind"],
                 "reason": v["reason"],
                 # 14 of 85 LinkedIn cards carried no company name on
                 # 13 September. The description almost always names the
@@ -1138,7 +982,7 @@ def pool_health(rows: list[dict], passed: list[dict], target: int) -> dict:
     """
     judged = len(rows)
     buildable = len(passed)
-    strong = [r for r in passed if r["rank_score"] >= config.STRONG_SCORE]
+    strong = [r for r in passed if r["rank_score"] >= strong_line()]
     share = (len(strong) / buildable) if buildable else 0.0
     pass_rate = (buildable / judged) if judged else 0.0
     scores = sorted((r["rank_score"] for r in passed), reverse=True)
@@ -1182,7 +1026,7 @@ def print_health(h: dict) -> None:
     bar = "=" * 64
     print(f"\n{bar}\n  POOL: {h['verdict']} — {h['why']}\n{bar}")
     print(f"  {h['judged']} judged · {h['buildable']} buildable · "
-          f"{h['strong']} strong (>= {config.STRONG_SCORE}) · "
+          f"{h['strong']} strong (>= {strong_line()}) · "
           f"{h['pass_rate']:.0%} pass rate · median top score {h['median_top_score']}")
     if h["search_drift"]:
         print(f"  !! only {h['pass_rate']:.0%} of what was read survived the gates. "
@@ -1214,14 +1058,15 @@ def _write_audit(rows: list[dict], top: list[dict], args, health: dict) -> None:
     lines.append(f"SENT TO CLAUDE ({len(top)})")
     for r in top:
         lines.append(f"{r['rank']:>2}. [{r['rank_score']:>3}] {r['title']} @ {r['company']}")
-        lines.append(f"    {r['location']} · {r['role_family']} · "
-                     f"german {r['german_level']} · years {r['years_required']}")
+        langs = ", ".join(f"{x['language']} {x['level']}" for x in r.get("languages_required") or [])
+        lines.append(f"    {r['location']} · role {r.get('role_match')} · place {r.get('location_fit')} · "
+                     f"languages {langs or 'none'} · years {r['years_required']}")
         lines.append(f"    {r['reason']}")
         if r["needs_company"]:
             lines.append("    !! no company name captured — read it out of the description")
         lines.append(f"    {r['url']}")
-    for name in ("german", "years", "management", "off-lane", "not-a-job",
-                 "not-engineering", "marketplace", "weak-fit"):
+    for name in ("job-kind", "off-lane", "language", "years", "management", "location",
+                 "no-description", "weak-fit"):
         group = [r for r in rows if r["verdict"] == name]
         if not group:
             continue

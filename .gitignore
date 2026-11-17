@@ -67,6 +67,9 @@ builder/profile
 
 # Personal Claude instructions, never published
 CLAUDE.local.md
+# Session notes and plans: private working files, never published
+.claude/handoff/
+.claude/plans/
 
 # Tooling
 .scannerwork/

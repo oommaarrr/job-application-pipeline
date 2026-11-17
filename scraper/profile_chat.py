@@ -54,6 +54,14 @@ current folder:
 - reference/PROJECTS.md: one table row per project. What it proves, with
   numbers, and which kind of role it should lead for.
 - reference/projects/*.md: longer write-ups, one file per project.
+- preferences.json: the job preferences every rule reads (target_roles,
+  not_my_field, years_experience, max_years_asked, languages, places,
+  remote_anywhere, relocate, accept_management, job_kinds, cv_shape, cv_max_pages,
+  cv_state_years,
+  all under "preferences"). The pipeline fills it in from profile.md and
+  identity.md by itself. Change it only when the person asks to change one of
+  those preferences, keep it valid JSON with the same keys, and touch no other
+  key in it.
 - Any other file here belongs to the profile too; read it before relying on it.
 
 How to work:

@@ -85,6 +85,9 @@ def clean_url(url: str) -> str:
         return url
     if site(url) != "LinkedIn":
         return url
+    # The extension reads www.linkedin.com only; LinkedIn's country pages
+    # (uk., ae.) show the same search there.
+    parts = parts._replace(netloc="www.linkedin.com")
     query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in VOLATILE]
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
@@ -193,6 +196,9 @@ def _load() -> dict:
            if re.fullmatch(r"\d{3,15}", str(v))}
     tidy = {"version": VERSION, "pages": pages, "searches": rows, "geo": geo,
             "updated": state.get("updated")}
+    seeded = state.get("seeded")
+    if isinstance(seeded, list) and all(isinstance(x, str) for x in seeded):
+        tidy["seeded"] = seeded
     if changed or tidy != state:
         tidy["updated"] = dt.datetime.now().isoformat(timespec="seconds")
         try:
@@ -244,6 +250,75 @@ def save(searches=None, pages=None) -> tuple[dict, list[str]]:
         state["updated"] = dt.datetime.now().isoformat(timespec="seconds")
         _write(state)
         return state, []
+
+
+# LinkedIn place ids seen on real LinkedIn addresses (the same table as
+# KNOWN_GEO in web/searches.js); any other place is learned by learn_geo.
+KNOWN_GEO = {"germany": "101282230", "deutschland": "101282230", "berlin": "106967730",
+             "egypt": "106155005", "saudi arabia": "100459316"}
+
+
+def from_preferences(prefs: dict, geo: dict | None = None) -> list[dict]:
+    """LinkedIn searches, one per target role (up to 4), in the person's first
+    place, last 7 days. LinkedIn works in every country, unlike the Indeed and
+    StepStone addresses, which are per country. The place gets LinkedIn's id
+    when it is known; otherwise the saved-search list says the place is not
+    confirmed yet, so it can be fixed with one search opened on LinkedIn."""
+    places = prefs.get("places") or []
+    where = next((p["place"] for p in places if p.get("country")), "") or \
+        (places[0]["place"] if places else "")
+    ids = {**KNOWN_GEO, **{str(k).lower(): str(v) for k, v in (geo or {}).items()}}
+    geo_id = ids.get(" ".join(where.lower().split())) if where else None
+    rows = []
+    for role in (prefs.get("target_roles") or [])[:4]:
+        # "Data Scientist (production ML)" searches for the title, not the note.
+        role = re.sub(r"\s*\(.*?\)\s*", " ", role).strip() or role
+        q = {"keywords": role, "f_TPR": "r604800"}
+        if where:
+            q["location"] = where
+        if geo_id:
+            q["geoId"] = geo_id
+        rows.append({"label": role + (f" in {where}" if where else ""),
+                     "url": "https://www.linkedin.com/jobs/search/?" + urlencode(q),
+                     "enabled": True})
+    return rows
+
+
+def _fingerprint(rows: list[dict]) -> list[str]:
+    return sorted(f"{key(r['url'])}|{r.get('label', '')}|{r.get('enabled') is not False}" for r in rows)
+
+
+def seed_from_preferences(prefs: dict) -> int:
+    """
+    A first install starts with the example profile's searches (machine
+    learning jobs in Germany). Once the person's own preferences exist, those
+    examples, if still exactly as installed, are replaced with searches for the
+    person's own roles and place (17 November 2026: a salesperson in Dubai
+    otherwise collected German ML jobs on the first run). While the list is
+    still exactly what was written here last time, a change in the preferences
+    (a corrected place or role) writes it again. A list anyone has changed is
+    never touched. Returns how many searches were written (0: nothing changed).
+    """
+    with _lock:
+        state = _load()
+        now = sorted(key(r["url"]) for r in state["searches"])
+        # Untouched: exactly the examples, or exactly what was written here
+        # last time, names and on/off included (a search renamed or switched
+        # off is the person's choice and is never written over).
+        untouched = (now == sorted(key(clean_url(e["url"])) for e in EXAMPLES)
+                     or (bool(state.get("seeded"))
+                         and _fingerprint(state["searches"]) == sorted(state["seeded"])))
+        if not now or not untouched:
+            return 0
+        rows = [r for i, x in enumerate(from_preferences(prefs, state.get("geo")), 1)
+                if (r := _check(x, [], i))]
+        if not rows or sorted(key(r["url"]) for r in rows) == now:
+            return 0
+        state["searches"] = _dedupe(rows)
+        state["seeded"] = _fingerprint(state["searches"])
+        state["updated"] = dt.datetime.now().isoformat(timespec="seconds")
+        _write(state)
+        return len(state["searches"])
 
 
 def add(url: str, label: str = "") -> tuple[dict, str, str]:

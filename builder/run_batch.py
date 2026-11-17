@@ -94,6 +94,28 @@ def _append(text: str) -> None:
         fh.write(text)
 
 
+def example_rows(mine: pathlib.Path, example: pathlib.Path) -> list[str]:
+    """The fictional example's projects still in this person's PROJECTS.md:
+    table rows copied word for word, so a file with the person's own rows
+    added under the example's is still caught, and a project of their own
+    that happens to share a name ("Open-source contribution") is not."""
+    import re as _re
+
+    def rows(p):
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            return {}
+        out = {}
+        for line in text.splitlines():
+            m = _re.search(r"\*\*(.+?)\*\*", line) if line.lstrip().startswith("|") else None
+            if m:
+                out[" ".join(line.split()).lower()] = m.group(1).strip()
+        return out
+    theirs = rows(mine)
+    return [name for row, name in rows(example).items() if row in theirs]
+
+
 def say(msg: str) -> None:
     _append(f"[{dt.datetime.now():%H:%M:%S}] {msg}\n")
 
@@ -468,6 +490,14 @@ def main() -> None:
     if ident.is_file() and "example.com" in ident.read_text(encoding="utf-8", errors="replace") \
             and IDENTITY_MD not in unfilled:
         unfilled.append(IDENTITY_MD)
+    # The example's projects left in place (identity.md and profile.md edited
+    # by hand, PROJECTS.md not): not a reason to stop, but they are not this
+    # person's work, and apply-batch.md tells Claude to ignore them.
+    left = example_rows(profile / "reference" / "PROJECTS.md", example / "reference" / "PROJECTS.md")
+    if not unfilled and left:
+        say("note: profile/reference/PROJECTS.md still lists the fictional example's "
+            f"{', '.join(left)}; the build ignores those rows. Replace them with your own "
+            "projects or achievements (Edit profile on the dashboard).")
     if profile.name == "example" or unfilled:
         notify("Fill in your profile first", "Build not started")
         end_with("failed", "your profile is still the fictional example "
@@ -663,7 +693,8 @@ def main() -> None:
         notify(NOTHING_BUILT, "No roles passed the filters")
         end_with("info", "no job passed the ranking filters, so nothing was built",
                  "See why on the Fit ranking page (tick Show dropped). Collect more, "
-                 "or loosen a filter in scraper/config_local.py.", 0)
+                 "or change your Preferences on the dashboard (roles, kinds of job, "
+                 "places, languages, years).", 0)
 
     # Still open? A scrape is a snapshot and a CV takes a day to reach the
     # employer, so each candidate is checked against the live posting before

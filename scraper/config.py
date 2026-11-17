@@ -220,6 +220,13 @@ CLAUDE_MIN_FIT = 30
 CLAUDE_PROFILE_MODEL = "claude-sonnet-5-5"
 CLAUDE_PROFILE_TIMEOUT = 300
 
+# Job preferences (preferences.py): the profile's preferences.json, written by
+# Claude from profile.md and identity.md and rewritten when they change. One
+# call per change, and every rule reads the result, so Sonnet (decided
+# 16 November 2026).
+CLAUDE_PREFS_MODEL = "claude-sonnet-5-5"
+CLAUDE_PREFS_TIMEOUT = 120 if os.name == "nt" else 90
+
 # Updates (updater.py): once a day the pipeline asks GitHub whether a newer
 # version exists, and the dashboard offers Update now. Only version numbers
 # are fetched. UPDATE_CHECK=0 in local.env turns it off; it must be off in the
@@ -227,8 +234,9 @@ CLAUDE_PROFILE_TIMEOUT = 300
 UPDATE_REPO = "oommaarrr/job-application-pipeline"
 UPDATE_CHECK = True
 
-# Before either model reads anything, jobs far from your target roles (the
-# Arbeitnow searches) by meaning are set aside, using EMBED_MODEL. Measured on
+# Before the LOCAL model reads anything, jobs far from your target roles (your
+# Preferences, or else the Arbeitnow searches) by meaning are set aside, using
+# EMBED_MODEL. Claude reads every job itself: no cut stands in for it. Measured on
 # 1,270 collected jobs, 22 October 2026: a floor of 0.62 set aside about 15%
 # of them and only 1 of the 221 that were later built. The signal is weak
 # inside one field (good and out-of-lane roles score alike), so the floor is
@@ -260,60 +268,31 @@ BUILD_TARGET_MAX = 10
 # the candidates are good: the extra ones are simply never reached.
 TOP_N = 8
 
-# Hard drops applied AFTER the model answers. The model extracts, these decide,
-# so a wording change in a posting cannot quietly loosen a rule.
-# B2 and above, same 0-6 scale as GERMAN_CAP. Was 5 (C1).
+# What decides which jobs are dropped (rank_ollama.verdict) is the person's own
+# preferences.json since 16 November 2026: their languages and levels, the most
+# years a job may ask for, whether management roles are fine, where they would
+# work. These used to be constants here (DROP_GERMAN_AT, GERMAN_TEXT_SHARE,
+# DROP_YEARS_AT, DROP_YEARS_AT_REMOTE, DROP_MANAGEMENT), set for one engineer
+# in Berlin with two years of experience; anyone else had almost every job
+# thrown out. Change them under Preferences on the dashboard.
 #
-# Decision, 19 September 2026: of 15 applications built, only 10 could be
-# sent. "gute Deutschkenntnisse" is a B2 ask in practice and it sailed through a
-# C1 threshold, so a CV was written for a role the user cannot take. B2 is already out
-# of reach at A2 with B1 in progress, so the line belongs at B2, not above it.
-DROP_GERMAN_AT = 4
-
-# A posting WRITTEN in German requires German, whether or not it ever names a
-# level. This is the leak the CEFR gate could not catch: Reply and secureIO both
-# came back german_level="none" from the model, because neither text states a
-# level — they are simply written in German throughout, which tells you the
-# working language more reliably than any sentence about it would.
-#
-# Measured as the share of words that are German function words (und, der, die,
-# mit, für...). An English posting with a German company name scores near zero;
-# the three German postings in the 19 September batch scored 25%, 29% and 27%,
-# and every English one scored under 1%. Anywhere in that gap works; 12% is
-# chosen so a short German section inside an English posting still trips it.
-GERMAN_TEXT_SHARE = 0.12
-DROP_YEARS_AT = 4              # 4+ years stated in the description is a hard drop
-
-# Outside Germany the years ceiling is looser. The rule, 22 September
-# 2026: a remote role abroad asking a bit more experience is still worth taking,
-# where the same ask in Germany is not. Evidence from the 22 September rank: the
-# 4-year ceiling was dropping three in-lane remote roles that each asked exactly
-# 5 years.
-# At 6 those come back while the genuinely senior asks (6, 10, 12 years) stay
-# out. Applies to anything not located in Germany, including the EMEA and EU
-# remote listings where the volume actually is.
-# Years above YOUR_YEARS are still penalised in the ranking, so a 5-year ask sits
-# below an equal role that fits the profile's experience rather than crowding it out.
-DROP_YEARS_AT_REMOTE = 6
-
-# Years between YOUR_YEARS and the drop line are KEPT but penalised. Their
-# instruction, 20 September 2026: a role asking 3 years when the user has 2 is still
-# worth applying to, it just ranks below an equal role that fits the profile's experience.
-# Points off per year required above YOUR_YEARS (so a 3-year ask loses one step).
+# Points off per year a job asks above the person's own years of experience:
+# kept, but ranked below an equal role that fits (20 September 2026).
 PENALTY_PER_YEAR_OVER = 8
-DROP_MANAGEMENT = True          # Head of / Director / VP / owning headcount
 
 # Ranking weights. Fit is the model's 0-100 score; these tilt it toward what
-# the user actually wants rather than what merely passes.
-BONUS_BERLIN = 12               # on site or hybrid in Berlin
-BONUS_REMOTE_DE = 4             # remote within Germany
-BONUS_AI_ROLE = 15              # the role really is AI/ML engineering
-PENALTY_OFF_LANE = 25           # data eng, frontend, embedded, research
+# the person actually wants rather than what merely passes.
+BONUS_ROLE_MATCH = 15           # one of the roles they want, not just a neighbour
+BONUS_BEST_PLACE = 12           # their first-choice place, in a way they would work
 
 # A role scoring below this is not worth a tailored CV. Without a floor, 140 of
 # 188 postings "passed" on 18 September, including a front-end staff role and an
 # IT application developer that the model itself scored 0.
 MIN_FIT = 45
+# The floor for a role the person asked for (role_match "yes"): only a fit near
+# zero, which the model is told means a different field. A career changer or a
+# student scores low on experience for exactly the roles they want.
+ROLE_MATCH_MIN_FIT = 15
 
 # ---------------------------------------------------------------- pool health
 # When to scrape again, and when the pool you already have is still worth

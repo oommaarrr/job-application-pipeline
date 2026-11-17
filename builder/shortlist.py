@@ -2,10 +2,10 @@
 """
 Join the scraper's ranked output to the full job descriptions.
 
-The scraper already did the mechanical work: relevance floor, German gate at
-B1, years extraction, and dropping anything on applied.json. What it cannot do
-is judge how close a role actually is to the user, which needs the description read
-in full. So this writes one file with everything needed for that judgement.
+The ranker already judged every posting against the person's profile and
+preferences, and dropped anything on applied.json. This joins the survivors to
+their full descriptions, and prints the person's limits first, so whoever builds
+the documents judges each posting against the same limits.
 
     .venv/bin/python shortlist.py             one line per role
     .venv/bin/python shortlist.py --full 8    plus the top 8 full descriptions
@@ -60,6 +60,22 @@ def _key(url: str) -> str:
     return job_key(url or "")
 
 
+def limits() -> str:
+    """
+    The person's limits from their preferences.json (written by Claude from the
+    profile, or set by them on the dashboard), in plain words. The build judges
+    every posting against these and nothing else: no fixed rule decides who a
+    role is for (November 2026).
+    """
+    try:
+        import preferences
+        folder = (HERE / "profile").resolve()
+        prefs = preferences.load(folder if folder.is_dir() else None)["preferences"]
+        return preferences.limits_text(prefs)
+    except Exception as e:                                   # noqa: BLE001
+        return f"(could not read the preferences: {e}; judge against profile.md alone)"
+
+
 def descriptions() -> dict[str, str]:
     """Every description the extension captured, newest file winning."""
     out: dict[str, str] = {}
@@ -78,21 +94,15 @@ def descriptions() -> dict[str, str]:
 
 def build() -> list[dict]:
     """
-    Prefer the local model's ranking, fall back to the old pipeline's.
+    The ranking, from `out/ranked.json` (rank_ollama.py): already ordered and
+    already past the person's own limits from preferences.json.
 
-    `out/ranked.json` is written by rank_ollama.py and is already cut to the
-    batch size, already ordered, and already past the German, years, marketplace
-    and repeat filters. `out/jobs.json` is the old run.py output, which the
-    bridge rewrites on every push from the extension: on 18 September it
-    replaced the ranking with 90 unfiltered rows twenty minutes after it was
-    written. Reading the wrong one silently undoes every filter.
+    There is no fallback any more. The old run.py output (`out/jobs.json`)
+    applied fixed engineer-only gates (German above B1 out, four years out,
+    sales and marketing titles scored zero), so building from it would undo the
+    person's preferences. No ranking means rank first (November 2026).
     """
     ranked = _read(SCRAPER / "out" / "ranked.json", [])
-    if not ranked:
-        ranked = _read(SCRAPER / "out" / "jobs.json", [])
-        if ranked:
-            print("WARNING: out/ranked.json is missing, falling back to the old "
-                  "out/jobs.json. Run rank_ollama.py first.")
     if not ranked:
         return []
     desc = descriptions()
@@ -174,14 +184,16 @@ def main() -> int:
     applied = _read(SCRAPER / "applied.json", {"applied": []}).get("applied", [])
     missing = sum(1 for r in rows if not r["description"])
 
+    print("THE PERSON'S LIMITS (from their preferences; judge every posting against these)")
+    print(limits() + "\n")
     print(f"{len(rows)} open roles · {len(applied)} already applied "
           f"· {missing} without a description")
     print(f"written to {out}\n")
 
     for i, r in enumerate(rows, 1):
         print(f"{i:>2}. {r['title'][:58]:<58} {(r.get('company') or '')[:24]:<24} "
-              f"{r['location'][:22]:<22} {r.get('years_source', ''):<12} "
-              f"{r.get('german_level', '')}")
+              f"{r['location'][:22]:<22} {str(r.get('years_required') or ''):<4} "
+              f"{', '.join(x['language'] + ' ' + x['level'] for x in r.get('languages_required') or [])}")
         print(f"    {r['url']}")
 
     if args.full is not None:

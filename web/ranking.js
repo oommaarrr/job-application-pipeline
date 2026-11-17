@@ -56,15 +56,20 @@ function render() {
   body.innerHTML = rows.map((r) => {
     const k = KIND[r.kind] || KIND.dropped;
     const pct = Math.round(8 + 92 * (r.score - lo) / span);
-    const meta = [r.location, r.source, r.berlin ? "Berlin" : "",
-                  r.german ? "German " + r.german : "",
+    const meta = [r.location, r.source, r.best_place ? "your first-choice place" : "",
+                  r.languages ? "needs " + r.languages : "",
                   r.years ? r.years + "y" : ""].filter(Boolean).join(" · ");
     const title = esc(r.title || "?");
     const link = r.url
       ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + title + "</a>"
       : title;
     // Plain words for the verdicts that are not the model's own labels.
-    const VERDICT = {"seen-earlier": "judged earlier", "far-from-target": "far from your roles"};
+    const VERDICT = {"seen-earlier": "judged earlier", "far-from-target": "far from your roles",
+      "off-lane": "not your field", "weak-fit": "weak fit", "language": "language",
+      "location": "place", "years": "too many years", "management": "management",
+      "job-kind": "not a kind of job you want", "no-description": "no description",
+      // Older rankings, before job kinds came from Preferences
+      "marketplace": "gig work", "not-a-job": "internship or thesis"};
     const badge = r.kind === "dropped" ? esc(VERDICT[r.verdict] || r.verdict || "dropped") : k.label;
     return '<tr class="' + r.kind + '">'
       + '<td class="sc n"><span class="num">' + r.score + "</span>"

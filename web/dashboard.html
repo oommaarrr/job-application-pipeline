@@ -30,6 +30,7 @@
       <a id="btnRanking" class="go ghost" href="/ranking"><span class="ico i-list" aria-hidden="true"></span>Fit ranking</a>
     </nav>
     <div class="tb-right">
+      <button id="btnPrefs" class="go ghost" type="button" title="what you are looking for: roles, places, languages and how your CV looks"><span class="ico i-sliders" aria-hidden="true"></span>Preferences</button>
       <button id="btnProfile" class="go ghost" type="button" title="tell Claude what to change in your profile"><span class="ico i-pencil" aria-hidden="true"></span>Edit profile</button>
       <button id="autobuild" class="go switch" type="button" title="toggle autobuild after a scrape"></button>
       <button id="themeBtn" class="go icon theme" type="button" title="Theme" aria-label="Theme"></button>
@@ -46,6 +47,7 @@
        the top of the list and collapses the passing ones to a single line. -->
   <div id="staleBanner" class="stale-banner hide" role="alert"></div>
   <div id="updateBanner" class="stale-banner update-banner hide" role="status"></div>
+  <div id="prefsBanner" class="stale-banner update-banner hide" role="status"></div>
   <section id="setupCard" class="card setup hide" aria-labelledby="setupTitle">
     <div class="card-head">
       <span class="ico i-wrench" aria-hidden="true"></span>
@@ -392,6 +394,11 @@
       </section>
 
       <section role="tabpanel" id="anPanR" aria-labelledby="anTabR" class="dlg-pan" hidden>
+        <p class="pan-lead hide" id="anFromPrefs">These follow your <a href="#preferences" id="anPrefsLink">job preferences</a>
+          (places, relocating, kinds of job). Change something here and Save, and these become yours instead.</p>
+        <p class="pan-lead hide" id="anOwnRules">You set these yourself, so a change in your job
+          preferences does not reach them.
+          <button type="button" class="go quiet sm" id="anUsePrefs">Use my Preferences</button></p>
         <div class="an-field">
           <span class="an-label" id="anWhereLabel">On site or hybrid in</span>
           <div class="an-countries">
@@ -433,6 +440,117 @@
       <span class="grow"></span>
       <button class="go" id="anSave" type="button">Save</button>
       <button class="go primary" id="anSavePull" type="button">Save and pull</button>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ job preferences
+       Opened by Preferences in the top bar, or the banner after Claude wrote
+       them. What the person is looking for, as the settings the rules read
+       (scraper/preferences.py). Behaviour: web/preferences.js. -->
+  <dialog id="pfDlg" class="an-dlg" aria-labelledby="pfTitle">
+    <div class="an-head">
+      <h2 id="pfTitle">Job preferences</h2>
+      <span class="grow"></span>
+      <button class="go sm" id="pfFill" type="button"
+        title="Claude reads your profile and fills in everything again">Fill from my profile</button>
+      <button class="go quiet icon" id="pfClose" type="button" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="dlg-tabs" role="tablist" aria-label="Job preferences">
+      <button type="button" role="tab" id="pfTabR" aria-controls="pfPanR" aria-selected="true">Roles</button>
+      <button type="button" role="tab" id="pfTabW" aria-controls="pfPanW" aria-selected="false" tabindex="-1">Places and languages</button>
+      <button type="button" role="tab" id="pfTabC" aria-controls="pfPanC" aria-selected="false" tabindex="-1">CV</button>
+    </div>
+    <div class="an-body">
+      <div id="pfNote" class="an-note hide" role="status"></div>
+      <div id="pfAsk" class="pf-ask hide" role="note"></div>
+      <section role="tabpanel" id="pfPanR" aria-labelledby="pfTabR" class="dlg-pan">
+        <p class="pan-lead">What you are looking for. Every job is judged against this and your profile.
+          Anything you change here stays as you set it when your profile changes.</p>
+        <div class="an-field">
+          <span class="an-label" id="pfRolesL">Roles you want <span class="pf-you" data-you="target_roles"></span></span>
+          <div class="an-countries">
+            <span class="chips" id="pfRoles" aria-labelledby="pfRolesL"></span>
+            <input id="pfRoleIn" type="text" maxlength="80" autocomplete="off"
+              placeholder="Add a role, e.g. Account Executive" aria-label="Add a role">
+          </div>
+          <small class="an-hint">As job postings title them. Press Enter after each one.</small>
+        </div>
+        <div class="an-field">
+          <span class="an-label" id="pfNotL">Not your field <span class="pf-you" data-you="not_my_field"></span></span>
+          <div class="an-countries">
+            <span class="chips" id="pfNot" aria-labelledby="pfNotL"></span>
+            <input id="pfNotIn" type="text" maxlength="80" autocomplete="off"
+              placeholder="Add a kind of work" aria-label="Add a kind of work you do not want">
+          </div>
+          <small class="an-hint">Kinds of work you do not want, in a few words, e.g. cold calling or frontend development.</small>
+        </div>
+        <div class="an-field">
+          <span class="an-label" id="pfKindsL">Kinds of job you want <span class="pf-you" data-you="job_kinds"></span></span>
+          <div class="pf-kinds" id="pfKinds" role="group" aria-labelledby="pfKindsL"></div>
+          <small class="an-hint">A job of a kind you did not tick is left out. None ticked: any kind.</small>
+        </div>
+        <div class="set-list">
+          <label class="set-row"><span>Years of professional experience <span class="pf-you" data-you="years_experience"></span></span>
+            <input id="pfYears" class="pf-num" type="number" min="0" max="60" inputmode="numeric"></label>
+          <label class="set-row"><span>Skip jobs that ask for more than <span class="pf-you" data-you="max_years_asked"></span><br>
+            <small class="an-hint">Empty: no limit, the job is judged on the rest.</small></span>
+            <span><input id="pfMaxYears" class="pf-num" type="number" min="0" max="60" inputmode="numeric"> years</span></label>
+          <label class="set-row"><span>Roles that mainly manage a team are fine <span class="pf-you" data-you="accept_management"></span></span>
+            <span class="toggle"><input type="checkbox" id="pfMgmt"><i aria-hidden="true"></i></span></label>
+        </div>
+      </section>
+
+      <section role="tabpanel" id="pfPanW" aria-labelledby="pfTabW" class="dlg-pan" hidden>
+        <div class="an-field">
+          <span class="an-label">Where you would work <span class="pf-you" data-you="places"></span></span>
+          <div id="pfPlaces" class="pf-rows"></div>
+          <button class="go quiet sm add-btn" id="pfAddPlace" type="button">+ Add a place</button>
+          <datalist id="pfCountryList"></datalist>
+        </div>
+        <div class="set-list">
+          <label class="set-row"><span>Also fully remote jobs based in any country <span class="pf-you" data-you="remote_anywhere"></span></span>
+            <span class="toggle"><input type="checkbox" id="pfRemote"><i aria-hidden="true"></i></span></label>
+          <label class="set-row"><span>Would relocate for the right job <span class="pf-you" data-you="relocate"></span><br>
+            <small class="an-hint">On-site jobs elsewhere are then kept; your places above still rank first.</small></span>
+            <span class="toggle"><input type="checkbox" id="pfRelocate"><i aria-hidden="true"></i></span></label>
+        </div>
+        <div class="an-field">
+          <span class="an-label">Languages you speak <span class="pf-you" data-you="languages"></span></span>
+          <div id="pfLangs" class="pf-rows"></div>
+          <button class="go quiet sm add-btn" id="pfAddLang" type="button">+ Add a language</button>
+          <small class="an-hint">A job that needs a language above your level is left out. A language
+            with no level set never leaves a job out.</small>
+        </div>
+      </section>
+
+      <section role="tabpanel" id="pfPanC" aria-labelledby="pfTabC" class="dlg-pan" hidden>
+        <div class="an-field">
+          <span class="an-label" id="pfShapeL">How your CV shows your experience <span class="pf-you" data-you="cv_shape"></span></span>
+          <div class="seg" id="pfShape" role="radiogroup" aria-labelledby="pfShapeL">
+            <label><input type="radio" name="pfShape" value="achievements">Results in each role</label>
+            <label><input type="radio" name="pfShape" value="projects">Named projects</label>
+          </div>
+          <small class="an-hint">Results suit sales, marketing, operations and management. Named projects
+            suit engineering, research and design.</small>
+        </div>
+        <div class="an-field">
+          <span class="an-label" id="pfPagesL">CV length <span class="pf-you" data-you="cv_max_pages"></span></span>
+          <div class="seg" id="pfPages" role="radiogroup" aria-labelledby="pfPagesL">
+            <label><input type="radio" name="pfPages" value="1">One page</label>
+            <label><input type="radio" name="pfPages" value="2">Up to two pages</label>
+            <label><input type="radio" name="pfPages" value="3">Up to three pages</label>
+          </div>
+        </div>
+        <div class="set-list">
+          <label class="set-row"><span>Say how many years of experience you have <span class="pf-you" data-you="cv_state_years"></span></span>
+            <span class="toggle"><input type="checkbox" id="pfStateYears"><i aria-hidden="true"></i></span></label>
+        </div>
+      </section>
+    </div>
+    <div class="an-foot">
+      <span id="pfStatus" class="muted" role="status"></span>
+      <span class="grow"></span>
+      <button class="go primary" id="pfSave" type="button">Save</button>
     </div>
   </dialog>
 
@@ -485,4 +603,5 @@
 <script src="/web/arbeitnow.js"></script>
 <script src="/web/searches.js"></script>
 <script src="/web/profile-chat.js"></script>
+<script src="/web/preferences.js"></script>
 </body></html>

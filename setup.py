@@ -357,7 +357,9 @@ def profile_step(claude: str | None) -> None:
     """Create profiles/me, and fill it from the user's CV if they want."""
     me, example = ROOT / "profiles" / "me", ROOT / "profiles" / "example"
     if not me.is_dir():
-        shutil.copytree(example, me)
+        # Not the example's preferences.json: Claude writes this person's
+        # own from their profile, and until it can, nothing is ruled out.
+        shutil.copytree(example, me, ignore=shutil.ignore_patterns("preferences.json"))
         ok("created profiles/me (a copy of the example — it is not you yet)")
     still_example = all((me / n).is_file() and (example / n).is_file()
                         and (me / n).read_bytes() == (example / n).read_bytes()
@@ -380,7 +382,8 @@ def profile_step(claude: str | None) -> None:
     example_cv = r"C:\Users\you\Downloads\my-cv.pdf" if IS_WIN else "~/Downloads/my-cv.pdf"
     print("  Make it yours later: in this folder run")
     print(f'      claude "/make-profile {example_cv}"')
-    print("  Or edit profiles/me/identity.md and profiles/me/profile.md by hand.")
+    print("  Or edit profiles/me/identity.md, profiles/me/profile.md and")
+    print("  profiles/me/reference/PROJECTS.md by hand (all three still describe the example).")
 
 
 if __name__ == "__main__":

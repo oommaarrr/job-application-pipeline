@@ -1,0 +1,104 @@
+{
+  "version": 2,
+  "preferences": {
+    "target_roles": [
+      "Machine Learning Engineer",
+      "Applied ML Engineer",
+      "MLOps Engineer",
+      "AI Engineer",
+      "Data Scientist (production ML)"
+    ],
+    "not_my_field": [
+      "Computer vision",
+      "Embedded ML",
+      "Frontend-led roles",
+      "Pure DevOps or SRE",
+      "Data annotation or AI-training contract work",
+      "Research-only roles"
+    ],
+    "years_experience": 3,
+    "max_years_asked": 4,
+    "languages": [
+      {
+        "language": "English",
+        "level": "c1"
+      },
+      {
+        "language": "German",
+        "level": "a2"
+      }
+    ],
+    "places": [
+      {
+        "place": "Berlin",
+        "country": "DE",
+        "work": [
+          "onsite",
+          "hybrid",
+          "remote"
+        ]
+      },
+      {
+        "place": "Germany",
+        "country": "DE",
+        "work": [
+          "remote"
+        ]
+      },
+      {
+        "place": "European Union",
+        "country": "",
+        "work": [
+          "remote"
+        ]
+      }
+    ],
+    "remote_anywhere": false,
+    "relocate": true,
+    "accept_management": false,
+    "job_kinds": [
+      "regular"
+    ],
+    "cv_shape": "projects",
+    "cv_max_pages": 1,
+    "cv_state_years": false
+  },
+  "made_by": {
+    "target_roles": "model",
+    "not_my_field": "model",
+    "years_experience": "model",
+    "max_years_asked": "model",
+    "languages": "model",
+    "places": "model",
+    "remote_anywhere": "model",
+    "relocate": "model",
+    "accept_management": "model",
+    "job_kinds": "model",
+    "cv_shape": "model",
+    "cv_max_pages": "model",
+    "cv_state_years": "model"
+  },
+  "model_values": {
+    "target_roles": "5a93e6816f3b",
+    "not_my_field": "0d8b186c3e81",
+    "years_experience": "77de68daecd8",
+    "max_years_asked": "1b6453892473",
+    "languages": "76d3f245bee0",
+    "places": "8b09243e7af0",
+    "remote_anywhere": "7cb6efb98ba5",
+    "relocate": "5ffe533b830f",
+    "accept_management": "7cb6efb98ba5",
+    "job_kinds": "b1ec1931e855",
+    "cv_shape": "4cd0aebdcddb",
+    "cv_max_pages": "356a192b7913",
+    "cv_state_years": "7cb6efb98ba5"
+  },
+  "profile": "example",
+  "profile_sig": "1df670db65268658",
+  "made_at": "2026-11-16T12:00:00",
+  "saved_at": null,
+  "model": "example",
+  "reviewed": true,
+  "changed": [],
+  "questions": []
+}

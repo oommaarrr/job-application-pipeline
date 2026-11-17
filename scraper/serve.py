@@ -138,7 +138,7 @@ def _today() -> str:
 # on 29 September 2026 the new Saved searches window met a server without
 # /searches/save, and a new search was lost on Save. Raise it whenever the pages
 # start relying on a new endpoint, together with PIPELINE_API in web/dashboard.js.
-API_VERSION = 7
+API_VERSION = 8
 _CODE_FILES = sorted(pathlib.Path(__file__).resolve().parent.glob("*.py"))
 _CODE_AT_START = {f: f.stat().st_mtime for f in _CODE_FILES}
 
@@ -378,6 +378,7 @@ _data_lock = threading.Lock()
 import config
 import ledger
 import pool_status
+import preferences
 import profile_chat
 import rank_engine
 import saved_searches
@@ -521,30 +522,22 @@ def built_jobs() -> dict[str, dict]:
 
 
 def rerank() -> dict:
-    """Run the inbox-only pipeline. Fast now that inbox jobs are not paced."""
-    with _rank_lock:
-        try:
-            proc = subprocess.run(
-                [str(PYTHON), "run.py", "--inbox", "--no-open"],
-                cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=300, **pu.quiet_kwargs())
-        except (subprocess.TimeoutExpired, OSError) as e:
-            _last_rank.update(ran_at=dt.datetime.now().isoformat(timespec="seconds"),
-                              error=str(e))
-            _event("pool", "failed", f"updating the job list failed: {e}",
-                   fix="The jobs are saved. It updates again on the next collection.")
-            return dict(_last_rank)
-        if proc.returncode != 0:
-            _event("pool", "failed", "updating the job list failed: "
-                   + ((proc.stderr or "").strip().splitlines() or ["unknown error"])[-1][:200],
-                   fix="The jobs are saved. It updates again on the next collection.")
+    """
+    The counts the extension shows after a push: how many jobs are collected
+    today, and how many passed the last ranking.
 
-        ranked = _read_json(ROOT / "out" / "jobs.json", [])
+    This used to run the old run.py pipeline on every push, whose fixed gates
+    (German above B1, four years, sales and marketing titles scored zero) were
+    one engineer's and contradicted the person's preferences; nothing builds
+    from its output any more (November 2026). The real ranking is Rank pool.
+    """
+    with _rank_lock:
+        rank = _read_json(OUT / OLLAMA_RANK_JSON, {}) if _rank_is_current() else {}
         _last_rank.update(
             ran_at=dt.datetime.now().isoformat(timespec="seconds"),
-            matches=len(ranked),
+            matches=len(rank.get("passed") or []) if rank else None,
             collected=len(_read_json(_active_inbox(), {"jobs": []}).get("jobs", [])),
-            error=None if proc.returncode == 0 else (proc.stderr or "")[-400:],
+            error=None,
         )
         return dict(_last_rank)
 
@@ -1186,6 +1179,130 @@ def arbeitnow_running() -> bool:
     return False
 
 
+# ---------------------------------------------------------------- job preferences
+# The profile's preferences.json (preferences.py): what the person is looking
+# for, as settings the rules read. Claude writes it from the profile; this
+# keeps it in step without anyone pressing anything:
+#
+#   - on start, so an update that adds or changes a field fills it in;
+#   - when profile.md or identity.md changes (Edit profile, /make-profile, or by
+#     hand), checked every PREFS_EVERY seconds;
+#   - and from the dashboard (Fill from my profile).
+#
+# A field the person changed is never written over. After a failure the same
+# profile is not tried again for PREFS_RETRY seconds, so a signed-out Claude
+# does not mean a call every few seconds; the dashboard's button always tries.
+PREFS_EVERY = int(os.environ.get("PREFS_EVERY_S") or 15)   # the selftest uses 2
+PREFS_RETRY = 30 * 60
+_prefs: dict = {"running": False, "error": "", "fix": "", "failed_sig": "", "failed_at": 0.0,
+                "reason": ""}
+_prefs_lock = threading.Lock()
+_PREFS_WHY = {"missing": "your profile had no job preferences yet",
+              "version": "this version of the pipeline reads more of them",
+              "profile": "your profile changed", "asked": "you asked",
+              "reset": "you asked to fill them from your profile again"}
+
+
+def _prefs_run(reason: str, reset: bool) -> None:
+    import time as _t
+    folder = preferences.folder_of()
+    try:
+        st = preferences.refresh(folder, reset=reset, log=lambda m: None)
+        _prefs.update(error="", fix="", failed_sig="")
+        meta = st["meta"]
+        who = "Claude" if not str(meta.get("model") or "").startswith("local:") else "the local model"
+        _event("preferences", "ok",
+               f"job preferences written from your profile by {who} "
+               f"({_PREFS_WHY.get(reason, reason)}): {preferences.summary(st['preferences'])}")
+        _seed_searches(st["preferences"])
+    except preferences.GenerateError as e:
+        _prefs.update(error=str(e), fix=e.fix, failed_sig=preferences.profile_sig(folder),
+                      failed_at=_t.time())
+        _event("preferences", "failed", f"could not write your job preferences: {e}", fix=e.fix)
+    except Exception as e:                                   # noqa: BLE001
+        _prefs.update(error=f"{type(e).__name__}: {e}"[:300], fix="",
+                      failed_sig=preferences.profile_sig(folder), failed_at=_t.time())
+        _event("preferences", "failed", f"could not write your job preferences: {e}")
+    finally:
+        _prefs["running"] = False
+
+
+def _seed_searches(prefs: dict) -> None:
+    """The first-install example searches become the person's own, once (see
+    saved_searches.seed_from_preferences). After Claude writes the
+    preferences, and after the person fills them in by hand."""
+    try:
+        import saved_searches
+        n = saved_searches.seed_from_preferences(prefs)
+        if n:
+            _event("preferences", "info",
+                   f"the example searches were replaced with {n} LinkedIn search(es) for "
+                   "your own roles and place; change them under Saved searches")
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
+def prefs_start(reason: str, reset: bool = False) -> bool:
+    with _prefs_lock:
+        if _prefs["running"]:
+            return False
+        _prefs.update(running=True, reason=reason, error="", fix="")
+    threading.Thread(target=_prefs_run, args=(reason, reset), daemon=True,
+                     name="preferences").start()
+    return True
+
+
+def _prefs_watch() -> None:
+    import time as _t
+    while True:
+        try:
+            why = preferences.due()
+            if why and not _prefs["running"]:
+                sig = preferences.profile_sig()
+                if not (_prefs["failed_sig"] == sig and _t.time() - _prefs["failed_at"] < PREFS_RETRY):
+                    prefs_start(why)
+        except Exception as e:                               # noqa: BLE001
+            print(f"preferences check failed: {e}", file=sys.stderr)
+        _t.sleep(PREFS_EVERY)
+
+
+def preferences_brief() -> dict:
+    """For the 2-second refresh: enough for the dashboard's banner."""
+    st = preferences.load()
+    meta = st["meta"]
+    if _prefs["running"]:
+        state = "writing"
+    elif st["example"]:
+        state = "example"
+    elif _prefs["error"] and (not st["exists"] or preferences.due()):
+        # No file, or one written for the profile as it was: either way the
+        # person should hear that their current profile is not reflected.
+        state = "failed"
+    elif st["exists"]:
+        state = "ready"
+    else:
+        state = "none"
+    return {"state": state, "stale": bool(st["exists"]) and state == "failed",
+            "reviewed": bool(meta.get("reviewed")), "changed": meta.get("changed") or [],
+            "error": _prefs["error"], "fix": _prefs["fix"],
+            "model": meta.get("model") or "", "made_at": meta.get("made_at"),
+            "questions": meta.get("questions") or []}
+
+
+def preferences_state() -> dict:
+    """GET /preferences: the values, who set each, and the choices the form offers."""
+    import countries as cc
+    st = preferences.load()
+    return {"ok": True, **st, **preferences_brief(),
+            "profile": preferences.folder_of().name,
+            "has_profile": preferences.has_profile(),
+            "choices": {"levels": list(preferences.LEVELS[1:]), "work": list(preferences.WORK),
+                        "shapes": list(preferences.SHAPES), "max_items": preferences.MAX_ITEMS,
+                        "kinds": [[k, preferences.KIND_NAMES[k]] for k in preferences.KINDS],
+                        "countries": sorted(([c, n] for c, n in cc.NAMES.items()),
+                                            key=lambda x: x[1])}}
+
+
 # ---------------------------------------------------------------- Arbeitnow settings
 # The Arbeitnow panel on the dashboard: searches in plain words, the rules, and
 # a preview of what a pull would keep. The matching itself is in
@@ -1301,6 +1418,9 @@ def arbeitnow_settings_state() -> dict:
                                 and s.get("profile_sig") != sig),
         "suggesting": _an["suggesting"], "suggest_error": _an["suggest_error"],
         "suggestion": _an["suggestion"],
+        # What the rules would be if they followed the preferences, for the
+        # window's "Use my Preferences" button.
+        "preference_rules": am.rules_from_preferences(),
         "prep": dict(_an["prep"]),
         "running": arbeitnow_running(),
         "feed_at": feed.get("fetched_at"), "feed_jobs": len(feed["jobs"]),
@@ -1890,6 +2010,7 @@ def progress() -> dict:
         "code_changed": _code_changed(),
         "can_restart": _supervised(),
         "rank_engine": rank_engine.get(),
+        "preferences": preferences_brief(),
         "update": update_info(),
         "now": dt.datetime.now().isoformat(timespec="seconds"),
         "phase": phase,
@@ -2060,9 +2181,14 @@ def ranking_data() -> dict:
             "url": r.get("url") or "",
             "location": r.get("location") or "",
             "source": r.get("source") or "",
-            "berlin": bool(r.get("berlin")),
-            "german": (str(r.get("german_level")).upper()
-                       if r.get("german_level") not in (None, "none", "") else ""),
+            # A ranking from before November 2026 has berlin/german_level
+            # instead; shown the same way until the next one replaces it.
+            "best_place": r.get("location_fit") == "best" or bool(r.get("berlin")),
+            "languages": ", ".join(
+                f"{x.get('language', '')} {str(x.get('level', '')).upper()}"
+                for x in r.get("languages_required") or []) or (
+                "German " + str(r.get("german_level")).upper()
+                if r.get("german_level") not in (None, "none", "") else ""),
             "years": r.get("years_required") or None,
             "verdict": r.get("verdict") or "",
             "why": r.get("why") or r.get("reason") or "",
@@ -2344,6 +2470,26 @@ def doctor() -> dict:
     if "example.com" in idn_text and IDENTITY_MD not in still:
         still.append(IDENTITY_MD)
     own = PROFILE_DIR.name != "example" and not still
+    if own:
+        import re as _re
+
+        def _rows(p):
+            # Rows copied word for word from the example, not names alone.
+            try:
+                return {" ".join(line.split()).lower(): m.group(1).strip()
+                        for line in p.read_text(encoding="utf-8").splitlines()
+                        if line.lstrip().startswith("|")
+                        for m in [_re.search(r"\*\*(.+?)\*\*", line)] if m}
+            except OSError:
+                return {}
+        mine_rows = _rows(PROFILE_DIR / "reference" / "PROJECTS.md")
+        left = {name for row, name in _rows(example / "reference" / "PROJECTS.md").items() if row in mine_rows}
+        if left:
+            add("own-projects", "Your projects or achievements are your own", False,
+                "reference/PROJECTS.md still lists the fictional example's "
+                + ", ".join(sorted(left)) + "; the build ignores those rows",
+                "Edit profile on the dashboard: list your own projects or achievements",
+                weight="optional")
     add("own-profile", "Your profile is filled in", own,
         f"profiles/{PROFILE_DIR.name}" if own
         else ("still the fictional example: " + ", ".join(still)) if still
@@ -2394,8 +2540,17 @@ def funnel() -> dict:
             reasons[label] = not_read[key]
     if rank.get("repeats") and not not_read:          # a ranking from before not_read
         reasons["already judged on an earlier day"] = len(rank["repeats"])
+    # The ranker's verdicts, in plain words.
+    words = {"off-lane": "not one of your roles", "language": "needs a language above your level",
+             "years": "asks more years than your limit", "management": "mainly managing a team",
+             "location": "not where or how you would work", "weak-fit": "weak fit",
+             "job-kind": "not a kind of job you want",
+             "no-description": "no description", "far-from-target": "far from your roles",
+             "german": "needs German", "not-engineering": "not engineering",
+             "marketplace": "gig work", "not-a-job": "internship or thesis"}
     for row in dropped:
-        reasons[row.get("verdict", "other")] = reasons.get(row.get("verdict", "other"), 0) + 1
+        k = words.get(row.get("verdict", "other"), row.get("verdict", "other"))
+        reasons[k] = reasons.get(k, 0) + 1
 
     bp = build_progress()
     # A strict chain: every stage is a subset of the one above it, so the
@@ -2681,6 +2836,9 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/arbeitnow/settings":
             return self._send(arbeitnow_settings_state())
 
+        if route == "/preferences":
+            return self._send(preferences_state())
+
         if route == BUILD_ROUTE:
             return self._send({"ok": True, "build": {**_build,
                                                      "running": _build_running()}})
@@ -2837,7 +2995,29 @@ class Handler(BaseHTTPRequestHandler):
             import arbeitnow_match as am
             saved = am.save(body.get("settings") or {}, made_by="you")
             _an["suggestion"] = None
-            return self._send({"ok": True, "settings": saved})
+            # As load() reads them back: rules that follow the preferences say so.
+            return self._send({"ok": True, "settings": am.load() or saved})
+
+        # Job preferences (preferences.py): the person's own edit, or have
+        # Claude write them from the profile again.
+        if route == "/preferences":
+            try:
+                preferences.save(body.get("preferences") or {})
+            except preferences.GenerateError as e:
+                return self._send({"ok": False, "why": str(e)}, 409)
+            _event("preferences", "info", "job preferences saved: "
+                   + preferences.summary(preferences.current()))
+            _seed_searches(preferences.current())
+            return self._send(preferences_state())
+        if route == "/preferences/refresh":
+            if preferences.is_example():
+                return self._send({"ok": False, "why": "the active profile is the fictional "
+                                   "example; make your own profile first"}, 409)
+            if not preferences.has_profile():
+                return self._send({"ok": False, "why": "there is no profile yet"}, 409)
+            reset = bool(body.get("reset"))
+            started = prefs_start("reset" if reset else "asked", reset=reset)
+            return self._send({"ok": True, "started": started})
 
         if route == "/arbeitnow/suggest":
             started = _an_start_suggest(save=False)
@@ -3227,6 +3407,9 @@ def main() -> int:
         print(f"! cannot listen on {HOST}:{PORT} ({e}). Is it already running? "
               f"Open http://127.0.0.1:{PORT}/dashboard", file=sys.stderr)
         return 0
+    # Only once this copy owns the port: a second copy that is about to exit
+    # must not start writing the preferences too.
+    threading.Thread(target=_prefs_watch, daemon=True, name="preferences-watch").start()
     print(f"Job collector bridge listening on http://{HOST}:{PORT}")
     print(f"  inbox   {_active_inbox()}")
     print(f"  applied {ledger.APPLIED_CSV}")
